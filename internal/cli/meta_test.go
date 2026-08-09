@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/p3bot/tk/internal/token"
 )
 
 func runIn(t *testing.T, app *App, stdin string, args ...string) (string, string, error) {
@@ -586,6 +588,72 @@ func TestMetaRelatedAndTags(t *testing.T) {
 	}
 	if _, _, err := run(t, app, "meta", "set", "wc-ab2c", "link", "x"); ExitCodeFromError(err) != exitUsage {
 		t.Errorf("set link (multi) should exit 2, got %v", err)
+	}
+}
+
+func TestMetaAddTagNewNotice(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "a", "todo", "a0", "# A\n", false, "")
+	addTicket(t, dir, "wc-de34", "b", "todo", "a1", "# B\n", false, "tags: [shared]\n")
+	addTicket(t, dir, "wc-gh56", "old", "done", "a2", "# Old\n", true, "tags: [legacy]\n")
+
+	// Board-new value: notice after successful write; token stays off stdout.
+	out, errOut, err := run(t, app, "meta", "add", "wc-ab2c", "tags", "orphan")
+	if err != nil {
+		t.Fatalf("meta add new tag: %v", err)
+	}
+	if strings.TrimSpace(out) == "" {
+		t.Fatal("meta add must print path on stdout")
+	}
+	wantNew := token.FormatTagNew("orphan")
+	if !strings.Contains(errOut, wantNew) {
+		t.Errorf("board-new tag missing %q in stderr %q", wantNew, errOut)
+	}
+	if strings.Contains(out, token.TagNew) || strings.Contains(out, "tag_new:") {
+		t.Errorf("tag_new must not ride meta stdout path line, got %q", out)
+	}
+	if strings.Contains(errOut, token.SchemaWarn) {
+		t.Errorf("must not reuse schema_warn:, got %q", errOut)
+	}
+	if strings.Contains(errOut, token.TagUnknown) {
+		t.Errorf("meta add must use tag_new not tag_unknown, got %q", errOut)
+	}
+
+	// Idempotent re-add of same value on same ticket: quiet.
+	_, errOut, err = run(t, app, "meta", "add", "wc-ab2c", "tags", "orphan")
+	if err != nil {
+		t.Fatalf("meta re-add: %v", err)
+	}
+	if strings.Contains(errOut, token.TagNew) {
+		t.Errorf("idempotent re-add must stay quiet, got %q", errOut)
+	}
+
+	// Value already on another active ticket: quiet.
+	_, errOut, err = run(t, app, "meta", "add", "wc-ab2c", "tags", "shared")
+	if err != nil {
+		t.Fatalf("meta add existing board tag: %v", err)
+	}
+	if strings.Contains(errOut, token.TagNew) {
+		t.Errorf("already-used board tag must stay quiet, got %q", errOut)
+	}
+
+	// Value only on archived ticket: quiet (in-use set includes archive).
+	_, errOut, err = run(t, app, "meta", "add", "wc-ab2c", "tag", "legacy")
+	if err != nil {
+		t.Fatalf("meta add archive tag via alias: %v", err)
+	}
+	if strings.Contains(errOut, token.TagNew) {
+		t.Errorf("archive-present tag must stay quiet, got %q", errOut)
+	}
+
+	// Alias path for a brand-new tag still notices.
+	_, errOut, err = run(t, app, "meta", "add", "wc-ab2c", "tag", "brand-new")
+	if err != nil {
+		t.Fatalf("meta add brand-new via alias: %v", err)
+	}
+	if !strings.Contains(errOut, token.FormatTagNew("brand-new")) {
+		t.Errorf("alias board-new missing notice, got %q", errOut)
 	}
 }
 

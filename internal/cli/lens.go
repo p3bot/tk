@@ -22,7 +22,10 @@ func newLensCmd(app *App) *cobra.Command {
 		Long: "A lens is a per-scope, machine-local default tag view. With tags, it sets the\n" +
 			"lens; with --clear it removes it; with no arguments it shows the current lens.\n" +
 			"list and next apply the lens by default (an untagged ticket is never hidden;\n" +
-			"--no-lens bypasses). Tags are free-form; any tag is a legal lens value.",
+			"--no-lens bypasses). Tags are free-form; any tag is a legal lens value.\n" +
+			"Setting a tag not yet used on any ticket in the scope still applies the lens\n" +
+			"and emits on stderr (soft; exit 0):\n" +
+			"  tag_unknown: \"<t>\" is not used on any ticket in this scope",
 		Args: usageArgs(cobra.ArbitraryArgs),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runLens(app, c, args, scope, clearLens)
@@ -57,7 +60,23 @@ func runLens(app *App, c *cobra.Command, args []string, scopeFlag string, clearL
 		stdoutln(c, strings.Join(e.reg.Lens[scope], " "))
 		return nil
 	default:
-		return e.writeLens(scope, dedupeSorted(args))
+		tags := dedupeSorted(args)
+		// Refresh index without printing integrity tokens — lens set's soft
+		// stderr surface is tag_unknown: only (not board-verb noise).
+		if _, err := e.reconcileResult(map[string]string{scope: resolved.Entry.Dir}); err != nil {
+			return err
+		}
+		rows, err := e.db.ScopeTickets(scope)
+		if err != nil {
+			return err
+		}
+		inUse := index.TagMembership(rows)
+		if err := e.writeLens(scope, tags); err != nil {
+			return err
+		}
+		// Soft only after a successful write (same as meta tag_new:).
+		warnUnknownTags(c, tags, inUse)
+		return nil
 	}
 }
 

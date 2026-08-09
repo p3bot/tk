@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/frontmatter"
+	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/title"
 	"github.com/p3bot/tk/internal/token"
@@ -159,6 +160,10 @@ func newMetaAddCmd(app *App) *cobra.Command {
 			"short ids normalise to full ids in the subject scope. depends add refuses self\n" +
 			"(depends_self:), same-scope missing (depends_dangling:), and cross-scope\n" +
 			"unresolvable targets (depends_unresolvable:). related has no existence check.\n" +
+			"tags/tag: when the value is new to the scope (not yet on any ticket, including\n" +
+			"archive), emits on stderr after a successful write (soft; exit 0):\n" +
+			"  tag_new: \"<t>\" is new to this scope\n" +
+			"Re-add and already-used values stay quiet on that channel.\n" +
 			"Value - reads stdin. Prints the absolute ticket path on success.",
 		Args: usageArgs(cobra.ExactArgs(3)),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -371,6 +376,19 @@ func runMetaMutate(app *App, c *cobra.Command, op metaOp, idArg, key, valueArg, 
 		}
 	}
 
+	var (
+		notifyTagNew bool
+		preWriteTags map[string]struct{}
+	)
+	if op == metaOpAdd && key == frontmatter.KeyTags {
+		rows, err := e.db.ScopeTickets(scope)
+		if err != nil {
+			return err
+		}
+		notifyTagNew = true
+		preWriteTags = index.TagMembership(rows)
+	}
+
 	m, body, err := readTicketFile(p.Path)
 	if err != nil {
 		return err
@@ -395,6 +413,9 @@ func runMetaMutate(app *App, c *cobra.Command, op metaOp, idArg, key, valueArg, 
 		return err
 	}
 	stdoutln(c, out)
+	if notifyTagNew {
+		noticeNewTag(c, value, preWriteTags)
+	}
 	return nil
 }
 

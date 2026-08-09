@@ -3,7 +3,10 @@
 // All() is the complete catalogue for completeness checks.
 package token
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
 	// NameDrift marks a scope whose registry key disagrees with on-disk tk.cue name.
@@ -85,11 +88,29 @@ const (
 
 	// NonAllowlist marks a path under a scope dir outside the closed snapshot allowlist.
 	NonAllowlist = "non_allowlist:"
+
+	// TagUnknown marks a lens or list --tag operand not present on any ticket in the scope.
+	// Soft only: the operation still proceeds.
+	TagUnknown = "tag_unknown:"
+
+	// TagNew marks a meta add tags|tag value that was not yet on any ticket in the scope
+	// before the write. Soft only: the write still succeeds.
+	TagNew = "tag_new:"
 )
 
 // Line prefixes msg with tok and a space, forming a stderr diagnostic agents match by prefix.
 func Line(tok, msg string) string {
 	return tok + " " + msg
+}
+
+// FormatTagUnknown is the fixed tag_unknown: shape for lens and list --tag.
+func FormatTagUnknown(tag string) string {
+	return Line(TagUnknown, fmt.Sprintf("%q is not used on any ticket in this scope", tag))
+}
+
+// FormatTagNew is the fixed tag_new: shape for a board-new tag value on write.
+func FormatTagNew(tag string) string {
+	return Line(TagNew, fmt.Sprintf("%q is new to this scope", tag))
 }
 
 var all = []string{
@@ -98,7 +119,7 @@ var all = []string{
 	DependsDangling, DependsUnresolvable, SchemaError, SchemaWarn,
 	SyncDisabled, Uncommitted, SyncNeeded, OrderLong, StatusConflict, DependsCycle,
 	DependsSelf, DependsOnCancelled, RelatedUnresolvable, StaleInProgress,
-	LastPushError, EdgeVerify, NonAllowlist,
+	LastPushError, EdgeVerify, NonAllowlist, TagUnknown, TagNew,
 }
 
 // All returns the closed token catalogue in definition order.

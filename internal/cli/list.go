@@ -27,9 +27,13 @@ func newListCmd(app *App) *cobra.Command {
 			"`tk meta get <id>`. Bare list is the default active set. Status positionals\n" +
 			"union-filter (an unknown status exits 2) and include matching rows under\n" +
 			"archive/ — so `list done` shows done tickets without --all. --tag repeats\n" +
-			"as OR; the lens applies unless --no-lens (lens AND --tag). --all expands\n" +
-			"the unfiltered board to every non-quarantined status, including archive/.\n" +
-			"Lens echo and integrity tokens ride stderr only, never the TSV. Pure read.",
+			"as OR; the lens applies unless --no-lens (lens AND --tag). A --tag value not\n" +
+			"used on any ticket still filters (possibly empty) and emits on stderr\n" +
+			"(soft; exit 0):\n" +
+			"  tag_unknown: \"<t>\" is not used on any ticket in this scope\n" +
+			"--all expands the unfiltered board to every non-quarantined status, including\n" +
+			"archive/. Lens echo and integrity tokens ride stderr only, never the TSV.\n" +
+			"Pure read.",
 		Args: usageArgs(cobra.ArbitraryArgs),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runList(app, c, listParams{statuses: args, scope: scope, tags: tags, all: all, noLens: noLens})
@@ -82,6 +86,10 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 	gate, err := e.buildGate(res, []string{scope})
 	if err != nil {
 		return err
+	}
+
+	if len(p.tags) > 0 {
+		warnUnknownTags(c, p.tags, index.TagMembership(rows))
 	}
 
 	lens := e.reg.Lens[scope]

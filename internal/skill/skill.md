@@ -25,6 +25,7 @@ description: >-
 - Built-in statuses: draft, backlog, todo, in-progress, review, blocked, done, cancelled
 - The todo status is next-eligible
 - Manage ticket status through its states; move to done when completed
+- Soft tag feedback (stderr only, exit 0): `tag_unknown: "<t>" is not used on any ticket in this scope` on lens set and list --tag when t is absent from the in-use set; `tag_new: "<t>" is new to this scope` on meta add tags|tag when t was not on any ticket before the write
 
 ## Frontmatter
 

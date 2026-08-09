@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/p3bot/tk/internal/token"
 )
 
 func initScope(t *testing.T, app *App, name string) string {
@@ -722,5 +724,109 @@ func TestTagsInventory(t *testing.T) {
 	}
 	if out != "" {
 		t.Errorf("empty other scope must print nothing, got %q", out)
+	}
+}
+
+func TestTagUnknownOnLensAndList(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "fe", "todo", "a0", "# Frontend\n", false, "tags: [frontend]\n")
+	addTicket(t, dir, "wc-de34", "old", "done", "a1", "# Old\n", true, "tags: [legacy]\n")
+
+	// Known active tag: silent.
+	_, errOut, err := run(t, app, "lens", "frontend", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("lens known: %v", err)
+	}
+	if strings.Contains(errOut, token.TagUnknown) {
+		t.Errorf("known lens tag must not warn, got %q", errOut)
+	}
+
+	// Known archive-only tag: silent (in-use set includes archive).
+	_, errOut, err = run(t, app, "lens", "legacy", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("lens archive tag: %v", err)
+	}
+	if strings.Contains(errOut, token.TagUnknown) {
+		t.Errorf("archive-present lens tag must not warn, got %q", errOut)
+	}
+
+	// Unknown tag: soft warn, still applies.
+	_, errOut, err = run(t, app, "lens", "orphan", "frontend", "orphan", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("lens unknown: %v", err)
+	}
+	wantUnknown := token.FormatTagUnknown("orphan")
+	if !strings.Contains(errOut, wantUnknown) {
+		t.Errorf("lens unknown missing %q in stderr %q", wantUnknown, errOut)
+	}
+	if strings.Count(errOut, token.TagUnknown) != 1 {
+		t.Errorf("duplicate unknown tag must warn once, got %q", errOut)
+	}
+	if strings.Contains(errOut, token.SchemaWarn) {
+		t.Errorf("must not reuse schema_warn:, got %q", errOut)
+	}
+	// Lens still set (show path).
+	out, _, err := run(t, app, "lens", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("lens show: %v", err)
+	}
+	if !strings.Contains(out, "orphan") || !strings.Contains(out, "frontend") {
+		t.Errorf("lens must still apply, got %q", out)
+	}
+
+	// Clear and show: no tag_unknown.
+	_, errOut, err = run(t, app, "lens", "--clear", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("lens clear: %v", err)
+	}
+	if strings.Contains(errOut, token.TagUnknown) {
+		t.Errorf("lens --clear must not warn, got %q", errOut)
+	}
+
+	// list --tag unknown: warn + empty (or non-matching) list still runs.
+	out, errOut, err = run(t, app, "list", "--tag", "missing", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("list unknown tag: %v", err)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("unknown tag filter should yield empty list, got %q", out)
+	}
+	wantMissing := token.FormatTagUnknown("missing")
+	if !strings.Contains(errOut, wantMissing) {
+		t.Errorf("list --tag unknown missing %q in stderr %q", wantMissing, errOut)
+	}
+	if strings.Contains(errOut, token.SchemaWarn) {
+		t.Errorf("list must not reuse schema_warn:, got %q", errOut)
+	}
+
+	// list --tag known: silent.
+	out, errOut, err = run(t, app, "list", "--tag", "frontend", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("list known tag: %v", err)
+	}
+	if !strings.Contains(out, "wc-ab2c") {
+		t.Errorf("known tag should keep matching row, got %q", out)
+	}
+	if strings.Contains(errOut, token.TagUnknown) {
+		t.Errorf("known list tag must not warn, got %q", errOut)
+	}
+
+	// Multi --tag: one line per distinct unknown; token stays off stdout.
+	out, errOut, err = run(t, app, "list", "--tag", "ghost", "--tag", "frontend", "--tag", "ghost", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("list multi tag: %v", err)
+	}
+	if strings.Count(errOut, token.TagUnknown) != 1 {
+		t.Errorf("want one tag_unknown for ghost, got %q", errOut)
+	}
+	if !strings.Contains(errOut, token.FormatTagUnknown("ghost")) {
+		t.Errorf("want ghost unknown line, got %q", errOut)
+	}
+	if strings.Contains(out, token.TagUnknown) || strings.Contains(out, "tag_unknown:") {
+		t.Errorf("tag_unknown must not ride list stdout, got %q", out)
+	}
+	if !strings.Contains(out, "wc-ab2c") {
+		t.Errorf("known tag in multi filter should keep matching row, got %q", out)
 	}
 }

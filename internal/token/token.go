@@ -93,8 +93,9 @@ const (
 	// Soft only: the operation still proceeds.
 	TagUnknown = "tag_unknown:"
 
-	// TagNew marks a meta add tags|tag value that was not yet on any ticket in the scope
-	// before the write. Soft only: the write still succeeds.
+	// TagNew marks a board-new tag value on a successful write: create --tag or
+	// meta add tags|tag when the value was not on any ticket in the scope before
+	// the write. Soft only: the write still succeeds.
 	TagNew = "tag_new:"
 )
 

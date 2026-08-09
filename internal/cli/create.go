@@ -19,33 +19,46 @@ import (
 )
 
 func newCreateCmd(app *App) *cobra.Command {
-	var scope string
+	var (
+		scope string
+		tags  []string
+	)
 	cmd := &cobra.Command{
-		Use:   "create <title> [status] [--scope S]",
+		Use:   "create <title> [status] [--scope S] [--tag T]...",
 		Short: "Scaffold a new ticket (frontmatter + H1) and print its path",
 		Long: "Mint an id, write a scaffold — built-in frontmatter with an appended order\n" +
 			"key and a single # <title> H1 whose slug is frozen from the title — and print\n" +
 			"the cleaned absolute path for the agent to fill the body. The default status is\n" +
 			"draft; an optional second positional sets any known status (a terminal status\n" +
-			"writes under archive/). create reserves the id and never self-commits in any\n" +
-			"mode; git durability is the next tk sync (auto-commit) or host commit.",
+			"writes under archive/). Repeatable --tag T sets scaffold tags (deduped, first-seen\n" +
+			"order); omit --tag to leave tags absent. Each board-new tag emits on stderr after\n" +
+			"a successful write (soft; exit 0):\n" +
+			"  tag_new: \"<t>\" is new to this scope\n" +
+			"Post-create tag edits remain meta add|rm. create reserves the id and never\n" +
+			"self-commits in any mode; git durability is the next tk sync (auto-commit) or\n" +
+			"host commit.",
 		Args: usageArgs(cobra.RangeArgs(1, 2)),
 		RunE: func(c *cobra.Command, args []string) error {
 			st := ""
 			if len(args) == 2 {
 				st = args[1]
 			}
-			return runCreate(app, c, args[0], st, scope)
+			return runCreate(app, c, args[0], st, scope, tags)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope to create in (defaults to ambient)")
+	cmd.Flags().StringArrayVar(&tags, "tag", nil, "scaffold tag (repeatable; free-form)")
 	return cmd
 }
 
-func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string) error {
+func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string, tagArgs []string) error {
 	title := strings.TrimSpace(titleArg)
 	if title == "" {
 		return usageErrorf("create needs a non-empty title")
+	}
+	tags, err := uniqueCreateTags(tagArgs)
+	if err != nil {
+		return err
 	}
 
 	e, err := app.openEngine(c)
@@ -97,6 +110,7 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 	if err != nil {
 		return err
 	}
+	preWriteTags := index.TagMembership(rows)
 
 	shortID, err := mintUnusedID(rows)
 	if err != nil {
@@ -113,6 +127,7 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 		ID:      fullID,
 		Status:  newStatus,
 		Order:   orderKey,
+		Tags:    tags,
 		Created: time.Now().Format(time.RFC3339),
 	}
 	interior, err := frontmatter.Serialize(model)
@@ -142,7 +157,30 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 		return err
 	}
 	stdoutln(c, out)
+	for _, tag := range tags {
+		noticeNewTag(c, tag, preWriteTags)
+	}
 	return nil
+}
+
+// uniqueCreateTags rejects empty --tag values and dedupes preserving first-seen order.
+func uniqueCreateTags(tagArgs []string) ([]string, error) {
+	if len(tagArgs) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(tagArgs))
+	out := make([]string, 0, len(tagArgs))
+	for _, tag := range tagArgs {
+		if tag == "" {
+			return nil, usageErrorf("create --tag must be non-empty")
+		}
+		if _, dup := seen[tag]; dup {
+			continue
+		}
+		seen[tag] = struct{}{}
+		out = append(out, tag)
+	}
+	return out, nil
 }
 
 // mintUnusedID redraws until unused, including parse_error rows (id from filename).

@@ -25,7 +25,6 @@ description: >-
 - Built-in statuses: draft, backlog, todo, in-progress, review, blocked, done, cancelled
 - The todo status is next-eligible
 - Manage ticket status through its states; move to done when completed
-- Soft tag feedback (stderr only, exit 0): `tag_unknown: "<t>" is not used on any ticket in this scope` on lens set and list --tag when t is absent from the in-use set; `tag_new: "<t>" is new to this scope` on meta add tags|tag when t was not on any ticket before the write
 
 ## Frontmatter
 
@@ -40,7 +39,7 @@ description: >-
 ## Commands
 
 ```
-tk create <title> [status] [--scope S]                              # Scaffold ticket (FM + H1); print path
+tk create <title> [status] [--scope S] [--tag T]...                 # Scaffold ticket (FM + H1); optional tags; print path
 tk get <id> [--content] [--scope S]                                 # Resolve id to path; --content prints full file
 tk mark <id> <status> [--scope S]                                   # Set status; done/cancelled move to archive/
 tk reorder <id> (--before <id> | --after <id> | --first | --last) [--scope S]  # Move board order key
@@ -90,7 +89,7 @@ Orient: `tk status` | `tk status [key]` (bare value) -> `tk list` -> `tk next` |
 
 Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk mark <id> <status>` -> Durability
 
-Capture: `tk create <title>` -> fill body -> optional meta/reorder/mark -> Durability
+Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta/reorder/mark -> Durability
 
 Board: `tk list` -> `tk tags` | `tk reorder` | `tk lens` | `tk search`
 

@@ -3,13 +3,16 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/pathutil"
 	"github.com/p3bot/tk/internal/testgit"
+	"github.com/p3bot/tk/internal/token"
 )
 
 // requireGit skips when git is missing and hermeticises env for production git under test.
@@ -133,6 +136,172 @@ func TestCreateEmptyTitleAndUnknownStatus(t *testing.T) {
 	if _, _, err := run(t, app, "create", "X", "nope", "--scope", "wc"); ExitCodeFromError(err) != exitUsage {
 		t.Errorf("unknown status should exit 2, got %v", err)
 	}
+}
+
+func TestCreateTags(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "shared", "todo", "a0", "# Shared\n", false, "tags: [shared]\n")
+	addTicket(t, dir, "wc-de34", "old", "done", "a1", "# Old\n", true, "tags: [legacy]\n")
+
+	// No --tag: tags key absent; create stderr must not carry tag_new.
+	out, errOut, err := run(t, app, "create", "Plain", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("create without tags: %v", err)
+	}
+	path := strings.TrimSpace(out)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "tags:") {
+		t.Errorf("create without --tag must omit tags key, got %q", data)
+	}
+	if strings.Contains(errOut, token.TagNew) {
+		t.Errorf("no-tag create must not emit tag_new, got %q", errOut)
+	}
+	base := filepath.Base(path)
+	fields := strings.SplitN(base, "-", 3)
+	id := fields[0] + "-" + fields[1]
+	out, _, err = run(t, app, "meta", "get", id, "tags")
+	if err != nil {
+		t.Fatalf("meta get tags: %v", err)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("no-tag create tags get = %q want empty", out)
+	}
+
+	// One and many --tag, including a board-existing and board-new; status positional still works.
+	out, errOut, err = run(t, app, "create", "Tagged", "todo",
+		"--tag", "alpha", "--tag", "shared", "--tag", "beta", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("create with tags: %v", err)
+	}
+	path = strings.TrimSpace(out)
+	if !filepath.IsAbs(path) || !strings.HasSuffix(path, ".md") {
+		t.Fatalf("create must print absolute .md path, got %q", path)
+	}
+	if strings.Contains(out, token.TagNew) || strings.Contains(out, "tag_new:") {
+		t.Errorf("tag_new must not ride create stdout, got %q", out)
+	}
+	if got := fmValue(t, path, "status"); got != "todo" {
+		t.Errorf("status with --tag = %q want todo", got)
+	}
+	gotTags := createTagsFromFile(t, path)
+	wantTags := []string{"alpha", "shared", "beta"}
+	if !reflect.DeepEqual(gotTags, wantTags) {
+		t.Errorf("scaffold tags = %v want %v", gotTags, wantTags)
+	}
+	if !strings.Contains(errOut, token.FormatTagNew("alpha")) {
+		t.Errorf("board-new alpha missing notice in %q", errOut)
+	}
+	if !strings.Contains(errOut, token.FormatTagNew("beta")) {
+		t.Errorf("board-new beta missing notice in %q", errOut)
+	}
+	if strings.Contains(errOut, token.FormatTagNew("shared")) {
+		t.Errorf("already-used board tag must stay quiet, got %q", errOut)
+	}
+	if strings.Contains(errOut, token.TagUnknown) {
+		t.Errorf("create must use tag_new not tag_unknown, got %q", errOut)
+	}
+
+	// Dedupe preserves first-seen order; one notice per board-new string.
+	out, errOut, err = run(t, app, "create", "Dedupe",
+		"--tag", "gamma", "--tag", "alpha", "--tag", "gamma", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("create dedupe: %v", err)
+	}
+	path = strings.TrimSpace(out)
+	gotTags = createTagsFromFile(t, path)
+	if !reflect.DeepEqual(gotTags, []string{"gamma", "alpha"}) {
+		t.Errorf("deduped tags = %v want [gamma alpha]", gotTags)
+	}
+	if strings.Count(errOut, token.FormatTagNew("gamma")) != 1 {
+		t.Errorf("want one gamma notice, got %q", errOut)
+	}
+	if strings.Contains(errOut, token.FormatTagNew("alpha")) {
+		t.Errorf("alpha already on board from prior create; must stay quiet, got %q", errOut)
+	}
+
+	// Archive-present tag is in-use; quiet. Empty --tag is usage.
+	_, errOut, err = run(t, app, "create", "Archive tag", "--tag", "legacy", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("create with archive tag: %v", err)
+	}
+	if strings.Contains(errOut, token.TagNew) {
+		t.Errorf("archive-present tag must stay quiet, got %q", errOut)
+	}
+	if _, _, err := run(t, app, "create", "Empty tag", "--tag", "", "--scope", "wc"); ExitCodeFromError(err) != exitUsage {
+		t.Errorf("empty --tag should exit 2, got %v", err)
+	}
+
+	// Terminal status + --tag: scaffold under archive/ with tags on the model.
+	out, errOut, err = run(t, app, "create", "Already shipped", "done",
+		"--tag", "shipped", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("terminal create with tags: %v", err)
+	}
+	path = strings.TrimSpace(out)
+	if !strings.Contains(path, string(os.PathSeparator)+"archive"+string(os.PathSeparator)) {
+		t.Errorf("terminal tagged create must live under archive/, got %q", path)
+	}
+	if got := fmValue(t, path, "status"); got != "done" {
+		t.Errorf("terminal tagged status = %q want done", got)
+	}
+	if !reflect.DeepEqual(createTagsFromFile(t, path), []string{"shipped"}) {
+		t.Errorf("terminal scaffold tags = %v want [shipped]", createTagsFromFile(t, path))
+	}
+	if !strings.Contains(errOut, token.FormatTagNew("shipped")) {
+		t.Errorf("board-new shipped missing notice on terminal create, got %q", errOut)
+	}
+	if !strings.Contains(errOut, "not git-durable") {
+		t.Errorf("terminal create should ride scaffold-durability note, got %q", errOut)
+	}
+}
+
+func TestCreateTagsNoSelfCommit(t *testing.T) {
+	requireGit(t)
+	app := newApp(t)
+	_, repo := initGitScope(t, app, "wc", true)
+
+	out, errOut, err := run(t, app, "create", "Tagged work",
+		"--tag", "backend", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("tagged create: %v", err)
+	}
+	path := strings.TrimSpace(out)
+	if !filepath.IsAbs(path) {
+		t.Fatalf("create must print absolute path, got %q", path)
+	}
+	if !reflect.DeepEqual(createTagsFromFile(t, path), []string{"backend"}) {
+		t.Errorf("scaffold tags = %v want [backend]", createTagsFromFile(t, path))
+	}
+	if n := len(gitLog(t, repo)); n != 0 {
+		t.Fatalf("tagged create must not self-commit, got %d commits", n)
+	}
+	if strings.Contains(out, token.TagNew) {
+		t.Errorf("tag_new must not ride stdout, got %q", out)
+	}
+	if !strings.Contains(errOut, token.FormatTagNew("backend")) {
+		t.Errorf("board-new tag missing notice, got %q", errOut)
+	}
+}
+
+func createTagsFromFile(t *testing.T, path string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interior, _, present := frontmatter.Split(data)
+	if !present {
+		t.Fatalf("missing frontmatter in %s", path)
+	}
+	m, err := frontmatter.Parse(interior)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return m.Tags
 }
 
 func TestCreateAppendsAfterScopeWideMax(t *testing.T) {

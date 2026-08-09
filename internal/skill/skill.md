@@ -13,6 +13,7 @@ description: >-
 
 - A scope is a directory of tickets plus its tk.cue
 - tk create, get, next, and mark print a cleaned absolute path on stdout
+- Call create once only, work with the returned path
 - Use the path, do not create ticket files yourself
 - A ticket is one markdown file: YAML frontmatter fence, then a single ATX H1, then the body.
 - Edit the ticket document body under the H1

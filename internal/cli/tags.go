@@ -14,10 +14,10 @@ func newTagsCmd(app *App) *cobra.Command {
 		Short:   "List distinct tags in use on a scope (read-only inventory)",
 		Long: "Print the distinct tags currently present on tickets in one scope, one tag\n" +
 			"per line, sorted case-sensitively. Sourced from the machine-wide index after\n" +
-			"reconcile — not from knownTags. Full-scope vocabulary: includes archive and\n" +
-			"all statuses; ignores the active lens and list's default board-status filter.\n" +
-			"Empty set prints nothing and exits 0. Read-only inventory — not a mutator;\n" +
-			"tag a ticket with meta add|rm. Alias: tag.",
+			"reconcile. Full-scope inventory: includes archive and all statuses; ignores\n" +
+			"the active lens and list's default board-status filter. Empty set prints\n" +
+			"nothing and exits 0. Read-only inventory — not a mutator; tag a ticket with\n" +
+			"meta add|rm. Alias: tag.",
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runTags(app, c, scope)

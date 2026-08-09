@@ -491,6 +491,45 @@ func TestDoctorSchemaWarnClasses(t *testing.T) {
 	}
 }
 
+func TestDoctorIgnoresLeftoverKnownTags(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir := initScope(t, app, "wc")
+	cfg := "name: \"wc\"\nautoCommit: false\nknownTags: [\"frontend\"]\n"
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "wc-ab2c", "x", "todo", "a0", "# X\n", false, "tags: [orphan]\n")
+
+	out, errOut, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	combined := out + errOut
+	if strings.Contains(combined, "knownTags") || strings.Contains(combined, "schema_warn:") {
+		t.Errorf("leftover knownTags must not surface and free-form tags must not warn, got %q", combined)
+	}
+}
+
+func TestLensIgnoresLeftoverKnownTags(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir := initScope(t, app, "wc")
+	cfg := "name: \"wc\"\nautoCommit: false\nknownTags: [\"frontend\"]\n"
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "wc-ab2c", "x", "todo", "a0", "# X\n", false, "")
+
+	_, errOut, err := run(t, app, "lens", "orphan", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("lens: %v", err)
+	}
+	if strings.Contains(errOut, "knownTags") || strings.Contains(errOut, "schema_warn:") {
+		t.Errorf("lens must not warn on free-form tags or leftover knownTags, got %q", errOut)
+	}
+}
+
 func TestDoctorReindexRebuilds(t *testing.T) {
 	app := newApp(t)
 	t.Setenv("TK_SCOPE", "wc")

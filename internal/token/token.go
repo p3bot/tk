@@ -42,7 +42,7 @@ const (
 	// SchemaError marks a hard frontmatter schema violation (e.g. depends entry not a full ticket id).
 	SchemaError = "schema_error:"
 
-	// SchemaWarn marks a soft schema issue (e.g. tag not in knownTags); free-form tags stay legal.
+	// SchemaWarn marks a soft schema issue (undeclared key, self-related, duplicates, id-shaped links).
 	SchemaWarn = "schema_warn:"
 
 	// SyncDisabled marks an auto-commit scope that could not self-commit (no git-root / no git).

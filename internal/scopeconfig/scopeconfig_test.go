@@ -25,7 +25,6 @@ func TestLoadValid(t *testing.T) {
 	dir := writeCfg(t, `
 name: "wc"
 autoCommit: true
-knownTags: ["frontend", "api"]
 statuses: {
 	shipped: {category: "done"}
 	triage:  {category: "backlog"}
@@ -81,6 +80,22 @@ func TestLoadMinimal(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if s.Name != "h" || s.AutoCommit {
+		t.Errorf("got %+v", s)
+	}
+}
+
+func TestLoadIgnoresLeftoverKnownTags(t *testing.T) {
+	ctx := cuecontext.New()
+	dir := writeCfg(t, `
+name: "wc"
+autoCommit: false
+knownTags: ["frontend", "api"]
+`)
+	s, err := Load(ctx, dir)
+	if err != nil {
+		t.Fatalf("leftover knownTags must not fail Load: %v", err)
+	}
+	if s.Name != "wc" || s.AutoCommit {
 		t.Errorf("got %+v", s)
 	}
 }

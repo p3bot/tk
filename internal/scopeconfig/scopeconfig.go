@@ -44,7 +44,6 @@ type Field struct {
 type Schema struct {
 	Name       string
 	AutoCommit bool
-	KnownTags  []string
 	// Statuses maps declared custom status names to categories (built-ins live in package status).
 	Statuses map[string]status.Category
 	// Fields maps declared custom field names to type and optional enum.
@@ -73,7 +72,6 @@ func AsConfigError(err error) (*ConfigError, bool) {
 type rawConfig struct {
 	Name       string               `json:"name"`
 	AutoCommit *bool                `json:"autoCommit"`
-	KnownTags  []string             `json:"knownTags"`
 	Statuses   map[string]rawStatus `json:"statuses"`
 	Fields     map[string]rawField  `json:"fields"`
 }
@@ -168,7 +166,6 @@ func validate(dir string, v cue.Value, raw *rawConfig) (*Schema, error) {
 	return &Schema{
 		Name:       raw.Name,
 		AutoCommit: *raw.AutoCommit,
-		KnownTags:  raw.KnownTags,
 		Statuses:   statuses,
 		Fields:     fields,
 	}, nil

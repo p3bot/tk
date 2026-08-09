@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -9,7 +8,6 @@ import (
 
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/registry"
-	"github.com/p3bot/tk/internal/token"
 	"github.com/p3bot/tk/internal/xdg"
 )
 
@@ -24,8 +22,7 @@ func newLensCmd(app *App) *cobra.Command {
 		Long: "A lens is a per-scope, machine-local default tag view. With tags, it sets the\n" +
 			"lens; with --clear it removes it; with no arguments it shows the current lens.\n" +
 			"list and next apply the lens by default (an untagged ticket is never hidden;\n" +
-			"--no-lens bypasses). A lens tag outside the scope's declared knownTags rides a\n" +
-			"schema_warn typo warning but is still allowed.",
+			"--no-lens bypasses). Tags are free-form; any tag is a legal lens value.",
 		Args: usageArgs(cobra.ArbitraryArgs),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runLens(app, c, args, scope, clearLens)
@@ -60,9 +57,7 @@ func runLens(app *App, c *cobra.Command, args []string, scopeFlag string, clearL
 		stdoutln(c, strings.Join(e.reg.Lens[scope], " "))
 		return nil
 	default:
-		tags := dedupeSorted(args)
-		warnUnknownTags(c, e, scope, resolved.Entry.Dir, tags)
-		return e.writeLens(scope, tags)
+		return e.writeLens(scope, dedupeSorted(args))
 	}
 }
 
@@ -88,22 +83,6 @@ func (e *engine) writeLens(scope string, tags []string) error {
 		reg.Lens[scope] = tags
 	}
 	return store.WriteLens(reg.Lens)
-}
-
-func warnUnknownTags(c *cobra.Command, e *engine, scope, dir string, tags []string) {
-	schema := e.rec.SchemaCached(scope, dir)
-	if schema == nil || len(schema.KnownTags) == 0 {
-		return
-	}
-	known := map[string]bool{}
-	for _, t := range schema.KnownTags {
-		known[t] = true
-	}
-	for _, t := range tags {
-		if !known[t] {
-			stderrln(c, token.Line(token.SchemaWarn, fmt.Sprintf("%s: tag %q is not in %s knownTags", scope, t, scope)))
-		}
-	}
 }
 
 // passesLens: empty lens shows all; untagged tickets are never hidden.

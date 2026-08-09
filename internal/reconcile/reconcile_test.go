@@ -195,31 +195,40 @@ func TestConfigCacheHitAndInvalidation(t *testing.T) {
 	r, db := newReconciler(t)
 	// Packaged scope with a sibling schema.cue — multi-file import closure.
 	dir := filepath.Join(t.TempDir(), "wc")
-	writeFile(t, filepath.Join(dir, "tk.cue"), "package wccfg\nname: \"wc\"\nautoCommit: false\nknownTags: tags\n")
+	writeFile(t, filepath.Join(dir, "tk.cue"), "package wccfg\nname: \"wc\"\nautoCommit: false\nfields: { area: { type: \"string\", values: tags } }\n")
 	writeFile(t, filepath.Join(dir, "schema.cue"), "package wccfg\ntags: [\"frontend\"]\n")
 
 	schema, cfgErr := r.schemaFor("wc", dir)
-	if cfgErr != nil || schema == nil || len(schema.KnownTags) != 1 || schema.KnownTags[0] != "frontend" {
+	if cfgErr != nil || schema == nil {
 		t.Fatalf("cold eval = %+v err=%v", schema, cfgErr)
+	}
+	if f, ok := schema.Field("area"); !ok || len(f.Values) != 1 || f.Values[0] != "frontend" {
+		t.Fatalf("cold eval area = %+v", schema.Fields)
 	}
 
 	// Sentinel schema with untouched closure stats proves cache hit without re-eval.
 	entry, _, _ := db.ConfigCacheGet("wc")
-	entry.SchemaJSON = `{"Name":"wc","KnownTags":["CACHED"]}`
+	entry.SchemaJSON = `{"Name":"wc","Fields":{"area":{"Type":"string","Values":["CACHED"]}}}`
 	if err := db.ConfigCacheSet("wc", entry); err != nil {
 		t.Fatal(err)
 	}
 	cached, _ := r.schemaFor("wc", dir)
-	if cached == nil || len(cached.KnownTags) != 1 || cached.KnownTags[0] != "CACHED" {
-		t.Fatalf("expected cache hit to serve the sentinel, got %+v", cached)
+	if cached == nil {
+		t.Fatal("expected cache hit")
+	}
+	if f, ok := cached.Field("area"); !ok || len(f.Values) != 1 || f.Values[0] != "CACHED" {
+		t.Fatalf("expected cache hit to serve the sentinel, got %+v", cached.Fields)
 	}
 
 	writeFile(t, filepath.Join(dir, "schema.cue"), "package wccfg\ntags: [\"backend\"]\n")
 	future := time.Now().Add(time.Hour)
 	_ = os.Chtimes(filepath.Join(dir, "schema.cue"), future, future)
 	fresh, _ := r.schemaFor("wc", dir)
-	if fresh == nil || len(fresh.KnownTags) != 1 || fresh.KnownTags[0] != "backend" {
-		t.Fatalf("closure change should re-evaluate, got %+v", fresh)
+	if fresh == nil {
+		t.Fatal("expected re-eval after closure change")
+	}
+	if f, ok := fresh.Field("area"); !ok || len(f.Values) != 1 || f.Values[0] != "backend" {
+		t.Fatalf("closure change should re-evaluate, got %+v", fresh.Fields)
 	}
 }
 

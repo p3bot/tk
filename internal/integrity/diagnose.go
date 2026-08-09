@@ -289,14 +289,6 @@ func (d *diagnoser) frontmatterChecks(p *index.Ticket, schema *scopeconfig.Schem
 				}
 			}
 		}
-		if len(schema.KnownTags) > 0 {
-			known := sliceSet(schema.KnownTags)
-			for _, tag := range m.Tags {
-				if !known[tag] {
-					d.add(token.Line(token.SchemaWarn, fmt.Sprintf("%s tag %q is not in knownTags — likely a typo (%s)", p.ID, tag, p.Path)))
-				}
-			}
-		}
 	}
 }
 

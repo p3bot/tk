@@ -640,3 +640,87 @@ func TestLensAppliesAndEchoes(t *testing.T) {
 		t.Errorf("cleared lens should show empty, got %q", out)
 	}
 }
+
+func TestTagsInventory(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+
+	// Empty scope: nothing, exit 0.
+	out, _, err := run(t, app, "tags", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("tags empty: %v", err)
+	}
+	if out != "" {
+		t.Errorf("empty scope must print nothing, got %q", out)
+	}
+
+	// Active multi-tag, archive-only tag, backlog-only tag, dedupe across tickets.
+	// Short ids use the closed alphabet (no i/l/o/0/1).
+	addTicket(t, dir, "wc-ab2c", "fe", "todo", "a0", "# Frontend\n", false, "tags: [frontend, shared]\n")
+	addTicket(t, dir, "wc-de34", "be", "todo", "a1", "# Backend\n", false, "tags: [backend, shared]\n")
+	addTicket(t, dir, "wc-gh56", "old", "done", "a2", "# Old\n", true, "tags: [legacy]\n")
+	addTicket(t, dir, "wc-mn78", "plan", "backlog", "a3", "# Plan\n", false, "tags: [plan]\n")
+	addTicket(t, dir, "wc-pq23", "plain", "todo", "a4", "# Plain\n", false, "")
+
+	out, _, err = run(t, app, "tags", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("tags: %v", err)
+	}
+	want := []string{"backend", "frontend", "legacy", "plan", "shared"}
+	got := lines(out)
+	if len(got) != len(want) {
+		t.Fatalf("tags = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("tags[%d] = %q, want %q (full %v)", i, got[i], want[i], got)
+		}
+	}
+
+	// Alias parity.
+	aliasOut, _, err := run(t, app, "tag", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("tag alias: %v", err)
+	}
+	if aliasOut != out {
+		t.Errorf("tag alias stdout %q != tags %q", aliasOut, out)
+	}
+
+	// Active lens must not hide tags on non-matching tickets.
+	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
+		t.Fatalf("lens set: %v", err)
+	}
+	out, _, err = run(t, app, "tags", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("tags under lens: %v", err)
+	}
+	got = lines(out)
+	if len(got) != len(want) {
+		t.Fatalf("lens must not shrink tags, got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("under lens tags[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	// Sanity: list under the same lens hides backend-tagged ticket.
+	listOut, _, err := run(t, app, "list", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("list under lens: %v", err)
+	}
+	for _, r := range lines(listOut) {
+		if strings.HasPrefix(r, "wc-de34") {
+			t.Errorf("list should filter backend under lens, but tags inventory still shows backend: list=%q tags=%v", listOut, got)
+		}
+	}
+
+	// --scope selection: second scope is empty and isolated.
+	_ = initScope(t, app, "ui")
+	out, _, err = run(t, app, "tags", "--scope", "ui")
+	if err != nil {
+		t.Fatalf("tags ui: %v", err)
+	}
+	if out != "" {
+		t.Errorf("empty other scope must print nothing, got %q", out)
+	}
+}

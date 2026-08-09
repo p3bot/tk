@@ -24,6 +24,7 @@ description: >-
 - Active files live at the scope dir root; terminal status moves them to archive/
 - Built-in statuses: draft, backlog, todo, in-progress, review, blocked, done, cancelled
 - The todo status is next-eligible
+- Manage ticket status through its states; move to done when completed
 
 ## Frontmatter
 
@@ -56,6 +57,7 @@ tk query <sql>                                                      # Ad-hoc rea
 tk query --schema                                                   # Debug only — do not script against it
 tk lens [tags...] [--scope S]                                       # Set machine-local default tag view
 tk lens --clear [--scope S]                                         # Clear the lens for a scope
+tk tags [--scope S]                                                 # Read-only list of existing tags
 
 tk scope init <dir> (--name <name> | --auto-name) [--code-root <path>] [--auto-commit]  # Create and register scope
 tk scope import <dir> [--code-root <path>]                          # Register existing on-disk scope
@@ -89,7 +91,7 @@ Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk m
 
 Capture: `tk create <title>` -> fill body -> optional meta/reorder/mark -> Durability
 
-Board: `tk list` -> `tk reorder` | `tk lens` | `tk search`
+Board: `tk list` -> `tk tags` | `tk reorder` | `tk lens` | `tk search`
 
 Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next`
 

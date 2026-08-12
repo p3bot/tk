@@ -18,13 +18,14 @@ func newDepsCmd(app *App) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:     "deps <id> [--scope S] [--transitive] [--tree]",
-		Aliases: []string{"depends"},
+		Aliases: []string{"depends", "dep"},
 		Short:   "Show a ticket's edge neighbourhood (depends + related)",
 		Long: "Print three sections — depends on, is depended on by, related (both\n" +
 			"directions, non-gating) — each neighbour line carrying id, status, and a short\n" +
 			"label, with (none) for empty sides. --transitive expands depends both ways as\n" +
 			"a flat list; --tree pretty-prints the depends graph. Walks are cycle-safe and\n" +
-			"warn once (pointing at doctor) on a cycle. Pure read; never runs git.",
+			"warn once (pointing at doctor) on a cycle. Pure read; never runs git.\n" +
+			"Aliases: depends, dep.",
 		Args: usageArgs(cobra.ExactArgs(1)),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDeps(app, c, args[0], scope, transitive, tree)

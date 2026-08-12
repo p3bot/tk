@@ -191,6 +191,17 @@ func TestSkillPrintsContractNoScope(t *testing.T) {
 	if out != skill.Text() {
 		t.Fatalf("stdout is not skill.Text() (got %d bytes, want %d)", len(out), len(skill.Text()))
 	}
+	// skills is the plural alias (mirrors scope/scopes, field/fields).
+	aliasOut, aliasErrOut, aliasErr := run(t, app, "skills")
+	if aliasErr != nil {
+		t.Fatalf("tk skills: %v", aliasErr)
+	}
+	if aliasErrOut != "" {
+		t.Errorf("skills must write nothing to stderr, got %q", aliasErrOut)
+	}
+	if aliasOut != out {
+		t.Errorf("skills alias stdout differs from skill")
+	}
 	for _, h := range skill.RequiredHeadings() {
 		if !strings.Contains(out, "## "+h+"\n") {
 			t.Errorf("missing section %q", h)

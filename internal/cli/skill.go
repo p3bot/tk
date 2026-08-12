@@ -15,10 +15,11 @@ import (
 
 func newSkillCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "skill",
-		Short: "Print the agent skill contract or manage installs",
+		Use:     "skill",
+		Aliases: []string{"skills"},
+		Short:   "Print the agent skill contract or manage installs",
 		Long: "Print the locked agent skill contract to stdout as agent-facing workflow\n" +
-			"markdown. No ambient scope is required.\n\n" +
+			"markdown. No ambient scope is required. Alias: skills.\n\n" +
 			"Subcommands install, list, and uninstall place or remove the skill under\n" +
 			"agent skills directories resolved via agentdex (no hardcoded product paths).",
 		Args: usageArgs(cobra.NoArgs),

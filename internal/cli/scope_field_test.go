@@ -21,6 +21,15 @@ func TestScopeFieldListSetUnset(t *testing.T) {
 		t.Errorf("empty fields should print nothing, got %q", out)
 	}
 
+	// fields is the plural alias of field (mirrors scope/scopes).
+	aliasOut, aliasErrOut, aliasErr := run(t, app, "scope", "fields", "list", "--scope", "wc")
+	if aliasErr != nil {
+		t.Fatalf("fields alias list: %v (%s)", aliasErr, aliasErrOut)
+	}
+	if aliasOut != out {
+		t.Errorf("fields alias list = %q, want same as field list %q", aliasOut, out)
+	}
+
 	out, errOut, err = run(t, app, "scope", "field", "set", "jira", "--type", "string", "--required", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("set jira: %v (%s)", err, errOut)

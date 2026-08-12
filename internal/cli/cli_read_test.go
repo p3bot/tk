@@ -298,6 +298,16 @@ func TestSearchAndDeps(t *testing.T) {
 	if !strings.Contains(out, "related:\n  wc-ab2c") {
 		t.Errorf("deps related section wrong: %q", out)
 	}
+	// depends and dep are aliases of deps.
+	for _, name := range []string{"depends", "dep"} {
+		aliasOut, _, aliasErr := run(t, app, name, "wc-de34")
+		if aliasErr != nil {
+			t.Fatalf("%s alias: %v", name, aliasErr)
+		}
+		if aliasOut != out {
+			t.Errorf("%s alias output differs from deps", name)
+		}
+	}
 
 	out, _, _ = run(t, app, "deps", "wc-ab2c")
 	if !strings.Contains(out, "is depended on by:\n  wc-de34") {

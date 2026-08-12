@@ -19,10 +19,11 @@ import (
 
 func newScopeFieldCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "field",
-		Short: "Declare custom frontmatter fields in the scope's tk.cue (fields:)",
+		Use:     "field",
+		Aliases: []string{"fields"},
+		Short:   "Declare custom frontmatter fields in the scope's tk.cue (fields:)",
 		Long: "Read and rewrite custom field declarations under fields: in the target\n" +
-			"scope's tk.cue. The CLI noun is field; the CUE key is fields.\n\n" +
+			"scope's tk.cue. The CLI noun is field (alias: fields); the CUE key is fields.\n\n" +
 			"  list                 print declared fields (name, type, required, values)\n" +
 			"  set <name> --type T  create or fully replace one declaration\n" +
 			"  unset <name>         remove one declaration (ticket files untouched)\n\n" +

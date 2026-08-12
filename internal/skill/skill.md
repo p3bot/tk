@@ -26,6 +26,7 @@ description: >-
 - The todo status is next-eligible
 - Manage ticket status through its states; move to done when completed
 - Soft tag feedback (stderr only, exit 0): `tag_unknown: "<t>" is not used on any ticket in this scope` on lens set and list --tag when t is absent from the in-use set; `tag_new: "<t>" is new to this scope` on create --tag and meta add tags|tag when t was not on any ticket before the write
+- Soft mark feedback (stderr only, exit 0): `depends_open: <id> marked <status> with open depends: <ids>` when mark changes status into todo, in-progress, or review while depends remain unmet (same as list waiting-on). Mark never enforces or clears depends; next and claim still gate on them. No warn on same-status mark, enter blocked/draft/backlog/done/cancelled, no depends, or all depends terminal
 
 ## Frontmatter
 
@@ -42,7 +43,7 @@ description: >-
 ```
 tk create <title> [status] [--scope S] [--tag T]...                 # Scaffold ticket (FM + H1); optional tags; print path
 tk get <id> [--content] [--scope S]                                 # Resolve id to path; --content prints full file
-tk mark <id> <status> [--scope S]                                   # Set status; done/cancelled move to archive/
+tk mark <id> <status> [--scope S]                                   # Set status; done/cancelled move to archive/; soft depends_open: if ready/active with open depends
 tk reorder <id> (--before <id> | --after <id> | --first | --last) [--scope S]  # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 
@@ -94,7 +95,7 @@ Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta/reorder/
 
 Board: `tk list` -> `tk tags` | `tk reorder` | `tk lens` | `tk search`
 
-Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next`
+Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:)
 
 Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename`
 

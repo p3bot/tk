@@ -35,9 +35,20 @@ func TestFormatTagUnknownAndNew(t *testing.T) {
 	}
 }
 
-func TestCatalogueIncludesTagTokens(t *testing.T) {
+func TestFormatDependsOpen(t *testing.T) {
+	got := FormatDependsOpen("wc-ab2c", "todo", []string{"wc-de34", "wc-zz99"})
+	want := "depends_open: wc-ab2c marked todo with open depends: wc-de34 wc-zz99"
+	if got != want {
+		t.Errorf("FormatDependsOpen = %q, want %q", got, want)
+	}
+	if !HasKnownPrefix(got) {
+		t.Errorf("FormatDependsOpen must be catalogue-prefixed: %q", got)
+	}
+}
+
+func TestCatalogueIncludesSoftWriteTokens(t *testing.T) {
 	got := All()
-	want := map[string]bool{TagUnknown: false, TagNew: false}
+	want := map[string]bool{TagUnknown: false, TagNew: false, DependsOpen: false}
 	for _, tkn := range got {
 		if _, ok := want[tkn]; ok {
 			want[tkn] = true
@@ -58,6 +69,7 @@ func TestHasKnownPrefix(t *testing.T) {
 		UnreachableScope + " w",
 		TagUnknown + " x",
 		TagNew + " y",
+		DependsOpen + " z",
 	}
 	for _, s := range known {
 		if !HasKnownPrefix(s) {

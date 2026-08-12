@@ -59,6 +59,8 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"frontmatter fence",
 		"tag_unknown:",
 		"tag_new:",
+		"depends_open:",
+		"Mark never enforces",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {

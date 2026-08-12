@@ -9,7 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/status"
+	"github.com/p3bot/tk/internal/token"
 )
 
 func newMarkCmd(app *App) *cobra.Command {
@@ -21,8 +24,11 @@ func newMarkCmd(app *App) *cobra.Command {
 			"(non-terminal ↔ terminal) the file is renamed between the dir root and archive/\n" +
 			"in the same write, and the post-move absolute path is printed. Statuses are\n" +
 			"labels: any known status (built-in or CUE custom) is accepted; an unknown one is\n" +
-			"a usage error. An auto-commit scope self-commits the change when a git-root\n" +
-			"exists. A quarantined or duplicate-id ticket is refused with no write.\n" +
+			"a usage error. Mark never enforces depends (next/claim still gate on them); a soft\n" +
+			"depends_open: warning is emitted when the status actually changes into todo,\n" +
+			"in-progress, or review while depends remain unmet. An auto-commit scope\n" +
+			"self-commits the change when a git-root exists. A quarantined or duplicate-id\n" +
+			"ticket is refused with no write.\n" +
 			"For a scope pulse (counts, next, integrity), use `tk status`.",
 		Args: usageArgs(cobra.ExactArgs(2)),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -90,7 +96,8 @@ func runMark(app *App, c *cobra.Command, idArg, newStatus, scopeFlag string) err
 	if err != nil {
 		return err
 	}
-	wasTerminal := status.IsTerminal(m.Status, custom)
+	oldStatus := m.Status
+	wasTerminal := status.IsTerminal(oldStatus, custom)
 	nowTerminal := status.IsTerminal(newStatus, custom)
 	m.Status = newStatus
 
@@ -127,5 +134,36 @@ func runMark(app *App, c *cobra.Command, idArg, newStatus, scopeFlag string) err
 		return err
 	}
 	stdoutln(c, out)
+	// Soft only after success: never fail a completed mark if gate/index read fails.
+	if oldStatus != newStatus && markReadyActive(newStatus) {
+		// Edges are keyed by path; use post-move path so evalDepends still finds them.
+		p.Path = newPath
+		if line, werr := e.openDependsWarnLine(res, scope, p, newStatus); werr == nil && line != "" {
+			stderrln(c, line)
+		}
+	}
 	return nil
+}
+
+// markReadyActive is the closed set of built-in to-statuses that imply ready or active work.
+func markReadyActive(s string) bool {
+	switch s {
+	case status.Todo, status.InProgress, status.Review:
+		return true
+	default:
+		return false
+	}
+}
+
+// openDependsWarnLine returns the depends_open: line when p has unmet depends (list waiting-on).
+func (e *engine) openDependsWarnLine(res *reconcile.Result, scope string, p *index.Ticket, newStatus string) (string, error) {
+	gate, err := e.buildGate(res, []string{scope})
+	if err != nil {
+		return "", err
+	}
+	ds := gate.evalDepends(p)
+	if len(ds.WaitingOn) == 0 {
+		return "", nil
+	}
+	return token.FormatDependsOpen(p.ID, newStatus, ds.WaitingOn), nil
 }

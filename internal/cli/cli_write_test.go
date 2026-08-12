@@ -422,6 +422,183 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0o644)
 }
 
+func TestMarkOpenDependsWarnMatrix(t *testing.T) {
+	app := newApp(t)
+	initScope(t, app, "wc")
+
+	// Dep stays draft (non-terminal) so subject waiting-on is unmet without making dep next-eligible.
+	_, depID := createID(t, app, "wc", "Dependency")
+
+	// Subject starts blocked with an open depend (primary agent story: blocked → ready).
+	_, subID := createID(t, app, "wc", "Subject")
+	if _, _, err := run(t, app, "meta", "add", subID, "depends", depID); err != nil {
+		t.Fatalf("meta add depends: %v", err)
+	}
+	if _, _, err := run(t, app, "mark", subID, "blocked"); err != nil {
+		t.Fatalf("mark blocked: %v", err)
+	}
+
+	wantWarn := func(t *testing.T, id, newStatus string, waiting []string) {
+		t.Helper()
+		out, errOut, err := run(t, app, "mark", id, newStatus)
+		if err != nil {
+			t.Fatalf("mark %s: %v", newStatus, err)
+		}
+		path := strings.TrimSpace(out)
+		if path == "" || !strings.HasSuffix(path, ".md") {
+			t.Errorf("mark %s must print path on stdout, got %q", newStatus, out)
+		}
+		if strings.Contains(out, token.DependsOpen) {
+			t.Errorf("depends_open must not ride stdout, got %q", out)
+		}
+		want := token.FormatDependsOpen(id, newStatus, waiting)
+		if !strings.Contains(errOut, want) {
+			t.Errorf("mark %s stderr want %q, got %q", newStatus, want, errOut)
+		}
+	}
+	wantSilence := func(t *testing.T, id, newStatus string) {
+		t.Helper()
+		out, errOut, err := run(t, app, "mark", id, newStatus)
+		if err != nil {
+			t.Fatalf("mark %s: %v", newStatus, err)
+		}
+		if strings.TrimSpace(out) == "" || !strings.HasSuffix(strings.TrimSpace(out), ".md") {
+			t.Errorf("mark %s must print path on stdout, got %q", newStatus, out)
+		}
+		if strings.Contains(errOut, token.DependsOpen) {
+			t.Errorf("mark %s must not emit depends_open, got %q", newStatus, errOut)
+		}
+	}
+
+	// Warn: status change into each ready/active built-in with open depends.
+	wantWarn(t, subID, "todo", []string{depID})
+	wantWarn(t, subID, "in-progress", []string{depID})
+	wantWarn(t, subID, "review", []string{depID})
+
+	// blocked → in-progress and blocked → review (primary human/agent stories).
+	wantSilence(t, subID, "blocked")
+	wantWarn(t, subID, "in-progress", []string{depID})
+	wantSilence(t, subID, "blocked")
+	wantWarn(t, subID, "review", []string{depID})
+
+	// Silence: same-status mark (already review).
+	wantSilence(t, subID, "review")
+
+	// Warn: terminal reopen (archive → root) with open depends. Edges are keyed by
+	// path; without the post-move path hand-off the warn would silently vanish.
+	wantSilence(t, subID, "done")
+	wantWarn(t, subID, "todo", []string{depID})
+
+	// Silence: enter statuses that do not imply ready/active work, despite open depends.
+	for _, s := range []string{"blocked", "draft", "backlog", "done", "cancelled"} {
+		// prep todo may soft-warn; only the enter-s mark is checked for silence.
+		if _, _, err := run(t, app, "mark", subID, "todo"); err != nil {
+			t.Fatalf("prep todo before %s: %v", s, err)
+		}
+		wantSilence(t, subID, s)
+	}
+
+	// Silence: no depends at all.
+	_, aloneID := createID(t, app, "wc", "Alone")
+	wantSilence(t, aloneID, "blocked")
+	wantSilence(t, aloneID, "todo")
+
+	// Silence: all depends terminal — both reopen into todo and further ready/active moves.
+	if _, _, err := run(t, app, "mark", depID, "done"); err != nil {
+		t.Fatalf("close dep: %v", err)
+	}
+	// Subject ended the silence loop as cancelled.
+	wantSilence(t, subID, "todo")
+	wantSilence(t, subID, "in-progress")
+}
+
+func TestMarkOpenDependsDanglingAndMulti(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+
+	// meta add refuses same-scope missing targets; plant dangling via on-disk FM (list waiting-on path).
+	missing := "wc-zz99"
+	hangID := "wc-ab2c"
+	addTicket(t, dir, hangID, "hanging", "blocked", "a0", "# Hanging\n", false, "depends: ["+missing+"]\n")
+	out, errOut, err := run(t, app, "mark", hangID, "todo")
+	if err != nil {
+		t.Fatalf("hanging todo: %v", err)
+	}
+	if strings.TrimSpace(out) == "" {
+		t.Error("dangling mark must print path")
+	}
+	wantDangle := token.FormatDependsOpen(hangID, "todo", []string{missing})
+	if !strings.Contains(errOut, wantDangle) {
+		t.Errorf("dangling mark stderr want %q, got %q", wantDangle, errOut)
+	}
+
+	// Multi open depends: warning lists sorted full ids (evalDepends sort order).
+	_, aID := createID(t, app, "wc", "DepA")
+	_, bID := createID(t, app, "wc", "DepB")
+	_, multiID := createID(t, app, "wc", "Multi")
+	if _, _, err := run(t, app, "meta", "add", multiID, "depends", bID); err != nil {
+		t.Fatalf("depends b: %v", err)
+	}
+	if _, _, err := run(t, app, "meta", "add", multiID, "depends", aID); err != nil {
+		t.Fatalf("depends a: %v", err)
+	}
+	if _, _, err := run(t, app, "mark", multiID, "blocked"); err != nil {
+		t.Fatalf("multi blocked: %v", err)
+	}
+	out, errOut, err = run(t, app, "mark", multiID, "todo")
+	if err != nil {
+		t.Fatalf("multi todo: %v", err)
+	}
+	if strings.TrimSpace(out) == "" {
+		t.Error("multi mark must print path")
+	}
+	// Sorted lexicographically: aID and bID are mint-order dependent; sort for the assertion.
+	waiting := []string{aID, bID}
+	if waiting[0] > waiting[1] {
+		waiting[0], waiting[1] = waiting[1], waiting[0]
+	}
+	wantMulti := token.FormatDependsOpen(multiID, "todo", waiting)
+	if !strings.Contains(errOut, wantMulti) {
+		t.Errorf("multi mark stderr want %q, got %q", wantMulti, errOut)
+	}
+}
+
+func TestMarkOpenDependsDoesNotAffectNextGate(t *testing.T) {
+	app := newApp(t)
+	initScope(t, app, "wc")
+
+	// Leave dep as draft: non-terminal (holds subject) but not next-eligible itself.
+	_, depID := createID(t, app, "wc", "Dep")
+	_, subID := createID(t, app, "wc", "Held")
+	if _, _, err := run(t, app, "meta", "add", subID, "depends", depID); err != nil {
+		t.Fatalf("depends: %v", err)
+	}
+	// Mark into todo with open depends: soft-warns but still not next-eligible.
+	_, errOut, err := run(t, app, "mark", subID, "todo")
+	if err != nil {
+		t.Fatalf("mark todo: %v", err)
+	}
+	if !strings.Contains(errOut, token.DependsOpen) {
+		t.Fatalf("expected depends_open warn, got %q", errOut)
+	}
+
+	listOut, _, err := run(t, app, "list", "todo", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !strings.Contains(listOut, depID) {
+		t.Errorf("list waiting-on should still show open dep %s, got %q", depID, listOut)
+	}
+
+	_, nextErr, err := run(t, app, "next", "--scope", "wc")
+	if err == nil {
+		t.Fatal("next must refuse while only todos are held on open depends")
+	}
+	if !strings.Contains(err.Error()+nextErr, "waiting on unmet deps") {
+		t.Errorf("next empty-queue message wrong: err=%v stderr=%q", err, nextErr)
+	}
+}
+
 func TestReorderPlacements(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")

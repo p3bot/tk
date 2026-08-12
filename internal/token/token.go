@@ -74,6 +74,11 @@ const (
 	// DependsOnCancelled marks a depends edge onto a cancelled (or abandoned) target.
 	DependsOnCancelled = "depends_on_cancelled:"
 
+	// DependsOpen marks a successful mark into todo/in-progress/review while one
+	// or more depends targets remain unmet (same notion as list waiting-on).
+	// Soft only: the mark still succeeds; depends continue to gate next/claim only.
+	DependsOpen = "depends_open:"
+
 	// RelatedUnresolvable marks a soft related target that cannot be resolved (cosmetic).
 	RelatedUnresolvable = "related_unresolvable:"
 
@@ -114,12 +119,19 @@ func FormatTagNew(tag string) string {
 	return Line(TagNew, fmt.Sprintf("%q is new to this scope", tag))
 }
 
+// FormatDependsOpen is the fixed depends_open: shape for mark into a ready/active
+// built-in while depends remain unmet. waitingOn must be non-empty full ids.
+func FormatDependsOpen(id, newStatus string, waitingOn []string) string {
+	return Line(DependsOpen, fmt.Sprintf("%s marked %s with open depends: %s",
+		id, newStatus, strings.Join(waitingOn, " ")))
+}
+
 var all = []string{
 	NameDrift, ConfigUnparseable, AutoCommitMismatch, UnreachableScope,
 	ParseError, DuplicateID, EqualOrder, ArchiveNonTerminal, ArchiveTerminalAtRoot,
 	DependsDangling, DependsUnresolvable, SchemaError, SchemaWarn,
 	SyncDisabled, Uncommitted, SyncNeeded, OrderLong, StatusConflict, DependsCycle,
-	DependsSelf, DependsOnCancelled, RelatedUnresolvable, StaleInProgress,
+	DependsSelf, DependsOnCancelled, DependsOpen, RelatedUnresolvable, StaleInProgress,
 	LastPushError, EdgeVerify, NonAllowlist, TagUnknown, TagNew,
 }
 

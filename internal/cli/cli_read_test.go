@@ -607,6 +607,8 @@ func TestLensAppliesAndEchoes(t *testing.T) {
 	addTicket(t, dir, "wc-ab2c", "fe", "todo", "a0", "# Frontend\n", false, "tags: [frontend]\n")
 	addTicket(t, dir, "wc-de34", "be", "todo", "a1", "# Backend\n", false, "tags: [backend]\n")
 	addTicket(t, dir, "wc-gh56", "un", "todo", "a2", "# Untagged\n", false, "")
+	// Neither lens tag nor --tag expand target — must stay hidden under union.
+	addTicket(t, dir, "wc-jk89", "st", "todo", "a3", "# Style\n", false, "tags: [style]\n")
 
 	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
 		t.Fatalf("lens set: %v", err)
@@ -616,13 +618,13 @@ func TestLensAppliesAndEchoes(t *testing.T) {
 		t.Fatalf("list under lens: %v", err)
 	}
 	rows := lines(out)
-	// frontend (tag match) + untagged (never hidden); backend filtered out.
+	// frontend (tag match) + untagged (never hidden); backend and style filtered out.
 	if len(rows) != 2 {
 		t.Fatalf("lens should show frontend + untagged, got %q", out)
 	}
 	for _, r := range rows {
-		if strings.HasPrefix(r, "wc-de34") {
-			t.Errorf("backend should be filtered by the lens: %q", r)
+		if strings.HasPrefix(r, "wc-de34") || strings.HasPrefix(r, "wc-jk89") {
+			t.Errorf("non-lens ticket should be filtered: %q", r)
 		}
 	}
 	if !strings.Contains(errOut, "lens:") {
@@ -630,8 +632,35 @@ func TestLensAppliesAndEchoes(t *testing.T) {
 	}
 
 	out, _, _ = run(t, app, "list", "--scope", "wc", "--no-lens")
-	if len(lines(out)) != 3 {
+	if len(lines(out)) != 4 {
 		t.Errorf("--no-lens should bypass, got %q", out)
+	}
+
+	// lens + --tag: union expand (also-see), not AND; unrelated tags stay out.
+	out, errOut, err = run(t, app, "list", "--scope", "wc", "--tag", "backend")
+	if err != nil {
+		t.Fatalf("list under lens with --tag: %v", err)
+	}
+	got := listRowIDs(out)
+	want := []string{"wc-ab2c", "wc-de34", "wc-gh56"}
+	if !sameStringSet(got, want) {
+		t.Fatalf("lens + --tag union = %v want %v (out %q)", got, want, out)
+	}
+	if containsID(got, "wc-jk89") {
+		t.Errorf("style must stay hidden under frontend lens + --tag backend, got %q", out)
+	}
+	if !strings.Contains(errOut, "lens:") {
+		t.Errorf("lens still active under --tag expand, stderr %q", errOut)
+	}
+
+	// --no-lens + --tag: hard tag filter only (no untagged, no other tags).
+	out, _, err = run(t, app, "list", "--scope", "wc", "--no-lens", "--tag", "backend")
+	if err != nil {
+		t.Fatalf("list --no-lens --tag: %v", err)
+	}
+	got = listRowIDs(out)
+	if !sameStringSet(got, []string{"wc-de34"}) {
+		t.Errorf("--no-lens --tag backend should be backend only, got %v", got)
 	}
 
 	if _, _, err := run(t, app, "lens", "--clear", "--scope", "wc"); err != nil {
@@ -641,6 +670,44 @@ func TestLensAppliesAndEchoes(t *testing.T) {
 	if strings.TrimSpace(out) != "" {
 		t.Errorf("cleared lens should show empty, got %q", out)
 	}
+}
+
+// listRowIDs extracts the full-id column from headerless list TSV.
+func listRowIDs(out string) []string {
+	var ids []string
+	for _, line := range lines(out) {
+		if line == "" {
+			continue
+		}
+		id, _, _ := strings.Cut(line, "\t")
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func containsID(ids []string, want string) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+func sameStringSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	set := map[string]bool{}
+	for _, g := range got {
+		set[g] = true
+	}
+	for _, w := range want {
+		if !set[w] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestTagsInventory(t *testing.T) {

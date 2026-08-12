@@ -25,8 +25,6 @@ description: >-
 - Built-in statuses: draft, backlog, todo, in-progress, review, blocked, done, cancelled
 - The todo status is next-eligible
 - Manage ticket status through its states; move to done when completed
-- Soft tag feedback (stderr only, exit 0): `tag_unknown: "<t>" is not used on any ticket in this scope` on lens set and list --tag when t is absent from the in-use set; `tag_new: "<t>" is new to this scope` on create --tag and meta add tags|tag when t was not on any ticket before the write
-- Soft mark feedback (stderr only, exit 0): `depends_open: <id> marked <status> with open depends: <ids>` when mark changes status into todo, in-progress, or review while depends remain unmet (same as list waiting-on). Mark never enforces or clears depends; next and claim still gate on them. No warn on same-status mark, enter blocked/draft/backlog/done/cancelled, no depends, or all depends terminal
 
 ## Frontmatter
 
@@ -37,22 +35,23 @@ description: >-
 - summary / scalar customs → tk meta set
 - depends, related, tags, links → tk meta add|rm
 - related write is one-way on the subject only (no mirror on the target); deps shows both directions
+- custom fields: declare per scope under `fields:` in tk.cue (CLI: `tk scope field`); meta allowlists built-ins plus declared names only; optional `required: true` is soft-warn policy only
 
 ## Commands
 
 ```
 tk create <title> [status] [--scope S] [--tag T]...                 # Scaffold ticket (FM + H1); optional tags; print path
 tk get <id> [--content] [--scope S]                                 # Resolve id to path; --content prints full file
-tk mark <id> <status> [--scope S]                                   # Set status; done/cancelled move to archive/; soft depends_open: if ready/active with open depends
+tk mark <id> <status> [--scope S]                                   # Set status; done/cancelled move to archive/; soft depends_open: / required_missing: as applicable
 tk reorder <id> (--before <id> | --after <id> | --first | --last) [--scope S]  # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 
-tk list [status...] [--scope S] [--tag T]... [--all] [--no-lens]    # Board inventory includes draft, todo, in-progress, blocked, review 
+tk list [status...] [--scope S] [--tag T]... [--all] [--no-lens]    # Board inventory (lens default; --tag filter/union — see bullets)
 tk status [key] [--scope S]                                         # Scope pulse; optional key → bare value
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
-tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key
-tk meta add <id> <key> <value> [--scope S]                          # Append multi-value frontmatter entry
-tk meta rm <id> <key> <value> [--scope S]                           # Remove multi-value frontmatter entry
+tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key; soft required_missing: if gaps remain
+tk meta add <id> <key> <value> [--scope S]                          # Append multi-value frontmatter entry; soft required_missing: if gaps remain
+tk meta rm <id> <key> <value> [--scope S]                           # Remove multi-value frontmatter entry; soft required_missing: if gaps remain
 tk deps <id> [--scope S] [--transitive] [--tree]                    # Depends/related neighbourhood
 tk search <terms> [--scope S]                                       # FTS5 search titles and bodies
 tk query <sql>                                                      # Ad-hoc read-only SQL; schema unstable
@@ -67,6 +66,9 @@ tk scope rebind <dir> --name <name> [--code-root <path>]            # Rewrite re
 tk scope forget <name>                                              # Unregister scope (registry + lens only)
 tk scope list                                                       # List registered scopes (TSV)
 tk scope rename <old> <new>                                         # Rename scope end-to-end
+tk scope field list [--scope S]                                     # List custom fields: (name type required values)
+tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # Upsert field; full replace from flags (omit --required demotes)
+tk scope field unset <name> [--scope S]                             # Remove field declaration only (tickets untouched)
 tk sync [--scope S] [--all]                                         # Sole push boundary (auto-commit roots)
 tk doctor [--reindex] [--repair] [--re-space-order] [--all]         # Diagnose integrity; optional repair
 tk skill                                                            # Print this agent skill contract
@@ -97,11 +99,11 @@ Board: `tk list` -> `tk tags` | `tk reorder` | `tk lens` | `tk search`
 
 Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:)
 
-Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename`
+Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `field list|set|unset`
 
 Durability (`tk status mode`):
 - tk-driven: mutators self-commit -> `tk sync` (sole push; never host push/rebase)
-  - Commands that self commit: mark, reorder, next --claim, meta set/add/rm
+  - Commands that self commit: mark, reorder, next --claim, meta set/add/rm, scope field set|unset, scope rename
   - Create and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
 - repo-driven: host git commit/push (no `tk sync`)

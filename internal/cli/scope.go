@@ -9,8 +9,9 @@ func newScopeCmd(app *App) *cobra.Command {
 		Aliases: []string{"scopes"},
 		Short:   "Manage scopes — register, address, and inspect ticket containers",
 		Long: "A scope is a directory of ticket markdown files plus its tk.cue. Scope\n" +
-			"administration registers scopes on this machine, rebinds their paths, and\n" +
-			"lists them. Bare `tk scope` runs `list`.",
+			"administration registers scopes on this machine, rebinds their paths, lists\n" +
+			"them, and edits custom field declarations (field list|set|unset). Bare\n" +
+			"`tk scope` runs `list`.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -26,6 +27,7 @@ func newScopeCmd(app *App) *cobra.Command {
 		newScopeForgetCmd(app),
 		newScopeListCmd(app),
 		newScopeRenameCmd(app),
+		newScopeFieldCmd(app),
 	)
 	return cmd
 }

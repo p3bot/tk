@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 
 	"cuelang.org/go/cue"
@@ -34,10 +36,11 @@ var (
 )
 
 // Field is a declared custom frontmatter field. Values is non-nil only with an enum
-// (legal only for string/strings).
+// (legal only for string/strings). Required defaults false when omitted in tk.cue.
 type Field struct {
-	Type   string
-	Values []string
+	Type     string
+	Required bool
+	Values   []string
 }
 
 // Schema is a scope's fully-evaluated, validated tk.cue. Presence means the config is usable.
@@ -46,7 +49,7 @@ type Schema struct {
 	AutoCommit bool
 	// Statuses maps declared custom status names to categories (built-ins live in package status).
 	Statuses map[string]status.Category
-	// Fields maps declared custom field names to type and optional enum.
+	// Fields maps declared custom field names to type, optional required, and optional enum.
 	Fields map[string]Field
 }
 
@@ -81,8 +84,9 @@ type rawStatus struct {
 }
 
 type rawField struct {
-	Type   string   `json:"type"`
-	Values []string `json:"values"`
+	Type     string   `json:"type"`
+	Required *bool    `json:"required"` // nil = optional (false)
+	Values   []string `json:"values"`
 }
 
 // Load reads and validates <dir>/tk.cue. Every unusable state returns *ConfigError.
@@ -198,32 +202,136 @@ func validateFields(dir string, v cue.Value, raw map[string]rawField) (map[strin
 	}
 	out := make(map[string]Field, len(raw))
 	for name, f := range raw {
-		if !fieldNameRe.MatchString(name) {
-			return nil, &ConfigError{Dir: dir, Reason: fmt.Sprintf("field name %q is outside its alphabet (^[a-z][a-z0-9_]{0,31}$)", name)}
-		}
-		if frontmatter.IsBuiltinKey(name) {
-			return nil, &ConfigError{Dir: dir, Reason: fmt.Sprintf("field %q shadows a built-in frontmatter key", name)}
-		}
-		if wire, ok := frontmatter.MetaKeyAliasTarget(name); ok {
-			return nil, &ConfigError{Dir: dir, Reason: fmt.Sprintf("field %q is reserved as a meta key alias for %q", name, wire)}
-		}
-		switch f.Type {
-		case FieldString, FieldInt, FieldBool, FieldStrings:
-		default:
-			return nil, &ConfigError{Dir: dir, Reason: fmt.Sprintf("field %q has type %q, want string|int|bool|strings", name, f.Type)}
-		}
 		// values presence from CUE: nil-vs-empty slice cannot tell absent from explicit empty.
 		hasEnum := v.LookupPath(cue.MakePath(cue.Str("fields"), cue.Str(name), cue.Str("values"))).Exists()
-		if hasEnum && f.Type != FieldString && f.Type != FieldStrings {
-			return nil, &ConfigError{Dir: dir, Reason: fmt.Sprintf("field %q has a values enum, legal only for string or strings (not %s)", name, f.Type)}
-		}
-		field := Field{Type: f.Type}
-		if hasEnum {
-			field.Values = f.Values
+		field, err := fieldFromRaw(name, f, hasEnum)
+		if err != nil {
+			return nil, &ConfigError{Dir: dir, Reason: err.Error()}
 		}
 		out[name] = field
 	}
 	return out, nil
+}
+
+// fieldFromRaw applies the closed field declaration rules. hasEnum is true when
+// the CUE source has a values key (including empty list).
+func fieldFromRaw(name string, f rawField, hasEnum bool) (Field, error) {
+	if !fieldNameRe.MatchString(name) {
+		return Field{}, fmt.Errorf("field name %q is outside its alphabet (^[a-z][a-z0-9_]{0,31}$)", name)
+	}
+	if frontmatter.IsBuiltinKey(name) {
+		return Field{}, fmt.Errorf("field %q shadows a built-in frontmatter key", name)
+	}
+	if wire, ok := frontmatter.MetaKeyAliasTarget(name); ok {
+		return Field{}, fmt.Errorf("field %q is reserved as a meta key alias for %q", name, wire)
+	}
+	switch f.Type {
+	case FieldString, FieldInt, FieldBool, FieldStrings:
+	default:
+		return Field{}, fmt.Errorf("field %q has type %q, want string|int|bool|strings", name, f.Type)
+	}
+	if hasEnum && f.Type != FieldString && f.Type != FieldStrings {
+		return Field{}, fmt.Errorf("field %q has a values enum, legal only for string or strings (not %s)", name, f.Type)
+	}
+	if hasEnum {
+		seen := make(map[string]struct{}, len(f.Values))
+		for _, v := range f.Values {
+			if _, dup := seen[v]; dup {
+				return Field{}, fmt.Errorf("field %q values enum has duplicate %q", name, v)
+			}
+			seen[v] = struct{}{}
+		}
+	}
+	field := Field{Type: f.Type}
+	if f.Required != nil {
+		field.Required = *f.Required
+	}
+	if hasEnum {
+		field.Values = f.Values
+	}
+	return field, nil
+}
+
+// ValidateFieldDecl checks a full-replace field declaration against the same
+// rules as Load validation. Callers use this before writing tk.cue.
+func ValidateFieldDecl(name string, f Field) error {
+	raw := rawField{Type: f.Type}
+	if f.Required {
+		t := true
+		raw.Required = &t
+	}
+	hasEnum := f.Values != nil
+	if hasEnum {
+		raw.Values = f.Values
+	}
+	_, err := fieldFromRaw(name, raw, hasEnum)
+	return err
+}
+
+// FieldEqual reports whether two declarations match for full-replace intent
+// (type, required, and values enum). nil and empty values slices compare equal.
+func FieldEqual(a, b Field) bool {
+	if a.Type != b.Type || a.Required != b.Required {
+		return false
+	}
+	return slices.Equal(a.Values, b.Values)
+}
+
+// MissingRequired returns sorted names of required custom fields that are
+// absent or empty on m. Soft-check only — never a hard schema failure.
+//
+// Missing: key absent; string empty; strings empty list.
+// Populated: bool present (including false); int present (including 0).
+func (s *Schema) MissingRequired(m *frontmatter.Model) []string {
+	if s == nil || m == nil || len(s.Fields) == 0 {
+		return nil
+	}
+	byKey := make(map[string]any, len(m.Custom))
+	for _, c := range m.Custom {
+		byKey[c.Key] = c.Value
+	}
+	var missing []string
+	for name, f := range s.Fields {
+		if !f.Required {
+			continue
+		}
+		v, ok := byKey[name]
+		if !fieldPopulated(f, v, ok) {
+			missing = append(missing, name)
+		}
+	}
+	sort.Strings(missing)
+	return missing
+}
+
+func fieldPopulated(f Field, v any, present bool) bool {
+	if !present {
+		return false
+	}
+	switch f.Type {
+	case FieldString:
+		return stringValueNonEmpty(v)
+	case FieldStrings:
+		list, err := frontmatter.StringList(v)
+		return err == nil && len(list) > 0
+	case FieldBool, FieldInt:
+		// Presence alone satisfies; false and 0 are populated.
+		return true
+	default:
+		return true
+	}
+}
+
+func stringValueNonEmpty(v any) bool {
+	if v == nil {
+		return false
+	}
+	if s, ok := v.(string); ok {
+		return s != ""
+	}
+	// Hand-edited non-string scalar: treat fmt form as the string content.
+	s := fmt.Sprint(v)
+	return s != "" && s != "<nil>"
 }
 
 // cueReason renders a CUE error as a single-line ConfigError reason (one token line).

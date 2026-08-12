@@ -248,17 +248,26 @@ func asScalarString(v any) string {
 	return fmt.Sprint(v)
 }
 
-func asStringList(v any) ([]string, error) {
+// StringList coerces a decoded list value to []string. Accepts nil, []string,
+// and []any (YAML decode). Used by parse, meta mutators, and required-field checks.
+func StringList(v any) ([]string, error) {
 	if v == nil {
 		return nil, nil
 	}
-	seq, ok := v.([]any)
-	if !ok {
+	switch x := v.(type) {
+	case []string:
+		return append([]string(nil), x...), nil
+	case []any:
+		out := make([]string, len(x))
+		for i, e := range x {
+			out[i] = asScalarString(e)
+		}
+		return out, nil
+	default:
 		return nil, fmt.Errorf("expected a list, got %T", v)
 	}
-	out := make([]string, len(seq))
-	for i, e := range seq {
-		out[i] = asScalarString(e)
-	}
-	return out, nil
+}
+
+func asStringList(v any) ([]string, error) {
+	return StringList(v)
 }

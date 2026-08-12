@@ -102,6 +102,11 @@ const (
 	// meta add tags|tag when the value was not on any ticket in the scope before
 	// the write. Soft only: the write still succeeds.
 	TagNew = "tag_new:"
+
+	// RequiredMissing marks soft required-field gaps after a successful meta
+	// set|add|rm, or after mark actually changes status into built-in done.
+	// Soft only: the mutation still succeeds.
+	RequiredMissing = "required_missing:"
 )
 
 // Line prefixes msg with tok and a space, forming a stderr diagnostic agents match by prefix.
@@ -126,13 +131,20 @@ func FormatDependsOpen(id, newStatus string, waitingOn []string) string {
 		id, newStatus, strings.Join(waitingOn, " ")))
 }
 
+// FormatRequiredMissing is the fixed required_missing: shape for soft gaps on
+// meta mutators and mark into built-in done. keys must be non-empty, sorted.
+func FormatRequiredMissing(id string, keys []string) string {
+	return Line(RequiredMissing, fmt.Sprintf("%s missing required: %s",
+		id, strings.Join(keys, " ")))
+}
+
 var all = []string{
 	NameDrift, ConfigUnparseable, AutoCommitMismatch, UnreachableScope,
 	ParseError, DuplicateID, EqualOrder, ArchiveNonTerminal, ArchiveTerminalAtRoot,
 	DependsDangling, DependsUnresolvable, SchemaError, SchemaWarn,
 	SyncDisabled, Uncommitted, SyncNeeded, OrderLong, StatusConflict, DependsCycle,
 	DependsSelf, DependsOnCancelled, DependsOpen, RelatedUnresolvable, StaleInProgress,
-	LastPushError, EdgeVerify, NonAllowlist, TagUnknown, TagNew,
+	LastPushError, EdgeVerify, NonAllowlist, TagUnknown, TagNew, RequiredMissing,
 }
 
 // All returns the closed token catalogue in definition order.

@@ -46,9 +46,20 @@ func TestFormatDependsOpen(t *testing.T) {
 	}
 }
 
+func TestFormatRequiredMissing(t *testing.T) {
+	got := FormatRequiredMissing("wc-ab2c", []string{"jira", "owners"})
+	want := "required_missing: wc-ab2c missing required: jira owners"
+	if got != want {
+		t.Errorf("FormatRequiredMissing = %q, want %q", got, want)
+	}
+	if !HasKnownPrefix(got) {
+		t.Errorf("FormatRequiredMissing must be catalogue-prefixed: %q", got)
+	}
+}
+
 func TestCatalogueIncludesSoftWriteTokens(t *testing.T) {
 	got := All()
-	want := map[string]bool{TagUnknown: false, TagNew: false, DependsOpen: false}
+	want := map[string]bool{TagUnknown: false, TagNew: false, DependsOpen: false, RequiredMissing: false}
 	for _, tkn := range got {
 		if _, ok := want[tkn]; ok {
 			want[tkn] = true

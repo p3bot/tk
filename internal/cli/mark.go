@@ -26,9 +26,11 @@ func newMarkCmd(app *App) *cobra.Command {
 			"labels: any known status (built-in or CUE custom) is accepted; an unknown one is\n" +
 			"a usage error. Mark never enforces depends (next/claim still gate on them); a soft\n" +
 			"depends_open: warning is emitted when the status actually changes into todo,\n" +
-			"in-progress, or review while depends remain unmet. An auto-commit scope\n" +
-			"self-commits the change when a git-root exists. A quarantined or duplicate-id\n" +
-			"ticket is refused with no write.\n" +
+			"in-progress, or review while depends remain unmet. When the status actually\n" +
+			"changes into built-in done, a soft required_missing: warning is emitted if any\n" +
+			"scope-declared required fields are absent or empty (same-status re-mark and\n" +
+			"cancelled stay quiet). An auto-commit scope self-commits the change when a\n" +
+			"git-root exists. A quarantined or duplicate-id ticket is refused with no write.\n" +
 			"For a scope pulse (counts, next, integrity), use `tk status`.",
 		Args: usageArgs(cobra.ExactArgs(2)),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -140,6 +142,12 @@ func runMark(app *App, c *cobra.Command, idArg, newStatus, scopeFlag string) err
 		p.Path = newPath
 		if line, werr := e.openDependsWarnLine(res, scope, p, newStatus); werr == nil && line != "" {
 			stderrln(c, line)
+		}
+	}
+	// Soft required gaps: only when status actually changes into built-in done.
+	if oldStatus != newStatus && newStatus == status.Done {
+		if missing := schema.MissingRequired(m); len(missing) > 0 {
+			stderrln(c, token.FormatRequiredMissing(p.ID, missing))
 		}
 	}
 	return nil

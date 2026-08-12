@@ -10,7 +10,7 @@ live authority and must not override the tree.
 
 P1 through P7 have landed. `tk` runs as a Cobra CLI with the machine-local CUE
 registry, scope `tk.cue` evaluation, ambient resolution, and the full `tk scope`
-verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`); the machine-wide
+verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `field`); the machine-wide
 SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
 `status`, `get`, `meta`, `next`, `deps`, `search`, `query`, `lens`); the authoring
 hot path (`create`, `mark`, `reorder`, `edit`, `next --claim`) with local git

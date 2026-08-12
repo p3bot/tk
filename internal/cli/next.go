@@ -36,7 +36,7 @@ func newNextCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "ambient inventory scope")
-	cmd.Flags().BoolVar(&noLens, "no-lens", false, "ignore the active lens")
+	cmd.Flags().BoolVar(&noLens, "no-lens", false, "ignore the active lens for this invocation")
 	cmd.Flags().BoolVar(&claim, "claim", false, "claim the selected ticket (set in-progress)")
 	return cmd
 }

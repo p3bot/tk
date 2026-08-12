@@ -49,6 +49,8 @@ tk scope import <dir> [--code-root <path>]
 tk scope rebind <dir> --name <name> [--code-root <path>]
 tk scope forget <name>
 tk scope list          # bare `tk scope` and `tk scopes` also run list
+tk scope rename <old> <new>
+tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields in tk.cue
 ```
 
 - `init` creates and registers a new scope, writing a minimal `tk.cue` and a
@@ -62,6 +64,10 @@ tk scope list          # bare `tk scope` and `tk scopes` also run list
   the scope's files.
 - `list` prints parse-stable TSV, one line per scope: `name\tdir\troot\tmode`,
   where `mode` is `tk-driven`, `repo-driven`, `plain-files`, or `unknown`.
+- `rename` renames a scope end-to-end (registry, lens, `tk.cue` name, ticket ids).
+- `field` reads and rewrites custom field declarations under `fields:` in the
+  ambient scope's `tk.cue` (`list`, `set`, `unset`). Optional `required` is soft
+  policy only (`required_missing:` on meta/mark; never a hard refuse).
 
 ## Output and exit codes
 

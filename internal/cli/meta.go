@@ -81,7 +81,9 @@ func newMetaCmd(app *App) *cobra.Command {
 			"same-scope missing → depends_dangling:; cross-scope unregistered/absent →\n" +
 			"depends_unresolvable: (hard refuse, no write). related is soft (no existence\n" +
 			"check). Short ids on depends/related normalise to full ids in the subject scope.\n" +
-			"Key aliases: tag → tags, link → links (wire keys stay plural).",
+			"After a successful set|add|rm, missing or empty scope-required custom fields\n" +
+			"emit required_missing: on stderr (soft; exit 0). Key aliases: tag → tags,\n" +
+			"link → links (wire keys stay plural).",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -416,6 +418,10 @@ func runMetaMutate(app *App, c *cobra.Command, op metaOp, idArg, key, valueArg, 
 	if notifyTagNew {
 		noticeNewTag(c, value, preWriteTags)
 	}
+	// Soft only after success: required gaps never refuse meta.
+	if missing := schema.MissingRequired(m); len(missing) > 0 {
+		stderrln(c, token.FormatRequiredMissing(p.ID, missing))
+	}
 	return nil
 }
 
@@ -588,7 +594,7 @@ func metaGetValue(m *frontmatter.Model, key string, class metaKeyClass, field sc
 		return "", nil
 	}
 	if class == metaKeyMulti || field.Type == scopeconfig.FieldStrings {
-		list, err := anyStringList(v)
+		list, err := frontmatter.StringList(v)
 		if err != nil {
 			return "", fmt.Errorf("custom field %q: %w", key, err)
 		}
@@ -634,7 +640,7 @@ func applyMetaListOp(m *frontmatter.Model, op metaOp, key, value string, field s
 		list = &m.Links
 	default:
 		cur, _ := customValue(m, key)
-		existing, err := anyStringList(cur)
+		existing, err := frontmatter.StringList(cur)
 		if err != nil {
 			return usageErrorf("custom field %q is not a string list", key)
 		}
@@ -744,24 +750,6 @@ func removeCustom(m *frontmatter.Model, key string) {
 		return
 	}
 	m.Custom = out
-}
-
-func anyStringList(v any) ([]string, error) {
-	if v == nil {
-		return nil, nil
-	}
-	switch x := v.(type) {
-	case []string:
-		return append([]string(nil), x...), nil
-	case []any:
-		out := make([]string, len(x))
-		for i, e := range x {
-			out[i] = fmt.Sprint(e)
-		}
-		return out, nil
-	default:
-		return nil, fmt.Errorf("expected a list, got %T", v)
-	}
 }
 
 func formatScalar(v any) string {

@@ -364,3 +364,23 @@ func TestScopeRenameSelfCommits(t *testing.T) {
 		t.Fatalf("rename should self-commit with the fixed message, got %v", log)
 	}
 }
+
+// Rename self-commit must ride sync_needed: like other tk-driven durability paths.
+func TestScopeRenameSyncNeededUnpushed(t *testing.T) {
+	requireGit(t)
+	remote := newBareRemote(t)
+	m := cloneMachine(t, remote)
+	dir := m.initScopeAutoCommit(t)
+	addTicket(t, dir, "wc-ab2c", "x", "todo", "a0", "# X\n", false, "")
+	gitIn(t, m.clone, "add", "-A")
+	gitIn(t, m.clone, "commit", "-m", "seed scope")
+	gitIn(t, m.clone, "push", "-u", "origin", "main")
+
+	_, errOut, err := run(t, m.app, "scope", "rename", "wc", "core")
+	if err != nil {
+		t.Fatalf("rename: %v (%s)", err, errOut)
+	}
+	if !strings.Contains(errOut, "sync_needed: unpushed") {
+		t.Errorf("rename self-commit ahead of upstream must ride sync_needed: unpushed, got %q", errOut)
+	}
+}

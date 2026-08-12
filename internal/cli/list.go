@@ -27,9 +27,10 @@ func newListCmd(app *App) *cobra.Command {
 			"`tk meta get <id>`. Bare list is the default active set. Status positionals\n" +
 			"union-filter (an unknown status exits 2) and include matching rows under\n" +
 			"archive/ — so `list done` shows done tickets without --all. --tag repeats\n" +
-			"as OR; the lens applies unless --no-lens (lens AND --tag). A --tag value not\n" +
-			"used on any ticket still filters (possibly empty) and emits on stderr\n" +
-			"(soft; exit 0):\n" +
+			"as OR among themselves. The lens applies unless --no-lens; with both lens and\n" +
+			"--tag, a row is kept if it passes the lens or matches any --tag (union\n" +
+			"expand — also-see). A --tag value not used on any ticket still filters\n" +
+			"(possibly empty) and emits on stderr (soft; exit 0):\n" +
 			"  tag_unknown: \"<t>\" is not used on any ticket in this scope\n" +
 			"--all expands the unfiltered board to every non-quarantined status, including\n" +
 			"archive/. Lens echo and integrity tokens ride stderr only, never the TSV.\n" +
@@ -40,9 +41,9 @@ func newListCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope to list (defaults to ambient; wins over ambient)")
-	cmd.Flags().StringArrayVar(&tags, "tag", nil, "keep tickets with any of these tags (repeatable; OR)")
+	cmd.Flags().StringArrayVar(&tags, "tag", nil, "match any of these tags (repeatable; OR; with a lens, also keeps lens matches)")
 	cmd.Flags().BoolVar(&all, "all", false, "with no status filter: include done/backlog and archive/")
-	cmd.Flags().BoolVar(&noLens, "no-lens", false, "ignore the active lens")
+	cmd.Flags().BoolVar(&noLens, "no-lens", false, "ignore the active lens for this invocation")
 	return cmd
 }
 
@@ -100,10 +101,7 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 		if !listVisible(row, statusFilter, p.all, schema) {
 			continue
 		}
-		if len(p.tags) > 0 && !matchesAnyTag(row, p.tags) {
-			continue
-		}
-		if applyLens && !passesLens(row, lens) {
+		if !listTagVisible(row, p.tags, applyLens, lens) {
 			continue
 		}
 		kept = append(kept, row)
@@ -158,6 +156,23 @@ func listVisible(p *index.Ticket, statusFilter map[string]bool, all bool, schema
 		return true
 	}
 	return status.InDefaultList(p.Status, schemaCustom(schema))
+}
+
+// listTagVisible: no tags → lens only (if any); tags only → hard match any;
+// lens + tags → union (pass lens or match any --tag). Untagged still pass the
+// lens alone; they do not match a bare --tag filter.
+func listTagVisible(p *index.Ticket, tags []string, applyLens bool, lens []string) bool {
+	hasTags := len(tags) > 0
+	switch {
+	case applyLens && hasTags:
+		return passesLens(p, lens) || matchesAnyTag(p, tags)
+	case hasTags:
+		return matchesAnyTag(p, tags)
+	case applyLens:
+		return passesLens(p, lens)
+	default:
+		return true
+	}
 }
 
 func matchesAnyTag(p *index.Ticket, tags []string) bool {

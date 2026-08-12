@@ -57,10 +57,10 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"stdout",
 		"stderr",
 		"frontmatter fence",
-		"tag_unknown:",
-		"tag_new:",
 		"depends_open:",
-		"Mark never enforces",
+		"required_missing:",
+		"scope field",
+		"mark does not enforce depends",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {

@@ -122,6 +122,7 @@ func runScopeRename(app *App, c *cobra.Command, oldName, newName string) error {
 		}); err != nil {
 			return err
 		}
+		e.tkDrivenSyncNeeded(c.Context(), c, dir, root)
 	} else if autoCommit && !hasRoot {
 		stderrln(c, token.Line(token.SyncDisabled, fmt.Sprintf("%s: no git repository — renamed files written but not committed", newName)))
 	}

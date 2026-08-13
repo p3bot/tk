@@ -46,7 +46,7 @@ tk mark <id> <status> [--scope S]                                   # Set status
 tk reorder <id> (--before <id> | --after <id> | --first | --last) [--scope S]  # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 
-tk list [status...] [--scope S] [--tag T]... [--all] [--no-lens]    # Board inventory (lens default; --tag filter/union — see bullets)
+tk list [status...] [--scope S] [--tag T]... [--all] [--no-lens]    # Board inventory (lens default; --tag hard filter, ignores lens)
 tk status [key] [--scope S]                                         # Scope pulse; optional key → bare value
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
 tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key; soft required_missing: if gaps remain

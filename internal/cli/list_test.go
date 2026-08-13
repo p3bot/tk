@@ -31,11 +31,13 @@ func TestListTagVisible(t *testing.T) {
 		{"tag only untagged", ticket(), []string{"backend"}, false, nil, false},
 		{"tag only multi OR", ticket("style"), []string{"backend", "style"}, false, nil, true},
 
-		{"union lens side", ticket("frontend"), []string{"backend"}, true, []string{"frontend"}, true},
-		{"union tag side", ticket("backend"), []string{"backend"}, true, []string{"frontend"}, true},
-		{"union untagged via lens", ticket(), []string{"backend"}, true, []string{"frontend"}, true},
-		{"union neither side", ticket("style"), []string{"backend"}, true, []string{"frontend"}, false},
-		{"union multi tag OR", ticket("style"), []string{"backend", "style"}, true, []string{"frontend"}, true},
+		// --tag always hard-cuts; applyLens is false when any --tag is present (caller).
+		// Even if applyLens were true, --tag wins on membership alone.
+		{"tag hard ignores lens match", ticket("frontend"), []string{"backend"}, true, []string{"frontend"}, false},
+		{"tag hard keeps tag match", ticket("backend"), []string{"backend"}, true, []string{"frontend"}, true},
+		{"tag hard drops untagged", ticket(), []string{"backend"}, true, []string{"frontend"}, false},
+		{"tag hard drops other tags", ticket("style"), []string{"backend"}, true, []string{"frontend"}, false},
+		{"tag hard multi OR", ticket("style"), []string{"backend", "style"}, true, []string{"frontend"}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

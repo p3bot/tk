@@ -23,9 +23,10 @@ func newLensCmd(app *App) *cobra.Command {
 			"lens; with --clear it removes it; with no arguments it shows the current lens.\n" +
 			"list and next apply the lens by default (an untagged ticket is never hidden;\n" +
 			"list --no-lens / next --no-lens bypass for one invocation without clearing).\n" +
-			"On list, --tag unions with the lens (also-see those tags). Tags are free-form;\n" +
-			"any tag is a legal lens value. Setting a tag not yet used on any ticket in the\n" +
-			"scope still applies the lens and emits on stderr (soft; exit 0):\n" +
+			"On list, --tag is a hard membership filter and ignores the lens for that\n" +
+			"invocation. Tags are free-form; any tag is a legal lens value. Setting a tag\n" +
+			"not yet used on any ticket in the scope still applies the lens and emits on\n" +
+			"stderr (soft; exit 0):\n" +
 			"  tag_unknown: \"<t>\" is not used on any ticket in this scope",
 		Args: usageArgs(cobra.ArbitraryArgs),
 		RunE: func(c *cobra.Command, args []string) error {

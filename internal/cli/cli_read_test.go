@@ -617,7 +617,7 @@ func TestLensAppliesAndEchoes(t *testing.T) {
 	addTicket(t, dir, "wc-ab2c", "fe", "todo", "a0", "# Frontend\n", false, "tags: [frontend]\n")
 	addTicket(t, dir, "wc-de34", "be", "todo", "a1", "# Backend\n", false, "tags: [backend]\n")
 	addTicket(t, dir, "wc-gh56", "un", "todo", "a2", "# Untagged\n", false, "")
-	// Neither lens tag nor --tag expand target — must stay hidden under union.
+	// Off-lens tagged work (neither frontend nor untagged).
 	addTicket(t, dir, "wc-jk89", "st", "todo", "a3", "# Style\n", false, "tags: [style]\n")
 
 	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
@@ -646,24 +646,20 @@ func TestLensAppliesAndEchoes(t *testing.T) {
 		t.Errorf("--no-lens should bypass, got %q", out)
 	}
 
-	// lens + --tag: union expand (also-see), not AND; unrelated tags stay out.
+	// --tag is a hard membership filter and supersedes the lens (no lens echo).
 	out, errOut, err = run(t, app, "list", "--scope", "wc", "--tag", "backend")
 	if err != nil {
 		t.Fatalf("list under lens with --tag: %v", err)
 	}
 	got := listRowIDs(out)
-	want := []string{"wc-ab2c", "wc-de34", "wc-gh56"}
-	if !sameStringSet(got, want) {
-		t.Fatalf("lens + --tag union = %v want %v (out %q)", got, want, out)
+	if !sameStringSet(got, []string{"wc-de34"}) {
+		t.Fatalf("--tag backend hard cut = %v want [wc-de34] (out %q)", got, out)
 	}
-	if containsID(got, "wc-jk89") {
-		t.Errorf("style must stay hidden under frontend lens + --tag backend, got %q", out)
-	}
-	if !strings.Contains(errOut, "lens:") {
-		t.Errorf("lens still active under --tag expand, stderr %q", errOut)
+	if strings.Contains(errOut, "lens:") {
+		t.Errorf("--tag must suppress lens echo, stderr %q", errOut)
 	}
 
-	// --no-lens + --tag: hard tag filter only (no untagged, no other tags).
+	// --no-lens + --tag: same hard filter (lens already ignored by --tag).
 	out, _, err = run(t, app, "list", "--scope", "wc", "--no-lens", "--tag", "backend")
 	if err != nil {
 		t.Fatalf("list --no-lens --tag: %v", err)

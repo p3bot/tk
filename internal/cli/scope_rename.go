@@ -28,7 +28,8 @@ func newScopeRenameCmd(app *App) *cobra.Command {
 		Short: "Rename a scope in place (tk.cue, ids, filenames, in-scope edges)",
 		Long: "Rename a scope end to end: rewrite the tk.cue name, the <scope>- prefix of every\n" +
 			"ticket id and filename, and every in-scope depends/related edge, then re-key this\n" +
-			"machine's registry and lens. Cross-scope inbound edges live in other repos and are\n" +
+			"machine's registry and lens. The machine-local current-ticket pointer is dropped\n" +
+			"(the stored id would go stale). Cross-scope inbound edges live in other repos and are\n" +
 			"reported as edge_verify, not rewritten. An interrupted rename re-runs idempotently.",
 		Args: usageArgs(cobra.ExactArgs(2)),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -202,7 +203,7 @@ func (e *engine) rekeyRegistry(oldName, newName string) error {
 	}
 	entry, ok := reg.Scopes[oldName]
 	if !ok {
-		// Already re-keyed (idempotent); check before uniqueness refuse.
+		// Already re-keyed (idempotent); leftover lens/me under oldName stay unused.
 		return nil
 	}
 	if taken, exists := reg.Scopes[newName]; exists {
@@ -215,6 +216,10 @@ func (e *engine) rekeyRegistry(oldName, newName string) error {
 	if err := store.WriteRegistry(reg.Scopes); err != nil {
 		return err
 	}
+	return rekeySessionMaps(store, reg, oldName, newName)
+}
+
+func rekeySessionMaps(store *registry.Store, reg *registry.Registry, oldName, newName string) error {
 	if lens, ok := reg.Lens[oldName]; ok {
 		delete(reg.Lens, oldName)
 		reg.Lens[newName] = lens
@@ -222,7 +227,31 @@ func (e *engine) rekeyRegistry(oldName, newName string) error {
 			return err
 		}
 	}
+	// me is a bookmark whose value is a full ticket id. Rename rewrites those
+	// ids, so the pointer is dropped rather than rewritten — including any
+	// leftover already stored under the new name.
+	dropped := false
+	if _, ok := reg.Me[oldName]; ok {
+		delete(reg.Me, oldName)
+		dropped = true
+	}
+	if _, ok := reg.Me[newName]; ok {
+		delete(reg.Me, newName)
+		dropped = true
+	}
+	if dropped {
+		if err := store.WriteMe(reg.Me); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func rewriteFullID(full, oldName, newName string) string {
+	if id.IsFullTicketID(full) && scopeOfFullID(full) == oldName {
+		return newName + strings.TrimPrefix(full, oldName)
+	}
+	return full
 }
 
 // reindexRenamed loads the new name from disk; pruneForgotten drops the old
@@ -298,11 +327,7 @@ func rekeyEdges(list []string, oldName, newName string) []string {
 	}
 	out := make([]string, len(list))
 	for i, e := range list {
-		if id.IsFullTicketID(e) && scopeOfFullID(e) == oldName {
-			out[i] = newName + strings.TrimPrefix(e, oldName)
-		} else {
-			out[i] = e
-		}
+		out[i] = rewriteFullID(e, oldName, newName)
 	}
 	return out
 }

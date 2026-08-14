@@ -16,6 +16,8 @@ func TestParseIDArgClassification(t *testing.T) {
 		{"2abc", idShort, false},     // short form, leading digit
 		{"ab", idShort, false},       // short form, too short
 		{"AB2C", idShort, false},     // short form, uppercase
+		{"me", idMe, true},           // reserved resolver token
+		{"ME", idShort, false},       // reserved token is lowercase only
 	}
 	for _, c := range cases {
 		form, ok := parseIDArg(c.tok)

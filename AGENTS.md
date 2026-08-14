@@ -80,7 +80,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `atomicfile` — same-dir temp write plus rename, so no reader sees a half-written file
   - `gitroot` — `git rev-parse` code-root/git-root derivation
   - `scopeconfig` — scope `tk.cue` evaluation into the validated `ScopeSchema`
-  - `registry` — the XDG registry/lens model, CUE read + atomic regenerate
+  - `registry` — the XDG registry/lens/me model, CUE read + atomic regenerate
   - `resolve` — ambient scope resolution and name-drift fail-closed
   - `scopeadmin` — scope verbs and the shared registration checks
   - `index` — the machine-wide SQLite read model (WAL, FTS5, tickets + edges)

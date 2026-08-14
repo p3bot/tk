@@ -367,7 +367,7 @@ func runMetaMutate(app *App, c *cobra.Command, op metaOp, idArg, key, valueArg, 
 	}
 
 	if key == frontmatter.KeyDepends || key == frontmatter.KeyRelated {
-		value, err = normaliseEdgeValue(scope, value)
+		value, err = e.normaliseEdgeValue(scope, value)
 		if err != nil {
 			return err
 		}
@@ -444,16 +444,20 @@ func loadMetaValue(c *cobra.Command, valueArg string) (string, error) {
 	return s, nil
 }
 
-// normaliseEdgeValue expands short ids in the subject scope; malformed → exit 2.
-func normaliseEdgeValue(subjectScope, value string) (string, error) {
+// normaliseEdgeValue expands short ids and reserved me in the subject scope; malformed → exit 2.
+func (e *engine) normaliseEdgeValue(subjectScope, value string) (string, error) {
 	form, ok := parseIDArg(value)
 	if !ok {
 		return "", usageErrorf("%q is not a valid ticket id", value)
 	}
-	if form == idShort {
-		return subjectScope + "-" + value, nil
+	lookup, lookupForm, err := e.expandReservedID(subjectScope, value, form)
+	if err != nil {
+		return "", err
 	}
-	return value, nil
+	if lookupForm == idShort {
+		return subjectScope + "-" + lookup, nil
+	}
+	return lookup, nil
 }
 
 // checkDependsAdd: self/same-scope missing hard refuse; cross-scope needs a live row.

@@ -43,12 +43,18 @@ func (e *engine) resolveTicket(c *cobra.Command, idArg, scopeFlag string) (*reso
 		return nil, fmt.Errorf("cannot resolve %q: scope %q is not reachable", idArg, scope)
 	}
 
+	lookupArg, lookupForm, err := e.expandReservedID(scope, idArg, form)
+	if err != nil {
+		e.printWarnings(c, res.Warnings)
+		return nil, err
+	}
+
 	var rows []*index.Ticket
-	switch form {
+	switch lookupForm {
 	case idFull:
-		rows, err = e.db.TicketsByID(scope, idArg)
+		rows, err = e.db.TicketsByID(scope, lookupArg)
 	default:
-		rows, err = e.db.TicketsByShortID(scope, idArg)
+		rows, err = e.db.TicketsByShortID(scope, lookupArg)
 	}
 	if err != nil {
 		e.printWarnings(c, res.Warnings)
@@ -89,6 +95,19 @@ func (e *engine) scopeForID(idArg string, form idForm, scopeFlag string) (string
 		return "", err
 	}
 	return resolved.Name, nil
+}
+
+// expandReservedID turns reserved "me" into the stored full id for scope.
+// Unset is an unknown ticket id (generic non-zero), not usage.
+func (e *engine) expandReservedID(scope, idArg string, form idForm) (string, idForm, error) {
+	if form != idMe {
+		return idArg, form, nil
+	}
+	stored := e.reg.Me[scope]
+	if stored == "" {
+		return "", 0, fmt.Errorf("unknown ticket id %q", reservedMe)
+	}
+	return stored, idFull, nil
 }
 
 func duplicateRefusal(rows []*index.Ticket) error {

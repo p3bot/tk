@@ -22,6 +22,7 @@ var statusKeys = []string{
 	"resolved",
 	"mode",
 	"lens",
+	"me",
 	"total",
 	"todo",
 	"review",
@@ -72,7 +73,7 @@ func newStatusCmd(app *App) *cobra.Command {
 			"are usage exit 2. The attribute path builds the same pulse map as the full\n" +
 			"dashboard (same reconcile, next selection, counts, integrity, stderr tokens).\n" +
 			"\n" +
-			"Locked keys (order fixed): scope, dir, resolved, mode, lens, total, todo,\n" +
+			"Locked keys (order fixed): scope, dir, resolved, mode, lens, me, total, todo,\n" +
 			"review, in-progress, blocked, draft, backlog, done, cancelled, next, claimed,\n" +
 			"blocked_ids, dangling, integrity, uncommitted.\n" +
 			"\n" +
@@ -85,6 +86,9 @@ func newStatusCmd(app *App) *cobra.Command {
 			"no git-root → plain-files. When the schema is unusable, mode is plain-files and\n" +
 			"config_unparseable: rides stderr — do not read plain-files as healthy host files\n" +
 			"without checking stderr. uncommitted is non-zero only in repo-driven mode.\n" +
+			"\n" +
+			"me is the stored full ticket id of this machine's current-ticket pointer, or\n" +
+			"empty if unset. It is never a path.\n" +
 			"\n" +
 			"The active lens filters the working board (non-terminal status counts, claimed,\n" +
 			"blocked_ids) the same way bare list and tk next do. total is the full-scope\n" +
@@ -173,6 +177,7 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 		"resolved": resolved.Source,
 		"mode":     mode,
 		"lens":     strings.Join(lens, " "),
+		"me":       e.reg.Me[scope],
 	}
 
 	var (

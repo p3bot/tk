@@ -77,12 +77,15 @@ func writeTicketFile(path string, m *frontmatter.Model, body []byte) error {
 
 // resolveSingleRow: 0 → unknown (noun-worded); >1 → duplicate_id; no row-level policy.
 func (e *engine) resolveSingleRow(scope, idArg string, form idForm, noun string) (*index.Ticket, error) {
+	lookupArg, lookupForm, err := e.expandReservedID(scope, idArg, form)
+	if err != nil {
+		return nil, err
+	}
 	var rows []*index.Ticket
-	var err error
-	if form == idFull {
-		rows, err = e.db.TicketsByID(scope, idArg)
+	if lookupForm == idFull {
+		rows, err = e.db.TicketsByID(scope, lookupArg)
 	} else {
-		rows, err = e.db.TicketsByShortID(scope, idArg)
+		rows, err = e.db.TicketsByShortID(scope, lookupArg)
 	}
 	if err != nil {
 		return nil, err

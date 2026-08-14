@@ -83,6 +83,19 @@ func TestRequiredSectionsOnly(t *testing.T) {
 	}
 }
 
+func TestSkillDoesNotTeachMe(t *testing.T) {
+	text := skill.Text()
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "tk me" || strings.HasPrefix(trimmed, "tk me ") {
+			t.Errorf("skill must not teach tk me as a verb: %q", line)
+		}
+	}
+	if !strings.Contains(text, "registry, lens, and me only") {
+		t.Error("skill forget line must name the me entry alongside registry and lens")
+	}
+}
+
 func TestNoDesignDependency(t *testing.T) {
 	// skill.md is sole runtime contract; body and production sources must not load design.md.
 	text := skill.Text()

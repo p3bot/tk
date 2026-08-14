@@ -78,6 +78,9 @@ func TestStatusDashboardKeyOrderAndCounts(t *testing.T) {
 	if p["lens"] != "" {
 		t.Errorf("lens should be empty, got %q", p["lens"])
 	}
+	if p["me"] != "" {
+		t.Errorf("me should be empty, got %q", p["me"])
+	}
 	if p["total"] != "8" {
 		t.Errorf("total = %q want 8 (all parseable tickets, not bare-list only)", p["total"])
 	}

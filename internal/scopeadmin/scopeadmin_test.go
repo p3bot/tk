@@ -403,6 +403,9 @@ func TestForget(t *testing.T) {
 	if err := store.WriteLens(map[string][]string{"fg": {"t"}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.WriteMe(map[string]string{"fg": "fg-aa22"}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := h.admin.Forget("fg"); err != nil {
 		t.Fatalf("Forget: %v", err)
@@ -413,6 +416,9 @@ func TestForget(t *testing.T) {
 	}
 	if _, ok := reg.Lens["fg"]; ok {
 		t.Error("lens still present after forget")
+	}
+	if _, ok := reg.Me["fg"]; ok {
+		t.Error("me still present after forget")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "tk.cue")); err != nil {
 		t.Error("forget must not touch scope files")

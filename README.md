@@ -60,11 +60,12 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
 - `import` registers an existing on-disk scope, files in place; its name and
   auto-commit mode come from the on-disk `tk.cue`.
 - `rebind` rewrites a registered scope's paths after a move or clone.
-- `forget` unregisters a scope (registry and lens entries only); it never touches
+- `forget` unregisters a scope (registry, lens, and me entries only); it never touches
   the scope's files.
 - `list` prints parse-stable TSV, one line per scope: `name\tdir\troot\tmode`,
   where `mode` is `tk-driven`, `repo-driven`, `plain-files`, or `unknown`.
-- `rename` renames a scope end-to-end (registry, lens, `tk.cue` name, ticket ids).
+- `rename` renames a scope end-to-end (registry, lens, `tk.cue` name, ticket ids)
+  and drops this machine's current-ticket pointer for that scope.
 - `field` reads and rewrites custom field declarations under `fields:` in the
   ambient scope's `tk.cue` (`list`, `set`, `unset`). Optional `required` is soft
   policy only (`required_missing:` on meta/mark; never a hard refuse).

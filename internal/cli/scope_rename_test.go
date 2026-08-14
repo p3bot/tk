@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/p3bot/tk/internal/registry"
 )
 
 func TestScopeRenameEndToEnd(t *testing.T) {
@@ -197,6 +199,217 @@ func TestScopeRenameRefusesNameTakenUnderLock(t *testing.T) {
 	}
 	if strings.Contains(list, "core\t"+wcDir) {
 		t.Errorf("the renamed scope must not have taken over the core key, got %q", list)
+	}
+}
+
+func TestScopeRenameUnknownOldLeavesSessionMaps(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "")
+	if _, _, err := run(t, app, "me", "wc-ab2c", "--scope", "wc"); err != nil {
+		t.Fatalf("set me: %v", err)
+	}
+	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
+		t.Fatalf("set lens: %v", err)
+	}
+
+	// Crash after WriteRegistry: scopes already on core, maps still on wc.
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"core\"\nautoCommit: false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	reg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := reg.Scopes["wc"]
+	delete(reg.Scopes, "wc")
+	reg.Scopes["core"] = entry
+	if err := store.WriteRegistry(reg.Scopes); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = run(t, app, "scope", "rename", "wc", "core")
+	if err == nil {
+		t.Fatal("rename of an unregistered name must refuse, not attach leftover maps")
+	}
+	if !strings.Contains(err.Error(), `unknown scope "wc"`) {
+		t.Errorf("want unknown scope, got %v", err)
+	}
+	reg, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reg.Me["wc"]; got != "wc-ab2c" {
+		t.Errorf("leftover me must stay under the old key, got %q", got)
+	}
+	if _, ok := reg.Me["core"]; ok {
+		t.Error("leftover me must not be attached to the live scope")
+	}
+	if got := reg.Lens["wc"]; len(got) != 1 || got[0] != "frontend" {
+		t.Errorf("leftover lens must stay under the old key, got %v", got)
+	}
+	if _, ok := reg.Lens["core"]; ok {
+		t.Error("leftover lens must not be attached to the live scope")
+	}
+}
+
+func TestScopeRenameUnknownOldDoesNotClobberLiveSessionMaps(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "")
+	if _, _, err := run(t, app, "me", "wc-ab2c", "--scope", "wc"); err != nil {
+		t.Fatalf("set me: %v", err)
+	}
+	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
+		t.Fatalf("set lens: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"core\"\nautoCommit: false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	reg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := reg.Scopes["wc"]
+	delete(reg.Scopes, "wc")
+	reg.Scopes["core"] = entry
+	if err := store.WriteRegistry(reg.Scopes); err != nil {
+		t.Fatal(err)
+	}
+
+	reg.Me["core"] = "core-de34"
+	reg.Lens["core"] = []string{"backend"}
+	if err := store.WriteMe(reg.Me); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteLens(reg.Lens); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = run(t, app, "scope", "rename", "wc", "core")
+	if err == nil {
+		t.Fatal("rename of an unregistered name must refuse")
+	}
+	reg, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reg.Me["core"]; got != "core-de34" {
+		t.Errorf("live me must be untouched, got %q", got)
+	}
+	if got := reg.Me["wc"]; got != "wc-ab2c" {
+		t.Errorf("leftover me must stay under the old key, got %q", got)
+	}
+	if got := reg.Lens["core"]; len(got) != 1 || got[0] != "backend" {
+		t.Errorf("live lens must be untouched, got %v", got)
+	}
+	if got := reg.Lens["wc"]; len(got) != 1 || got[0] != "frontend" {
+		t.Errorf("leftover lens must stay under the old key, got %v", got)
+	}
+}
+
+func TestScopeRenameLeftoverMapsDoNotAttachToUnrelatedScope(t *testing.T) {
+	app := newApp(t)
+	initScope(t, app, "api")
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	if err := store.WriteMe(map[string]string{"ghost": "ghost-ab2c"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteLens(map[string][]string{"ghost": {"frontend"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := run(t, app, "scope", "rename", "ghost", "api")
+	if err == nil {
+		t.Fatal("leftover maps must not make rename of an unknown name succeed")
+	}
+	if !strings.Contains(err.Error(), `unknown scope "ghost"`) {
+		t.Errorf("want unknown scope, got %v", err)
+	}
+	reg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reg.Me["ghost"]; got != "ghost-ab2c" {
+		t.Errorf("ghost me leftover = %q", got)
+	}
+	if _, ok := reg.Me["api"]; ok {
+		t.Error("api must not inherit leftover me")
+	}
+	if got := reg.Lens["ghost"]; len(got) != 1 || got[0] != "frontend" {
+		t.Errorf("ghost lens leftover = %v", got)
+	}
+	if _, ok := reg.Lens["api"]; ok {
+		t.Error("api must not inherit leftover lens")
+	}
+}
+
+func TestScopeRenameClearsOrphanedTargetMeWhenSourceHasNone(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "")
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	if err := store.WriteMe(map[string]string{"core": "core-zzzz"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := run(t, app, "scope", "rename", "wc", "core"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	reg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := reg.Me["core"]; ok {
+		t.Errorf("orphaned target me must be dropped, got %q", reg.Me["core"])
+	}
+	if _, ok := reg.Me["wc"]; ok {
+		t.Error("old me key must stay absent")
+	}
+}
+
+func TestScopeRenameOverwritesOrphanedTargetSessionMaps(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "")
+	if _, _, err := run(t, app, "me", "wc-ab2c", "--scope", "wc"); err != nil {
+		t.Fatalf("set me: %v", err)
+	}
+	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
+		t.Fatalf("set lens: %v", err)
+	}
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	reg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.Me["core"] = "core-zzzz"
+	reg.Lens["core"] = []string{"stale"}
+	if err := store.WriteMe(reg.Me); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteLens(reg.Lens); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := run(t, app, "scope", "rename", "wc", "core"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	reg, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := reg.Me["core"]; ok {
+		t.Errorf("rename must drop me, including an orphaned target, got %q", reg.Me["core"])
+	}
+	if _, ok := reg.Me["wc"]; ok {
+		t.Error("old me key must be gone")
+	}
+	if got := reg.Lens["core"]; len(got) != 1 || got[0] != "frontend" {
+		t.Errorf("rename must overwrite orphaned target lens, got %v", got)
 	}
 }
 

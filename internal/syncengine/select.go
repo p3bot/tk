@@ -1,7 +1,9 @@
-// Package syncengine is tk's sole push boundary: selection policy (auto-commit-only
+// Package syncengine is tk's push machinery: selection policy (auto-commit-only
 // filter, unreachable/disabled/config-error reporting, participants grouped by
 // git-root) and the per-root flow (preflight, lock order, snapshot, fetch/integrate,
 // mid-rebase resume, sync-time integrity via integrity.RunBatches, push-if-ahead).
+// RefreshRoot and PushRootIfAhead are acquiring wrappers for the claim workflow
+// (refresh does not resume a mid-rebase and does not push).
 // Cobra-free; the composition root supplies ambient or all-registered inputs.
 package syncengine
 
@@ -28,7 +30,7 @@ type Target struct {
 	Participants []Participant
 }
 
-// Selection is the structured outcome of sole-push-boundary target selection.
+// Selection is the structured outcome of auto-commit git-root target selection.
 type Selection struct {
 	Targets     []Target
 	Disabled    []string
@@ -52,7 +54,7 @@ type AmbientScope struct {
 	Dir  string
 }
 
-// Select applies sole-push-boundary selection policy and returns structured results.
+// Select applies auto-commit git-root selection policy and returns structured results.
 func Select(deps Deps, in Input) (Selection, error) {
 	if in.AllRegistered {
 		return allSelection(deps), nil

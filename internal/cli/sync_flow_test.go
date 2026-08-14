@@ -44,14 +44,14 @@ func TestSyncMultiStopRebaseCompletes(t *testing.T) {
 	b := cloneMachine(t, remote)
 	dirB := b.importScope(t)
 
-	a.mark(t, "wc-ab2c", "in-progress")
-	a.mark(t, "wc-cd3e", "in-progress")
+	a.mark(t, "wc-ab2c", "review")
+	a.mark(t, "wc-cd3e", "review")
 	if _, _, err := a.sync(t, "--scope", "wc"); err != nil {
 		t.Fatalf("A sync: %v", err)
 	}
 
-	b.mark(t, "wc-ab2c", "review")
-	b.mark(t, "wc-cd3e", "review")
+	b.mark(t, "wc-ab2c", "blocked")
+	b.mark(t, "wc-cd3e", "blocked")
 	_, errOut, err := b.sync(t, "--scope", "wc")
 	if err != nil {
 		t.Fatalf("B multi-stop sync should complete in one invocation: %v (stderr %q)", err, errOut)
@@ -149,15 +149,15 @@ func TestSyncDeleteEditPausesThenResumes(t *testing.T) {
 		t.Fatalf("A delete sync: %v", err)
 	}
 
-	b.mark(t, "wc-ab2c", "in-progress")
+	b.mark(t, "wc-ab2c", "review")
 	_, errOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("delete/edit must pause non-zero, got %v (stderr %q)", err, errOut)
 	}
-	if !strings.Contains(errOut, "delete/edit") || !strings.Contains(errOut, "in-progress") {
+	if !strings.Contains(errOut, "delete/edit") || !strings.Contains(errOut, "review") {
 		t.Errorf("delete/edit should report the surviving status, got %q", errOut)
 	}
-	assertDeleteEditHandoff(t, errOut, "wc/wc-ab2c-alpha.md", "in-progress")
+	assertDeleteEditHandoff(t, errOut, "wc/wc-ab2c-alpha.md", "review")
 
 	pB, _ := findTicket(t, b.scopeDir(), "wc-ab2c-alpha.md")
 	if pB != "" {
@@ -185,19 +185,19 @@ func TestSyncDeleteEditUnactionedRerunPauses(t *testing.T) {
 		t.Fatalf("A delete sync: %v", err)
 	}
 
-	b.mark(t, "wc-ab2c", "in-progress")
+	b.mark(t, "wc-ab2c", "review")
 	_, firstOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
 	}
-	assertDeleteEditHandoff(t, firstOut, "wc/wc-ab2c-alpha.md", "in-progress")
+	assertDeleteEditHandoff(t, firstOut, "wc/wc-ab2c-alpha.md", "review")
 
 	// Nothing touched — the next tk sync must re-pause, not silently resurrect the file.
 	_, secondOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("unactioned re-run must stay paused, got %v (stderr %q)", err, secondOut)
 	}
-	assertDeleteEditHandoff(t, secondOut, "wc/wc-ab2c-alpha.md", "in-progress")
+	assertDeleteEditHandoff(t, secondOut, "wc/wc-ab2c-alpha.md", "review")
 	assertSameDeleteEditLine(t, firstOut, secondOut)
 	if remoteHas(t, remote, "wc/wc-ab2c-alpha.md") {
 		t.Errorf("unactioned re-run must not push the resurrected survivor; remote still carries the deletion")
@@ -216,7 +216,7 @@ func TestSyncDeleteEditModifiedResumes(t *testing.T) {
 		t.Fatalf("A delete sync: %v", err)
 	}
 
-	b.mark(t, "wc-ab2c", "in-progress")
+	b.mark(t, "wc-ab2c", "review")
 	if _, _, err := b.sync(t, "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("expected delete/edit pause, got %v", err)
 	}
@@ -246,7 +246,7 @@ func TestSyncDeleteEditGitAddResumes(t *testing.T) {
 		t.Fatalf("A delete sync: %v", err)
 	}
 
-	b.mark(t, "wc-ab2c", "in-progress")
+	b.mark(t, "wc-ab2c", "review")
 	if _, _, err := b.sync(t, "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("expected delete/edit pause, got %v", err)
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/resolve"
+	"github.com/p3bot/tk/internal/syncengine"
 )
 
 type engine struct {
@@ -40,6 +41,17 @@ func nowNS() int64 { return time.Now().UnixNano() }
 func (e *engine) close() {
 	if e != nil && e.db != nil {
 		_ = e.db.Close()
+	}
+}
+
+func (e *engine) syncDeps(c *cobra.Command) syncengine.Deps {
+	return syncengine.Deps{
+		Ctx:      c.Context(),
+		Cue:      e.app.Ctx,
+		StateDir: e.app.StateDir,
+		Reg:      e.reg,
+		DB:       e.db,
+		Rec:      e.rec,
 	}
 }
 

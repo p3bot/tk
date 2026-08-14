@@ -9,20 +9,24 @@ import (
 	"github.com/p3bot/tk/internal/syncengine"
 )
 
-// newSyncCmd is the sole push boundary (autoCommit scopes only).
+// newSyncCmd pushes an auto-commit git-root. Claim (todo→in-progress on a
+// tk-driven root with an upstream) also refreshes and pushes that root.
 func newSyncCmd(app *App) *cobra.Command {
 	var scope string
 	var all bool
 	cmd := &cobra.Command{
 		Use:   "sync [--scope S] [--all]",
 		Short: "Snapshot, fetch, integrate, repair, and push an auto-commit git-root",
-		Long: "Sync is tk's only push boundary and applies only to auto-commit scopes. It\n" +
-			"snapshots allowlisted dirty files in one commit, fetches and rebases the remote\n" +
+		Long: "Sync snapshots allowlisted dirty files, fetches and rebases the remote\n" +
 			"in, resolves frontmatter conflicts, runs the sync-time integrity repairs, and\n" +
-			"pushes if ahead. With no flag it targets the ambient scope's whole git-root;\n" +
-			"--all (which wins over --scope/TK_SCOPE) syncs every auto-commit git-root, each\n" +
-			"an independent unit whose failure never strands the others. A non-auto-commit\n" +
-			"scope is refused (ambient) or skipped (--all); an empty auto-commit set exits 0.",
+			"pushes if ahead. It applies only to auto-commit scopes. It is not tk's only\n" +
+			"push: on a tk-driven git-root with an upstream, `tk next --claim` and\n" +
+			"`tk mark` todo → in-progress refresh that root and push after the write.\n" +
+			"Never host-push an auto-commit root. With no flag it targets the ambient\n" +
+			"scope's whole git-root; --all (which wins over --scope/TK_SCOPE) syncs every\n" +
+			"auto-commit git-root, each an independent unit whose failure never strands\n" +
+			"the others. A non-auto-commit scope is refused (ambient) or skipped (--all);\n" +
+			"an empty auto-commit set exits 0.",
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runSync(app, c, scope, all)
@@ -45,15 +49,7 @@ func runSync(app *App, c *cobra.Command, scopeFlag string, all bool) error {
 		return err
 	}
 
-	deps := syncengine.Deps{
-		Ctx:      c.Context(),
-		Cue:      e.app.Ctx,
-		StateDir: e.app.StateDir,
-		Reg:      e.reg,
-		DB:       e.db,
-		Rec:      e.rec,
-	}
-	result, err := syncengine.Run(deps, cobraReporter{c: c}, in)
+	result, err := syncengine.Run(e.syncDeps(c), cobraReporter{c: c}, in)
 	if err != nil {
 		return err
 	}

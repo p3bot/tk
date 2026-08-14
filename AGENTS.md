@@ -14,12 +14,12 @@ verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `field`); the 
 SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
 `status`, `get`, `meta`, `next`, `deps`, `search`, `query`, `lens`); the authoring
 hot path (`create`, `mark`, `reorder`, `edit`, `next --claim`) with local git
-self-commit;
+self-commit, and claim-time refresh/push on a tk-driven root with an upstream;
 `tk doctor` with its integrity repairs and the closed token catalogue; P6a's
 frontmatter merge package (`internal/fmmerge`), the rebase driver
 (`internal/rebasedriver`), and the read/integrate/push half of the git wrapper;
-P6b's `tk sync` — the sole push boundary (snapshot, fetch-and-integrate, sync-time
-integrity, push), the per-git-root preflight, the layer-4 resume contract, the `--all`
+P6b's `tk sync` and claim push — snapshot, fetch-and-integrate, sync-time
+integrity, push (claim reuses the refresh and push-if-ahead wrappers), the per-git-root preflight, the layer-4 resume contract, the `--all`
 per-root failure isolation, and the reentrant lock span (self-commit and repair
 orchestration split into acquiring wrappers over locks-held cores); and P7's
 `tk skill` — the agent contract (embedded `skill.md` as the sole runtime source:
@@ -32,8 +32,8 @@ tests; no design-doc dependency) plus agentdex-backed `skill install`/`list`/
   mint both forbid a leading digit); any `<scope>-<short-id>` example follows
   that rule.
 - Do not invent behaviour that contradicts closed contracts already in code
-  (token catalogue, id/order/slug grammars, exit codes, sole push boundary). If
-  behaviour is unclear, flag it rather than guessing from archive prose.
+  (token catalogue, id/order/slug grammars, exit codes, tk-owned push — never
+  host push). If behaviour is unclear, flag it rather than guessing from archive prose.
 
 ## Ticket documents and archiving
 
@@ -95,7 +95,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `rebasedriver` — resolves one conflicted ticket `.md` at a paused rebase (P6a)
   - `scopefile` — scope-dir allowlist classification, dirty counting, and per-scope flock acquire
   - `integrity` — doctor diagnose report and shared repair orchestration (acquiring + locks-held core)
-  - `syncengine` — sole push boundary: selection policy and per-root snapshot/integrate/integrity/push
+  - `syncengine` — per-root snapshot/integrate/integrity/push; `tk sync` and claim
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
   - `cli` — Cobra command tree, exit codes, signals, colour/TTY, path hand-off
 
@@ -119,7 +119,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
 | Unicode | `golang.org/x/text` | NFKC normalisation for `slugify` (Go has no stdlib normalisation). |
 | Config | CUE (`cuelang.org/go`) | Typed, validated schema for scope config and frontmatter. |
 | Index | SQLite (`modernc.org/sqlite`) | Pure Go, FTS5 compiled in, WAL mode. |
-| Version control | External `git` binary | Shelled out, owner `tk` scopes only. Full commit and read/integrate/push surface built (P6a); `tk sync` is the sole push boundary and wires it (P6b). |
+| Version control | External `git` binary | Shelled out, owner `tk` scopes only. Full commit and read/integrate/push surface built (P6a); `tk sync` and claim (todo→in-progress) are the tk-owned push paths (P6b). |
 
 TIP: Both `modernc.org/sqlite` and `cuelang.org/go` are pure Go by design. Do not
 introduce a cgo-based SQLite driver (e.g. `mattn/go-sqlite3`) — it breaks the

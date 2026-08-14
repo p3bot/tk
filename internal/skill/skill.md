@@ -21,6 +21,7 @@ description: >-
 - Do not hand-edit frontmatter keys and values
 - Paths and table data on stdout; tokens and warnings on stderr
 - tk writes take a per-scope flock; prefer `tk next --claim` so agents do not collide
+- todo → in-progress (`next --claim` or `mark`) on a tk-driven root with an upstream refreshes that root and pushes; never host-push
 - Active files live at the scope dir root; terminal status moves them to archive/
 - Built-in statuses: draft, backlog, todo, in-progress, review, blocked, done, cancelled
 - The todo status is next-eligible
@@ -69,7 +70,7 @@ tk scope rename <old> <new>                                         # Rename sco
 tk scope field list [--scope S]                                     # List custom fields: (name type required values)
 tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # Upsert field; full replace from flags (omit --required demotes)
 tk scope field unset <name> [--scope S]                             # Remove field declaration only (tickets untouched)
-tk sync [--scope S] [--all]                                         # Sole push boundary (auto-commit roots)
+tk sync [--scope S] [--all]                                         # Snapshot/integrate/push auto-commit roots (claim also pushes)
 tk doctor [--reindex] [--repair] [--re-space-order] [--all]         # Diagnose integrity; optional repair
 tk skill                                                            # Print this agent skill contract
 tk skill install [agents...] [--local]                              # Install into agentdex skills roots
@@ -102,7 +103,7 @@ Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next` (m
 Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `field list|set|unset`
 
 Durability (`tk status mode`):
-- tk-driven: mutators self-commit -> `tk sync` (sole push; never host push/rebase)
+- tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
   - Commands that self commit: mark, reorder, next --claim, meta set/add/rm, scope field set|unset, scope rename
   - Create and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push

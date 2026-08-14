@@ -950,7 +950,7 @@ func TestTkDrivenSelfCommitSyncNeededUnpushed(t *testing.T) {
 	gitIn(t, m.clone, "commit", "-m", "seed scope")
 	gitIn(t, m.clone, "push", "-u", "origin", "main")
 
-	_, errOut, err := run(t, m.app, "mark", "wc-ab2c", "in-progress")
+	_, errOut, err := run(t, m.app, "mark", "wc-ab2c", "review")
 	if err != nil {
 		t.Fatalf("tk-driven mark: %v", err)
 	}
@@ -979,7 +979,7 @@ func TestTkDrivenWriteSyncNeededPushFailed(t *testing.T) {
 	if err := gitstate.WriteLastPushError(m.app.StateDir, m.clone, "auth failed"); err != nil {
 		t.Fatal(err)
 	}
-	_, errOut, err := run(t, m.app, "mark", "wc-ab2c", "in-progress")
+	_, errOut, err := run(t, m.app, "mark", "wc-ab2c", "review")
 	if err != nil {
 		t.Fatalf("tk-driven mark: %v", err)
 	}
@@ -1005,6 +1005,9 @@ func TestMidRebaseRefusesWrites(t *testing.T) {
 	}
 	if _, _, err := run(t, app, "mark", id, "todo"); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("mid-rebase mark should refuse non-zero, got %v", err)
+	}
+	if _, _, err := run(t, app, "next", "--claim", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
+		t.Errorf("mid-rebase next --claim should refuse non-zero, got %v", err)
 	}
 	if _, _, err := run(t, app, "create", "New", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("mid-rebase create should refuse non-zero, got %v", err)

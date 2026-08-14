@@ -30,7 +30,9 @@ func newMarkCmd(app *App) *cobra.Command {
 			"changes into built-in done, a soft required_missing: warning is emitted if any\n" +
 			"scope-declared required fields are absent or empty (same-status re-mark and\n" +
 			"cancelled stay quiet). An auto-commit scope self-commits the change when a\n" +
-			"git-root exists. A quarantined or duplicate-id ticket is refused with no write.\n" +
+			"git-root exists. todo → in-progress on a tk-driven git-root with an upstream is a\n" +
+			"claim: refresh that root, re-check the ticket is still todo, write, then push.\n" +
+			"A quarantined or duplicate-id ticket is refused with no write.\n" +
 			"For a scope pulse (counts, next, integrity), use `tk status`.",
 		Args: usageArgs(cobra.ExactArgs(2)),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -87,7 +89,6 @@ func runMark(app *App, c *cobra.Command, idArg, newStatus, scopeFlag string) err
 	if err := checkMidRebase(ctx, scope, autoCommit, root, hasRoot); err != nil {
 		return err
 	}
-	e.printWarnings(c, res.Warnings)
 
 	p, err := e.resolveWriteRow(scope, idArg, form)
 	if err != nil {
@@ -99,6 +100,20 @@ func runMark(app *App, c *cobra.Command, idArg, newStatus, scopeFlag string) err
 		return err
 	}
 	oldStatus := m.Status
+	if oldStatus == status.Todo && newStatus == status.InProgress {
+		_ = lock.Release()
+		return e.runClaimWorkflow(c, claimReq{
+			kind:       claimMarkID,
+			scope:      scope,
+			dir:        dir,
+			autoCommit: autoCommit,
+			root:       root,
+			hasRoot:    hasRoot,
+			idArg:      idArg,
+			form:       form,
+		})
+	}
+	e.printWarnings(c, res.Warnings)
 	wasTerminal := status.IsTerminal(oldStatus, custom)
 	nowTerminal := status.IsTerminal(newStatus, custom)
 	m.Status = newStatus

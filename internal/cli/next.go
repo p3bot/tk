@@ -25,8 +25,9 @@ func newNextCmd(app *App) *cobra.Command {
 			"and not a duplicate-id collision. Print its absolute path. An empty queue is\n" +
 			"diagnosed distinctly: blocked-by-deps vs genuinely empty vs lens-emptied.\n" +
 			"Without --claim it is a pure read that never runs git. With --claim it is the\n" +
-			"start-work write: the first still-eligible candidate is set to in-progress under\n" +
-			"the scope flock and self-committed on an auto-commit scope with a git-root.",
+			"start-work write: on a tk-driven git-root with an upstream the board is refreshed\n" +
+			"first, then the first still-eligible candidate is set to in-progress, self-committed,\n" +
+			"and pushed. Without an upstream the claim stays a local write and self-commit.",
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(c *cobra.Command, _ []string) error {
 			if claim {

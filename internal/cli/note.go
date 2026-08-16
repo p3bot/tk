@@ -22,8 +22,9 @@ const noteFileMode = 0o644
 func newNoteCmd(app *App) *cobra.Command {
 	var scope, name string
 	cmd := &cobra.Command{
-		Use:   "note [slug]",
-		Short: "Read and write committed scope notes",
+		Use:     "note [slug]",
+		Aliases: []string{"notes"},
+		Short:   "Read and write committed scope notes",
 		Long: "Scope worklog documents at <scope-dir>/notes/<slug>.md. Bare `tk note` (or a\n" +
 			"slug / --name) prints the file bytes. Missing and empty files are empty stdout,\n" +
 			"exit 0. `list` prints addressable slugs, one per line, alphabetical.\n" +
@@ -35,7 +36,7 @@ func newNoteCmd(app *App) *cobra.Command {
 			"sync_needed: when the allowlist is dirty (same as create); edit does not.\n" +
 			"Durability is `tk sync` on a tk-driven scope, or a host commit on a\n" +
 			"repo-driven scope. Notes are not tickets: they are not indexed, not listed\n" +
-			"by `tk list`, and not taught in `tk skill`.",
+			"by `tk list`, and not taught in `tk skill`. Alias: notes.",
 		Args: usageArgs(cobra.MaximumNArgs(1)),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runNoteCat(app, c, args, scope, name, c.Flags().Changed("name"))

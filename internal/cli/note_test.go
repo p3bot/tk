@@ -504,8 +504,71 @@ func TestNoteSkillUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("skill: %v", err)
 	}
-	if strings.Contains(out, "tk note") {
+	if strings.Contains(out, "tk note") || strings.Contains(out, "tk notes") {
 		t.Errorf("skill must not document tk note")
+	}
+}
+
+func TestNoteNotesAliasParity(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+
+	primary, pErrOut, pErr := run(t, app, "note", "--scope", "wc")
+	alias, aErrOut, aErr := run(t, app, "notes", "--scope", "wc")
+	if pErr != nil || aErr != nil {
+		t.Fatalf("missing cat: note=%v notes=%v", pErr, aErr)
+	}
+	if alias != primary || aErrOut != pErrOut {
+		t.Errorf("notes cat != note: out %q/%q errOut %q/%q", alias, primary, aErrOut, pErrOut)
+	}
+
+	pPath, _, pErr := run(t, app, "note", "add", "--name", "decisions", "hello", "--scope", "wc")
+	if pErr != nil {
+		t.Fatalf("note add: %v", pErr)
+	}
+	wantPath := namedNotePath(dir, "decisions")
+	if strings.TrimSpace(pPath) != wantPath {
+		t.Fatalf("note add path = %q want %q", pPath, wantPath)
+	}
+
+	aPath, _, aErr := run(t, app, "notes", "add", "line two", "--scope", "wc")
+	if aErr != nil {
+		t.Fatalf("notes add: %v", aErr)
+	}
+	if strings.TrimSpace(aPath) != defaultNotePath(dir) {
+		t.Errorf("notes add path = %q want %q", aPath, defaultNotePath(dir))
+	}
+
+	pList, pErrOut, pErr := run(t, app, "note", "list", "--scope", "wc")
+	aList, aErrOut, aErr := run(t, app, "notes", "list", "--scope", "wc")
+	if pErr != nil || aErr != nil {
+		t.Fatalf("list: note=%v notes=%v", pErr, aErr)
+	}
+	if aList != pList || aErrOut != pErrOut {
+		t.Errorf("notes list != note list: %q/%q errOut %q/%q", aList, pList, aErrOut, pErrOut)
+	}
+	if pList != "decisions\ndefault\n" {
+		t.Errorf("list = %q", pList)
+	}
+
+	pCat, pErrOut, pErr := run(t, app, "note", "decisions", "--scope", "wc")
+	aCat, aErrOut, aErr := run(t, app, "notes", "decisions", "--scope", "wc")
+	if pErr != nil || aErr != nil {
+		t.Fatalf("named cat: note=%v notes=%v", pErr, aErr)
+	}
+	if aCat != pCat || aErrOut != pErrOut {
+		t.Errorf("notes named cat != note: %q/%q", aCat, pCat)
+	}
+	if pCat != "hello\n" {
+		t.Errorf("named cat = %q", pCat)
+	}
+
+	help, _, err := run(t, app, "notes", "--help")
+	if err != nil {
+		t.Fatalf("notes --help: %v", err)
+	}
+	if !strings.Contains(help, "Alias: notes.") {
+		t.Errorf("help must name the notes alias, got:\n%s", help)
 	}
 }
 

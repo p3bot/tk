@@ -75,7 +75,7 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
 Each scope can keep committed markdown worklogs at `<scope-dir>/notes/<slug>.md`.
 They are not tickets: `tk list` does not show them, they are not indexed, and
 they are not part of the agent skill. Humans (or an agent that needs session
-context) use `tk note`.
+context) use `tk note` (`notes` is an alias).
 
 ```sh
 tk note                              # print notes/default.md

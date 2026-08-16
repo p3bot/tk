@@ -212,6 +212,9 @@ func TestScopeRenameUnknownOldLeavesSessionMaps(t *testing.T) {
 	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
 		t.Fatalf("set lens: %v", err)
 	}
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatalf("set note: %v", err)
+	}
 
 	// Crash after WriteRegistry: scopes already on core, maps still on wc.
 	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"core\"\nautoCommit: false\n"), 0o644); err != nil {
@@ -252,6 +255,12 @@ func TestScopeRenameUnknownOldLeavesSessionMaps(t *testing.T) {
 	if _, ok := reg.Lens["core"]; ok {
 		t.Error("leftover lens must not be attached to the live scope")
 	}
+	if got := reg.Note["wc"]; got != "grant" {
+		t.Errorf("leftover note must stay under the old key, got %q", got)
+	}
+	if _, ok := reg.Note["core"]; ok {
+		t.Error("leftover note must not be attached to the live scope")
+	}
 }
 
 func TestScopeRenameUnknownOldDoesNotClobberLiveSessionMaps(t *testing.T) {
@@ -263,6 +272,9 @@ func TestScopeRenameUnknownOldDoesNotClobberLiveSessionMaps(t *testing.T) {
 	}
 	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
 		t.Fatalf("set lens: %v", err)
+	}
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatalf("set note: %v", err)
 	}
 
 	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"core\"\nautoCommit: false\n"), 0o644); err != nil {
@@ -282,10 +294,14 @@ func TestScopeRenameUnknownOldDoesNotClobberLiveSessionMaps(t *testing.T) {
 
 	reg.Me["core"] = "core-de34"
 	reg.Lens["core"] = []string{"backend"}
+	reg.Note["core"] = "alice"
 	if err := store.WriteMe(reg.Me); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.WriteLens(reg.Lens); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteNote(reg.Note); err != nil {
 		t.Fatal(err)
 	}
 
@@ -309,6 +325,12 @@ func TestScopeRenameUnknownOldDoesNotClobberLiveSessionMaps(t *testing.T) {
 	if got := reg.Lens["wc"]; len(got) != 1 || got[0] != "frontend" {
 		t.Errorf("leftover lens must stay under the old key, got %v", got)
 	}
+	if got := reg.Note["core"]; got != "alice" {
+		t.Errorf("live note must be untouched, got %q", got)
+	}
+	if got := reg.Note["wc"]; got != "grant" {
+		t.Errorf("leftover note must stay under the old key, got %q", got)
+	}
 }
 
 func TestScopeRenameLeftoverMapsDoNotAttachToUnrelatedScope(t *testing.T) {
@@ -319,6 +341,9 @@ func TestScopeRenameLeftoverMapsDoNotAttachToUnrelatedScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.WriteLens(map[string][]string{"ghost": {"frontend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteNote(map[string]string{"ghost": "grant"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -344,6 +369,12 @@ func TestScopeRenameLeftoverMapsDoNotAttachToUnrelatedScope(t *testing.T) {
 	}
 	if _, ok := reg.Lens["api"]; ok {
 		t.Error("api must not inherit leftover lens")
+	}
+	if got := reg.Note["ghost"]; got != "grant" {
+		t.Errorf("ghost note leftover = %q", got)
+	}
+	if _, ok := reg.Note["api"]; ok {
+		t.Error("api must not inherit leftover note")
 	}
 }
 
@@ -371,6 +402,30 @@ func TestScopeRenameClearsOrphanedTargetMeWhenSourceHasNone(t *testing.T) {
 	}
 }
 
+func TestScopeRenameLeavesOrphanedTargetNoteWhenSourceHasNone(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "")
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	if err := store.WriteNote(map[string]string{"core": "alice"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := run(t, app, "scope", "rename", "wc", "core"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	reg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reg.Note["core"]; got != "alice" {
+		t.Errorf("orphaned target note must stay when source has none, got %q", got)
+	}
+	if _, ok := reg.Note["wc"]; ok {
+		t.Error("old note key must stay absent")
+	}
+}
+
 func TestScopeRenameOverwritesOrphanedTargetSessionMaps(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
@@ -381,6 +436,9 @@ func TestScopeRenameOverwritesOrphanedTargetSessionMaps(t *testing.T) {
 	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
 		t.Fatalf("set lens: %v", err)
 	}
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatalf("set note: %v", err)
+	}
 	store := registry.NewStore(app.Ctx, app.ConfigDir)
 	reg, err := store.Load()
 	if err != nil {
@@ -388,10 +446,14 @@ func TestScopeRenameOverwritesOrphanedTargetSessionMaps(t *testing.T) {
 	}
 	reg.Me["core"] = "core-zzzz"
 	reg.Lens["core"] = []string{"stale"}
+	reg.Note["core"] = "stale"
 	if err := store.WriteMe(reg.Me); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.WriteLens(reg.Lens); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteNote(reg.Note); err != nil {
 		t.Fatal(err)
 	}
 
@@ -410,6 +472,12 @@ func TestScopeRenameOverwritesOrphanedTargetSessionMaps(t *testing.T) {
 	}
 	if got := reg.Lens["core"]; len(got) != 1 || got[0] != "frontend" {
 		t.Errorf("rename must overwrite orphaned target lens, got %v", got)
+	}
+	if got := reg.Note["core"]; got != "grant" {
+		t.Errorf("rename must overwrite orphaned target note, got %q", got)
+	}
+	if _, ok := reg.Note["wc"]; ok {
+		t.Error("old note key must be gone")
 	}
 }
 

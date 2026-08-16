@@ -56,14 +56,15 @@ func CountAllowlistedDirty(ctx context.Context, dir, root string, hasRoot bool) 
 // NoteDir is the single-level directory of scope worklog documents.
 const NoteDir = "notes"
 
-// NoteDefaultSlug is the document used when --name is omitted (notes/default.md).
+// NoteDefaultSlug is the built-in fallback document when no machine-local
+// default is set (notes/default.md).
 const NoteDefaultSlug = "default"
 
 // IsReservedNoteName reports whether name is a reserved note verb or cobra
 // command (help) and must never be a document.
 func IsReservedNoteName(name string) bool {
 	switch name {
-	case "list", "add", "set", "edit", "delete", "help":
+	case "list", "add", "set", "edit", "delete", "help", "use":
 		return true
 	default:
 		return false

@@ -1,9 +1,9 @@
 // Package registry is the machine-local XDG config tier: which scopes are
-// registered, at which paths, plus the per-scope lens and current-ticket
-// pointer. Reads/writes use the CUE Go modules only; owned files are
-// regenerated wholesale and installed by atomic same-directory rename. An
-// unparseable XDG file is a hard error (nothing to degrade to). Callers hold
-// the machine-global flock; this package does not lock.
+// registered, at which paths, plus the per-scope lens, current-ticket
+// pointer, and default note slug. Reads/writes use the CUE Go modules only;
+// owned files are regenerated wholesale and installed by atomic same-directory
+// rename. An unparseable XDG file is a hard error (nothing to degrade to).
+// Callers hold the machine-global flock; this package does not lock.
 package registry
 
 import (
@@ -23,6 +23,7 @@ const (
 	registryFile = "registry.cue"
 	lensFile     = "lens.cue"
 	meFile       = "me.cue"
+	noteFile     = "note.cue"
 )
 
 // Entry is one scope's registration: two independent absolute paths (git repo is derived from Dir).
@@ -41,6 +42,8 @@ type Registry struct {
 	Lens   map[string][]string
 	// Me is the per-scope current-ticket pointer: one full ticket id, or absent.
 	Me map[string]string
+	// Note is the per-scope default note slug, or absent (built-in default).
+	Note map[string]string
 }
 
 // Store performs CUE I/O for the XDG config tier under a fixed directory.
@@ -54,12 +57,17 @@ func NewStore(ctx *cue.Context, configDir string) *Store {
 	return &Store{ctx: ctx, dir: configDir}
 }
 
-// Load reads registry.cue, lens.cue, and me.cue. Missing files yield empty
-// sections; uncompilable files hard-error. Scope Dir/Root are returned
+// Load reads registry.cue, lens.cue, me.cue, and note.cue. Missing files yield
+// empty sections; uncompilable files hard-error. Scope Dir/Root are returned
 // canonical for path matching; Load never rewrites the file (list may show
 // physical paths while registry.cue still has a pre-heal spelling).
 func (s *Store) Load() (*Registry, error) {
-	reg := &Registry{Scopes: map[string]Entry{}, Lens: map[string][]string{}, Me: map[string]string{}}
+	reg := &Registry{
+		Scopes: map[string]Entry{},
+		Lens:   map[string][]string{},
+		Me:     map[string]string{},
+		Note:   map[string]string{},
+	}
 
 	if v, ok, err := s.compileFile(registryFile); err != nil {
 		return nil, err
@@ -108,6 +116,20 @@ func (s *Store) Load() (*Registry, error) {
 		}
 	}
 
+	if v, ok, err := s.compileFile(noteFile); err != nil {
+		return nil, err
+	} else if ok {
+		var nc struct {
+			Note map[string]string `json:"note"`
+		}
+		if err := v.Decode(&nc); err != nil {
+			return nil, fmt.Errorf("%s is malformed: %w", filepath.Join(s.dir, noteFile), err)
+		}
+		if nc.Note != nil {
+			reg.Note = nc.Note
+		}
+	}
+
 	return reg, nil
 }
 
@@ -150,6 +172,14 @@ func (s *Store) WriteMe(me map[string]string) error {
 		me = map[string]string{}
 	}
 	return s.writeOwned(meFile, map[string]any{"me": me})
+}
+
+// WriteNote regenerates note.cue from note and installs it atomically.
+func (s *Store) WriteNote(note map[string]string) error {
+	if note == nil {
+		note = map[string]string{}
+	}
+	return s.writeOwned(noteFile, map[string]any{"note": note})
 }
 
 // writeOwned encodes model to CUE, formats as a top-level file, and installs via atomic rename.

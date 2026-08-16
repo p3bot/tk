@@ -53,6 +53,7 @@ func TestIsAllowlisted(t *testing.T) {
 		{"notes/edit.md", false},   // reserved verb name
 		{"notes/delete.md", false}, // reserved verb name
 		{"notes/help.md", false},   // cobra help command
+		{"notes/use.md", false},    // reserved verb name
 		{"notes/Not A Slug.md", false},
 		{"notes/foo/bar.md", false}, // nested residue
 		{"note.md", false},          // root *.md stays residue
@@ -77,7 +78,7 @@ func TestNoteSlugAndAddressable(t *testing.T) {
 	if !IsAddressableNoteSlug("default") || !IsAddressableNoteSlug("decisions") {
 		t.Fatal("default and decisions must be addressable")
 	}
-	for _, name := range []string{"list", "add", "set", "edit", "delete", "help"} {
+	for _, name := range []string{"list", "add", "set", "edit", "delete", "help", "use"} {
 		if !IsReservedNoteName(name) || IsAddressableNoteSlug(name) {
 			t.Errorf("%q must be reserved and not addressable", name)
 		}

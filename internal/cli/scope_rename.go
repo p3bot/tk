@@ -28,9 +28,10 @@ func newScopeRenameCmd(app *App) *cobra.Command {
 		Short: "Rename a scope in place (tk.cue, ids, filenames, in-scope edges)",
 		Long: "Rename a scope end to end: rewrite the tk.cue name, the <scope>- prefix of every\n" +
 			"ticket id and filename, and every in-scope depends/related edge, then re-key this\n" +
-			"machine's registry and lens. The machine-local current-ticket pointer is dropped\n" +
-			"(the stored id would go stale). Cross-scope inbound edges live in other repos and are\n" +
-			"reported as edge_verify, not rewritten. An interrupted rename re-runs idempotently.",
+			"machine's registry, lens, and note default. The machine-local current-ticket\n" +
+			"pointer is dropped (the stored id would go stale). Cross-scope inbound edges live\n" +
+			"in other repos and are reported as edge_verify, not rewritten. An interrupted\n" +
+			"rename re-runs idempotently.",
 		Args: usageArgs(cobra.ExactArgs(2)),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runScopeRename(app, c, args[0], args[1])
@@ -203,7 +204,7 @@ func (e *engine) rekeyRegistry(oldName, newName string) error {
 	}
 	entry, ok := reg.Scopes[oldName]
 	if !ok {
-		// Already re-keyed (idempotent); leftover lens/me under oldName stay unused.
+		// Already re-keyed (idempotent); leftover lens/me/note under oldName stay unused.
 		return nil
 	}
 	if taken, exists := reg.Scopes[newName]; exists {
@@ -224,6 +225,14 @@ func rekeySessionMaps(store *registry.Store, reg *registry.Registry, oldName, ne
 		delete(reg.Lens, oldName)
 		reg.Lens[newName] = lens
 		if err := store.WriteLens(reg.Lens); err != nil {
+			return err
+		}
+	}
+	// note stores a document slug, not a ticket id — rekey like lens, do not drop.
+	if note, ok := reg.Note[oldName]; ok {
+		delete(reg.Note, oldName)
+		reg.Note[newName] = note
+		if err := store.WriteNote(reg.Note); err != nil {
 			return err
 		}
 	}

@@ -6,9 +6,24 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/token"
 )
+
+func loadNoteMap(t *testing.T, app *App) map[string]string {
+	t.Helper()
+	reg, err := registry.NewStore(app.Ctx, app.ConfigDir).Load()
+	if err != nil {
+		t.Fatalf("load note: %v", err)
+	}
+	return reg.Note
+}
+
+func xdgCueExists(app *App, name string) bool {
+	_, err := os.Stat(filepath.Join(app.ConfigDir, name))
+	return err == nil
+}
 
 func defaultNotePath(dir string) string {
 	return filepath.Join(dir, scopefile.NoteDir, scopefile.NoteDefaultSlug+".md")
@@ -275,7 +290,7 @@ func TestNoteReservedNamesAreUsage(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 
-	for _, name := range []string{"list", "add", "set", "edit", "delete", "help"} {
+	for _, name := range []string{"list", "add", "set", "edit", "delete", "help", "use"} {
 		out, _, err := run(t, app, "note", "--name", name, "--scope", "wc")
 		assertUsageEmpty(t, out, err)
 	}
@@ -453,6 +468,9 @@ func TestNoteDoctorAllowlist(t *testing.T) {
 	if err := os.WriteFile(namedNotePath(dir, "list"), []byte("verb\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(namedNotePath(dir, "use"), []byte("verb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(namedNotePath(dir, "Not A Slug"), []byte("bad\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -472,6 +490,9 @@ func TestNoteDoctorAllowlist(t *testing.T) {
 	}
 	if !strings.Contains(out, namedNotePath(dir, "list")) {
 		t.Errorf("notes/list.md should be residue, got %q", out)
+	}
+	if !strings.Contains(out, namedNotePath(dir, "use")) {
+		t.Errorf("notes/use.md should be residue, got %q", out)
 	}
 	if !strings.Contains(out, namedNotePath(dir, "Not A Slug")) {
 		t.Errorf("invalid slug should be residue, got %q", out)
@@ -849,5 +870,537 @@ func TestNoteCleanupDoesNotUnlinkNotesSymlink(t *testing.T) {
 	}
 	if _, err := os.Lstat(notes); err != nil {
 		t.Fatalf("notes symlink should remain after delete of a missing default: %v", err)
+	}
+}
+
+func TestNoteUseFreshDefaultAndBareAdd(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+
+	out, _, err := run(t, app, "note", "use", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("use show: %v", err)
+	}
+	if out != "default\n" {
+		t.Errorf("fresh use = %q want default\\n", out)
+	}
+	out, _, err = run(t, app, "status", "note", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("status note: %v", err)
+	}
+	if strings.TrimSpace(out) != defaultNotePath(dir) {
+		t.Errorf("status note = %q want %q", out, defaultNotePath(dir))
+	}
+
+	out, _, err = run(t, app, "note", "add", "hello", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if strings.TrimSpace(out) != defaultNotePath(dir) {
+		t.Errorf("add path = %q", out)
+	}
+	got, err := os.ReadFile(defaultNotePath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "hello\n" {
+		t.Errorf("default file = %q", got)
+	}
+}
+
+func TestNoteUseSetDoesNotCreateFileOrSync(t *testing.T) {
+	requireGit(t)
+	app := newApp(t)
+	dir, repo := initGitScope(t, app, "wc", true)
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-m", "init")
+	head := gitIn(t, repo, "rev-parse", "HEAD")
+
+	out, errOut, err := run(t, app, "note", "use", "grant", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("use grant: %v stderr=%q", err, errOut)
+	}
+	if out != "" {
+		t.Errorf("set must print nothing, got %q", out)
+	}
+	if strings.Contains(errOut, token.SyncNeeded) {
+		t.Errorf("use must not emit sync_needed:, got %q", errOut)
+	}
+	if _, err := os.Stat(namedNotePath(dir, "grant")); !os.IsNotExist(err) {
+		t.Errorf("use must not create notes/grant.md, stat err=%v", err)
+	}
+	if got := gitIn(t, repo, "rev-parse", "HEAD"); got != head {
+		t.Errorf("use must not commit, HEAD %s -> %s", head, got)
+	}
+	if loadNoteMap(t, app)["wc"] != "grant" {
+		t.Errorf("stored note = %q want grant", loadNoteMap(t, app)["wc"])
+	}
+
+	out, _, err = run(t, app, "note", "use", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("use show: %v", err)
+	}
+	if out != "grant\n" {
+		t.Errorf("use show = %q want grant\\n", out)
+	}
+	out, _, err = run(t, app, "status", "note", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("status note: %v", err)
+	}
+	if strings.TrimSpace(out) != namedNotePath(dir, "grant") {
+		t.Errorf("status note = %q want %q", out, namedNotePath(dir, "grant"))
+	}
+
+	if err := os.MkdirAll(filepath.Join(dir, scopefile.NoteDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(defaultNotePath(dir), []byte("pad\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err = run(t, app, "note", "add", "hello", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("add after use: %v", err)
+	}
+	if strings.TrimSpace(out) != namedNotePath(dir, "grant") {
+		t.Errorf("add path = %q", out)
+	}
+	got, err := os.ReadFile(namedNotePath(dir, "grant"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "hello\n" {
+		t.Errorf("grant file = %q", got)
+	}
+	pad, err := os.ReadFile(defaultNotePath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(pad) != "pad\n" {
+		t.Errorf("default.md must be untouched, got %q", pad)
+	}
+}
+
+func TestNoteUseOneShotSelectors(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := run(t, app, "note", "add", "--name", "shared", "x", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+	flag, _, err := run(t, app, "note", "--name", "shared", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("flag cat: %v", err)
+	}
+	pos, _, err := run(t, app, "note", "shared", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("positional cat: %v", err)
+	}
+	if flag != "x\n" || pos != "x\n" {
+		t.Errorf("shared cat flag=%q pos=%q", flag, pos)
+	}
+	if strings.TrimSpace(mustNoteUse(t, app)) != "grant" {
+		t.Errorf("one-shot must not change the stored default, got %q", mustNoteUse(t, app))
+	}
+	if _, err := os.Stat(namedNotePath(dir, "grant")); !os.IsNotExist(err) {
+		t.Errorf("one-shot must not create grant.md, stat err=%v", err)
+	}
+}
+
+func TestNoteUseSetAndEditFollowEffectiveSlug(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _, err := run(t, app, "note", "set", "replaced", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if strings.TrimSpace(out) != namedNotePath(dir, "grant") {
+		t.Errorf("set path = %q want %q", out, namedNotePath(dir, "grant"))
+	}
+	got, err := os.ReadFile(namedNotePath(dir, "grant"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "replaced\n" {
+		t.Errorf("set body = %q", got)
+	}
+	if _, err := os.Stat(defaultNotePath(dir)); !os.IsNotExist(err) {
+		t.Errorf("set must not write default.md, stat err=%v", err)
+	}
+
+	t.Setenv("EDITOR", writeEditorScript(t, "from editor\n"))
+	out, _, err = run(t, app, "note", "edit", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	if strings.TrimSpace(out) != namedNotePath(dir, "grant") {
+		t.Errorf("edit path = %q want %q", out, namedNotePath(dir, "grant"))
+	}
+	cat, _, err := run(t, app, "note", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("cat after edit: %v", err)
+	}
+	if cat != "from editor\n" {
+		t.Errorf("cat after edit = %q", cat)
+	}
+}
+
+func mustNoteUse(t *testing.T, app *App) string {
+	t.Helper()
+	out, _, err := run(t, app, "note", "use", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("note use: %v", err)
+	}
+	return out
+}
+
+func TestNoteUseDefaultAndClearUnset(t *testing.T) {
+	app := newApp(t)
+	initScope(t, app, "wc")
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _, err := run(t, app, "note", "use", "default", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("use default: %v", err)
+	}
+	if out != "" {
+		t.Errorf("use default must print nothing, got %q", out)
+	}
+	if _, ok := loadNoteMap(t, app)["wc"]; ok {
+		t.Error("use default must delete the stored key")
+	}
+	out, _, err = run(t, app, "note", "use", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("show after default: %v", err)
+	}
+	if out != "default\n" {
+		t.Errorf("show after default = %q", out)
+	}
+
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err = run(t, app, "note", "use", "--clear", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("use --clear: %v", err)
+	}
+	if out != "" {
+		t.Errorf("--clear must print nothing, got %q", out)
+	}
+	if _, ok := loadNoteMap(t, app)["wc"]; ok {
+		t.Error("--clear must delete the stored key")
+	}
+	out, _, err = run(t, app, "note", "use", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("show after clear: %v", err)
+	}
+	if out != "default\n" {
+		t.Errorf("show after clear = %q", out)
+	}
+}
+
+func TestNoteUseReservedAndInvalidAreUsage(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, args := range [][]string{
+		{"note", "use", "use", "--scope", "wc"},
+		{"note", "use", "list", "--scope", "wc"},
+		{"note", "--name", "use", "--scope", "wc"},
+		{"note", "use", "--clear", "grant", "--scope", "wc"},
+		{"note", "use", "--name", "grant", "--scope", "wc"},
+		{"note", "use", "Grant", "--scope", "wc"},
+		{"note", "use", "default.md", "--scope", "wc"},
+	} {
+		out, _, err := run(t, app, args...)
+		assertUsageEmpty(t, out, err)
+	}
+	if loadNoteMap(t, app)["wc"] != "grant" {
+		t.Errorf("usage must not write XDG, stored = %q", loadNoteMap(t, app)["wc"])
+	}
+
+	if err := os.MkdirAll(filepath.Join(dir, scopefile.NoteDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(namedNotePath(dir, "use"), []byte("residue\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, app, "note", "add", "--name", "alpha", "a", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := run(t, app, "note", "list", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if out != "alpha\n" {
+		t.Errorf("list = %q", out)
+	}
+	t.Setenv("TK_SCOPE", "wc")
+	doc, _, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	if !strings.Contains(doc, token.NonAllowlist) || !strings.Contains(doc, namedNotePath(dir, "use")) {
+		t.Errorf("notes/use.md should be residue, got %q", doc)
+	}
+}
+
+func TestNoteUseDeleteLeavesPointer(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, app, "note", "add", "hello", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, app, "note", "add", "--name", "shared", "x", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _, err := run(t, app, "note", "delete", "--name", "grant", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if out != "" {
+		t.Errorf("delete must print nothing, got %q", out)
+	}
+	if loadNoteMap(t, app)["wc"] != "grant" {
+		t.Errorf("delete must leave the pointer, stored = %q", loadNoteMap(t, app)["wc"])
+	}
+
+	out, _, err = run(t, app, "note", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("cat after delete: %v", err)
+	}
+	if out != "" {
+		t.Errorf("missing in-use file must be empty stdout, got %q", out)
+	}
+
+	out, _, err = run(t, app, "note", "list", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if out != "shared\n" {
+		t.Errorf("list = %q want slugs only", out)
+	}
+	if strings.Contains(out, "/") || strings.Contains(out, "*") || strings.Contains(out, "grant") {
+		t.Errorf("list must stay slugs only with no default marker, got %q", out)
+	}
+	if _, err := os.Stat(namedNotePath(dir, "grant")); !os.IsNotExist(err) {
+		t.Errorf("grant.md should be gone, stat err=%v", err)
+	}
+}
+
+func TestNoteUseRenameAndForget(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "")
+	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+	if xdgCueExists(app, "me.cue") {
+		t.Fatal("note-only map must not write me.cue")
+	}
+	if xdgCueExists(app, "lens.cue") {
+		t.Fatal("note-only map must not write lens.cue")
+	}
+
+	if _, _, err := run(t, app, "scope", "rename", "wc", "core"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if xdgCueExists(app, "me.cue") {
+		t.Error("rename of a note-only map must not write me.cue")
+	}
+	if xdgCueExists(app, "lens.cue") {
+		t.Error("rename of a note-only map must not write lens.cue")
+	}
+	if loadNoteMap(t, app)["core"] != "grant" {
+		t.Errorf("rename must rekey note, got %q", loadNoteMap(t, app)["core"])
+	}
+	if _, ok := loadNoteMap(t, app)["wc"]; ok {
+		t.Error("old note key must be gone")
+	}
+	out, _, err := run(t, app, "note", "use", "--scope", "core")
+	if err != nil {
+		t.Fatalf("use after rename: %v", err)
+	}
+	if out != "grant\n" {
+		t.Errorf("use after rename = %q", out)
+	}
+
+	if _, _, err := run(t, app, "scope", "forget", "core"); err != nil {
+		t.Fatalf("forget: %v", err)
+	}
+	if _, ok := loadNoteMap(t, app)["core"]; ok {
+		t.Error("forget must drop the note entry")
+	}
+	if xdgCueExists(app, "me.cue") {
+		t.Error("forget of a note-only map must not write me.cue")
+	}
+	if xdgCueExists(app, "lens.cue") {
+		t.Error("forget of a note-only map must not write lens.cue")
+	}
+
+	if _, _, err := run(t, app, "scope", "import", dir); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	out, _, err = run(t, app, "note", "use", "--scope", "core")
+	if err != nil {
+		t.Fatalf("use after import: %v", err)
+	}
+	if out != "default\n" {
+		t.Errorf("forget+import must start unset, got %q", out)
+	}
+}
+
+func TestNoteUseNotesAlias(t *testing.T) {
+	app := newApp(t)
+	initScope(t, app, "wc")
+
+	out, errOut, err := run(t, app, "notes", "use", "grant", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("notes use: %v stderr=%q", err, errOut)
+	}
+	if out != "" {
+		t.Errorf("notes use set must print nothing, got %q", out)
+	}
+	if loadNoteMap(t, app)["wc"] != "grant" {
+		t.Errorf("notes use stored = %q", loadNoteMap(t, app)["wc"])
+	}
+	show, _, err := run(t, app, "notes", "use", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("notes use show: %v", err)
+	}
+	if show != "grant\n" {
+		t.Errorf("notes use show = %q", show)
+	}
+}
+
+func TestNoteUseCorruptStore(t *testing.T) {
+	app := newApp(t)
+	initScope(t, app, "wc")
+
+	if err := os.WriteFile(filepath.Join(app.ConfigDir, "note.cue"), []byte("note: {{{ broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := run(t, app, "note", "use", "--scope", "wc")
+	if err == nil {
+		t.Fatal("unparseable note.cue must be a hard error")
+	}
+	if ExitCodeFromError(err) == exitUsage {
+		t.Errorf("unparseable note.cue must not be usage, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "note.cue") {
+		t.Errorf("unparseable error must name note.cue, got %v", err)
+	}
+
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	if err := store.WriteNote(map[string]string{"wc": "Grant"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = run(t, app, "note", "--scope", "wc")
+	if err == nil {
+		t.Fatal("non-addressable stored slug must be a hard error on resolve")
+	}
+	if ExitCodeFromError(err) == exitUsage {
+		t.Errorf("invalid stored slug must not be usage, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "note.cue") {
+		t.Errorf("resolve error must name note.cue, got %v", err)
+	}
+	_, _, err = run(t, app, "status", "note", "--scope", "wc")
+	if err == nil {
+		t.Fatal("status note must refuse an invalid stored slug")
+	}
+	if !strings.Contains(err.Error(), "note.cue") {
+		t.Errorf("status error must name note.cue, got %v", err)
+	}
+	out, _, err := run(t, app, "note", "--name", "shared", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("one-shot must not resolve the stored default: %v", err)
+	}
+	if out != "" {
+		t.Errorf("missing shared cat = %q", out)
+	}
+	if loadNoteMap(t, app)["wc"] != "Grant" {
+		t.Errorf("resolve error must not rewrite XDG, stored = %q", loadNoteMap(t, app)["wc"])
+	}
+
+	if err := store.WriteNote(map[string]string{"wc": ""}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = run(t, app, "note", "use", "--scope", "wc")
+	if err == nil {
+		t.Fatal("empty stored slug must be a hard error on resolve")
+	}
+	if ExitCodeFromError(err) == exitUsage {
+		t.Errorf("empty stored slug must not be usage, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "note.cue") {
+		t.Errorf("empty stored slug must name note.cue, got %v", err)
+	}
+	if got, ok := loadNoteMap(t, app)["wc"]; !ok || got != "" {
+		t.Errorf("empty stored slug must remain present, got %q ok=%v", got, ok)
+	}
+}
+
+func TestNoteUseHelpAndSkill(t *testing.T) {
+	app := newApp(t)
+	help, _, err := run(t, app, "note", "--help")
+	if err != nil {
+		t.Fatalf("note --help: %v", err)
+	}
+	for _, want := range []string{
+		"machine-local",
+		"one-shot",
+		"convention",
+		"use",
+	} {
+		if !strings.Contains(help, want) {
+			t.Errorf("note Long should mention %q, got:\n%s", want, help)
+		}
+	}
+	useHelp, _, err := run(t, app, "note", "use", "--help")
+	if err != nil {
+		t.Fatalf("note use --help: %v", err)
+	}
+	for _, want := range []string{
+		"machine-local",
+		"one-shot",
+		"convention",
+	} {
+		if !strings.Contains(useHelp, want) {
+			t.Errorf("use Long should mention %q, got:\n%s", want, useHelp)
+		}
+	}
+	statusHelp, _, err := run(t, app, "status", "--help")
+	if err != nil {
+		t.Fatalf("status --help: %v", err)
+	}
+	if !strings.Contains(statusHelp, "tk note use") {
+		t.Errorf("status Long should describe the effective path via tk note use, got:\n%s", statusHelp)
+	}
+	if strings.Contains(statusHelp, "notes/default.md, whether") {
+		t.Error("status Long must not hard-code notes/default.md as the only path")
+	}
+
+	skill, _, err := run(t, app, "skill")
+	if err != nil {
+		t.Fatalf("skill: %v", err)
+	}
+	if strings.Contains(skill, "tk note") || strings.Contains(skill, "tk note use") {
+		t.Errorf("skill must not document tk note")
 	}
 }

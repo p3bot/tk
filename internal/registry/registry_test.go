@@ -17,7 +17,7 @@ func TestLoadEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(reg.Scopes) != 0 || len(reg.Lens) != 0 || len(reg.Me) != 0 {
+	if len(reg.Scopes) != 0 || len(reg.Lens) != 0 || len(reg.Me) != 0 || len(reg.Note) != 0 {
 		t.Errorf("expected empty registry, got %+v", reg)
 	}
 }
@@ -39,6 +39,9 @@ func TestWriteAndReload(t *testing.T) {
 	if err := s.WriteMe(map[string]string{"wc": "wc-ab2c"}); err != nil {
 		t.Fatalf("WriteMe: %v", err)
 	}
+	if err := s.WriteNote(map[string]string{"wc": "grant"}); err != nil {
+		t.Fatalf("WriteNote: %v", err)
+	}
 
 	reg, err := s.Load()
 	if err != nil {
@@ -55,6 +58,9 @@ func TestWriteAndReload(t *testing.T) {
 	}
 	if got := reg.Me["wc"]; got != "wc-ab2c" {
 		t.Errorf("me = %q", got)
+	}
+	if got := reg.Note["wc"]; got != "grant" {
+		t.Errorf("note = %q", got)
 	}
 }
 
@@ -125,5 +131,20 @@ func TestLoadMalformedMeIsHardError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), meFile) {
 		t.Errorf("error should name %s, got %v", meFile, err)
+	}
+}
+
+func TestLoadMalformedNoteIsHardError(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, noteFile), []byte("note: {{{ broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(cuecontext.New(), dir)
+	_, err := s.Load()
+	if err == nil {
+		t.Fatal("expected a hard error naming note.cue")
+	}
+	if !strings.Contains(err.Error(), noteFile) {
+		t.Errorf("error should name %s, got %v", noteFile, err)
 	}
 }

@@ -12,9 +12,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/atomicfile"
+	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/slug"
 	"github.com/p3bot/tk/internal/token"
+	"github.com/p3bot/tk/internal/xdg"
 )
 
 const noteFileMode = 0o644
@@ -29,27 +31,33 @@ func newNoteCmd(app *App) *cobra.Command {
 			"slug / --name) prints the file bytes. Missing and empty files are empty stdout,\n" +
 			"exit 0. `list` prints addressable slugs, one per line, alphabetical.\n" +
 			"`add` appends one line; `set` replaces the file (`-` reads stdin); `edit` opens\n" +
-			"$EDITOR; `delete --name <slug>` unlinks. Omit --name to use default\n" +
-			"(notes/default.md) except on delete, which requires --name.\n" +
+			"$EDITOR; `delete --name <slug>` unlinks. `use` sets this machine's default slug.\n" +
+			"Omit --name and a positional slug to use that machine-local default (built-in\n" +
+			"`default` when unset) except on delete, which requires --name. --name and a\n" +
+			"positional slug are one-shot selectors and never write the stored default.\n" +
+			"Personal slugs (`grant`, `alice`) with `default` as the shared pad are a\n" +
+			"convention, not a CLI rule.\n" +
 			"\n" +
 			"Writes never self-commit. On a tk-driven scope, add, set, and delete ride\n" +
 			"sync_needed: when the allowlist is dirty (same as create); edit does not.\n" +
-			"Durability is `tk sync` on a tk-driven scope, or a host commit on a\n" +
-			"repo-driven scope. Notes are not tickets: they are not indexed, not listed\n" +
-			"by `tk list`, and not taught in `tk skill`. Alias: notes.",
+			"`use` is XDG-only and never emits sync_needed:. Durability is `tk sync` on a\n" +
+			"tk-driven scope, or a host commit on a repo-driven scope. Notes are not\n" +
+			"tickets: they are not indexed, not listed by `tk list`, and not taught in\n" +
+			"`tk skill`. Alias: notes.",
 		Args: usageArgs(cobra.MaximumNArgs(1)),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runNoteCat(app, c, args, scope, name, c.Flags().Changed("name"))
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient; wins over ambient)")
-	cmd.Flags().StringVar(&name, "name", "", "note slug (defaults to default)")
+	cmd.Flags().StringVar(&name, "name", "", "note slug (one-shot; defaults to this machine's default)")
 	cmd.AddCommand(
 		newNoteListCmd(app),
 		newNoteAddCmd(app),
 		newNoteSetCmd(app),
 		newNoteEditCmd(app),
 		newNoteDeleteCmd(app),
+		newNoteUseCmd(app),
 	)
 	return cmd
 }
@@ -88,7 +96,7 @@ func newNoteAddCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient; wins over ambient)")
-	cmd.Flags().StringVar(&name, "name", "", "note slug (defaults to default)")
+	cmd.Flags().StringVar(&name, "name", "", "note slug (one-shot; defaults to this machine's default)")
 	return cmd
 }
 
@@ -109,7 +117,7 @@ func newNoteSetCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient; wins over ambient)")
-	cmd.Flags().StringVar(&name, "name", "", "note slug (defaults to default)")
+	cmd.Flags().StringVar(&name, "name", "", "note slug (one-shot; defaults to this machine's default)")
 	return cmd
 }
 
@@ -130,7 +138,7 @@ func newNoteEditCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient; wins over ambient)")
-	cmd.Flags().StringVar(&name, "name", "", "note slug (defaults to default)")
+	cmd.Flags().StringVar(&name, "name", "", "note slug (one-shot; defaults to this machine's default)")
 	return cmd
 }
 
@@ -153,20 +161,46 @@ func newNoteDeleteCmd(app *App) *cobra.Command {
 	return cmd
 }
 
+func newNoteUseCmd(app *App) *cobra.Command {
+	var (
+		scope    string
+		clearUse bool
+	)
+	cmd := &cobra.Command{
+		Use:   "use [slug] | --clear [--scope S]",
+		Short: "Set, show, or clear this machine's default note slug",
+		Long: "A per-scope, machine-local default note slug. With a slug, it sets the pointer;\n" +
+			"with --clear (or the built-in slug `default`) it removes it; with no arguments\n" +
+			"it prints the effective slug (`default` when unset). The pointer is XDG only:\n" +
+			"it never writes tk.cue, me.cue, or lens.cue, never creates or deletes a note\n" +
+			"file, never self-commits, and never emits sync_needed:. --name remains a\n" +
+			"one-shot override on the other note verbs and is not accepted here. Personal\n" +
+			"slugs (`grant`, `alice`) with `default` as the shared pad are a convention,\n" +
+			"not a CLI rule. --clear takes no slug.",
+		Args: usageArgs(cobra.MaximumNArgs(1)),
+		RunE: func(c *cobra.Command, args []string) error {
+			return runNoteUse(app, c, args, scope, clearUse)
+		},
+	}
+	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient; wins over ambient)")
+	cmd.Flags().BoolVar(&clearUse, "clear", false, "revert to the built-in default for the scope")
+	return cmd
+}
+
 func runNoteCat(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag string, nameSet bool) error {
 	positional := ""
 	if len(args) == 1 {
 		positional = args[0]
-	}
-	name, err := selectNoteName(positional, nameFlag, nameSet)
-	if err != nil {
-		return err
 	}
 	n, err := openNote(app, c, scopeFlag)
 	if err != nil {
 		return err
 	}
 	defer n.close()
+	name, err := resolveSelectedNoteName(n, positional, nameFlag, nameSet)
+	if err != nil {
+		return err
+	}
 	return catNoteFile(c, n.path(name))
 }
 
@@ -192,15 +226,15 @@ func runNoteAdd(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 	if text == "" {
 		return usageErrorf("add needs non-empty text")
 	}
-	name, err := selectNoteName("", nameFlag, nameSet)
-	if err != nil {
-		return err
-	}
 	n, err := openNote(app, c, scopeFlag)
 	if err != nil {
 		return err
 	}
 	defer n.close()
+	name, err := resolveSelectedNoteName(n, "", nameFlag, nameSet)
+	if err != nil {
+		return err
+	}
 	path := n.path(name)
 	if err := withNoteLock(n.dir, func() error {
 		if err := n.refuseMidRebase(c.Context()); err != nil {
@@ -235,15 +269,15 @@ func runNoteSet(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 	if err != nil {
 		return err
 	}
-	name, err := selectNoteName("", nameFlag, nameSet)
-	if err != nil {
-		return err
-	}
 	n, err := openNote(app, c, scopeFlag)
 	if err != nil {
 		return err
 	}
 	defer n.close()
+	name, err := resolveSelectedNoteName(n, "", nameFlag, nameSet)
+	if err != nil {
+		return err
+	}
 	path := n.path(name)
 	if err := withNoteLock(n.dir, func() error {
 		if err := n.refuseMidRebase(c.Context()); err != nil {
@@ -265,16 +299,15 @@ func runNoteEdit(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet
 	if err != nil {
 		return err
 	}
-	name, err := selectNoteName("", nameFlag, nameSet)
-	if err != nil {
-		return err
-	}
-
 	n, err := openNote(app, c, scopeFlag)
 	if err != nil {
 		return err
 	}
 	defer n.close()
+	name, err := resolveSelectedNoteName(n, "", nameFlag, nameSet)
+	if err != nil {
+		return err
+	}
 	path := n.path(name)
 	notesDir := filepath.Join(n.dir, scopefile.NoteDir)
 	if err := withNoteLock(n.dir, func() error {
@@ -302,15 +335,15 @@ func runNoteDelete(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameS
 	if !nameSet {
 		return usageErrorf("delete requires --name")
 	}
-	name, err := selectNoteName("", nameFlag, nameSet)
-	if err != nil {
-		return err
-	}
 	n, err := openNote(app, c, scopeFlag)
 	if err != nil {
 		return err
 	}
 	defer n.close()
+	name, err := resolveSelectedNoteName(n, "", nameFlag, nameSet)
+	if err != nil {
+		return err
+	}
 	path := n.path(name)
 	removed := false
 	if err := withNoteLock(n.dir, func() error {
@@ -341,6 +374,45 @@ func runNoteDelete(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameS
 		n.maybeSyncNeeded(c)
 	}
 	return nil
+}
+
+func runNoteUse(app *App, c *cobra.Command, args []string, scopeFlag string, clearUse bool) error {
+	if clearUse && len(args) > 0 {
+		return usageErrorf("--clear takes no slug")
+	}
+
+	e, err := app.openEngine(c)
+	if err != nil {
+		return err
+	}
+	defer e.close()
+
+	resolved, err := e.resolveAmbient(scopeFlag)
+	if err != nil {
+		return err
+	}
+	scope := resolved.Name
+
+	switch {
+	case clearUse:
+		return e.writeNote(scope, "")
+	case len(args) == 0:
+		name, err := effectiveNoteSlug(e, scope)
+		if err != nil {
+			return err
+		}
+		stdoutln(c, name)
+		return nil
+	default:
+		name := args[0]
+		if scopefile.IsReservedNoteName(name) {
+			return usageErrorf("%q is a reserved note name", name)
+		}
+		if !slug.Valid(name) {
+			return usageErrorf("%q is not a valid note slug", name)
+		}
+		return e.writeNote(scope, name)
+	}
 }
 
 type noteScope struct {
@@ -413,11 +485,63 @@ func requireScopeDir(scope, dir string) error {
 	return nil
 }
 
-func selectNoteName(positional, nameFlag string, nameSet bool) (string, error) {
+func resolveSelectedNoteName(n *noteScope, positional, nameFlag string, nameSet bool) (string, error) {
+	fallback := scopefile.NoteDefaultSlug
+	if positional == "" && !nameSet {
+		var err error
+		fallback, err = effectiveNoteSlug(n.e, n.scope)
+		if err != nil {
+			return "", err
+		}
+	}
+	return selectNoteName(positional, nameFlag, nameSet, fallback)
+}
+
+func effectiveNoteSlug(e *engine, scope string) (string, error) {
+	var stored string
+	var ok bool
+	if e.reg != nil {
+		stored, ok = e.reg.Note[scope]
+	}
+	if !ok || stored == scopefile.NoteDefaultSlug {
+		return scopefile.NoteDefaultSlug, nil
+	}
+	if !scopefile.IsAddressableNoteSlug(stored) {
+		return "", fmt.Errorf("%s stores %q for scope %q — not an addressable note slug",
+			filepath.Join(e.app.ConfigDir, "note.cue"), stored, scope)
+	}
+	return stored, nil
+}
+
+// writeNote: machine-global flock spans load-modify-write. Built-in default deletes the key.
+func (e *engine) writeNote(scope, name string) error {
+	lock, err := xdg.AcquireConfigLock(e.app.ConfigDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
+
+	store := registry.NewStore(e.app.Ctx, e.app.ConfigDir)
+	reg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	if reg.Note == nil {
+		reg.Note = map[string]string{}
+	}
+	if name == "" || name == scopefile.NoteDefaultSlug {
+		delete(reg.Note, scope)
+	} else {
+		reg.Note[scope] = name
+	}
+	return store.WriteNote(reg.Note)
+}
+
+func selectNoteName(positional, nameFlag string, nameSet bool, fallback string) (string, error) {
 	if positional != "" && nameSet {
 		return "", usageErrorf("use a positional slug or --name, not both")
 	}
-	name := scopefile.NoteDefaultSlug
+	name := fallback
 	switch {
 	case positional != "":
 		name = positional

@@ -91,8 +91,10 @@ func newStatusCmd(app *App) *cobra.Command {
 			"me is the stored full ticket id of this machine's current-ticket pointer, or\n" +
 			"empty if unset. It is never a path.\n" +
 			"\n" +
-			"note is the cleaned absolute path of notes/default.md, whether or not the file\n" +
-			"exists. Read and write notes with `tk note`.\n" +
+			"note is the cleaned absolute path of this machine's default note\n" +
+			"(notes/<slug>.md from `tk note use`, or notes/default.md when unset), whether\n" +
+			"or not the file exists. --name and a positional slug stay one-shot selectors.\n" +
+			"Read and write notes with `tk note`.\n" +
 			"\n" +
 			"The active lens filters the working board (non-terminal status counts, claimed,\n" +
 			"blocked_ids) the same way bare list and tk next do. total is the full-scope\n" +
@@ -175,7 +177,11 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 	root, hasRoot := scopefile.GitRoot(dir)
 	mode := statusMode(schema, res.ConfigErrs[scope] != nil, hasRoot)
 
-	notePath, err := absPath(scopefile.NoteFile(dir, scopefile.NoteDefaultSlug))
+	noteSlug, err := effectiveNoteSlug(e, scope)
+	if err != nil {
+		return err
+	}
+	notePath, err := absPath(scopefile.NoteFile(dir, noteSlug))
 	if err != nil {
 		return err
 	}

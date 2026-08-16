@@ -60,12 +60,12 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
 - `import` registers an existing on-disk scope, files in place; its name and
   auto-commit mode come from the on-disk `tk.cue`.
 - `rebind` rewrites a registered scope's paths after a move or clone.
-- `forget` unregisters a scope (registry, lens, and me entries only); it never touches
-  the scope's files.
+- `forget` unregisters a scope (registry, lens, me, and note entries only); it never
+  touches the scope's files.
 - `list` prints parse-stable TSV, one line per scope: `name\tdir\troot\tmode`,
   where `mode` is `tk-driven`, `repo-driven`, `plain-files`, or `unknown`.
-- `rename` renames a scope end-to-end (registry, lens, `tk.cue` name, ticket ids)
-  and drops this machine's current-ticket pointer for that scope.
+- `rename` renames a scope end-to-end (registry, lens, note default, `tk.cue` name,
+  ticket ids) and drops this machine's current-ticket pointer for that scope.
 - `field` reads and rewrites custom field declarations under `fields:` in the
   ambient scope's `tk.cue` (`list`, `set`, `unset`). Optional `required` is soft
   policy only (`required_missing:` on meta/mark; never a hard refuse).
@@ -78,27 +78,37 @@ they are not part of the agent skill. Humans (or an agent that needs session
 context) use `tk note` (`notes` is an alias).
 
 ```sh
-tk note                              # print notes/default.md
-tk note [slug]                       # print notes/<slug>.md
-tk note --name <slug>                # same as tk note [slug]
+tk note                              # print this machine's default note
+tk note [slug]                       # print notes/<slug>.md (one-shot)
+tk note --name <slug>                # same as tk note [slug]; never writes the default
 tk note list                         # addressable slugs, alphabetical
+tk note use                          # print the effective default slug
+tk note use <slug>                   # set this machine's default for the scope
+tk note use --clear                  # revert to built-in default
 
-tk note add <text...>                # append one line to default
+tk note add <text...>                # append one line to the default
 tk note add --name <slug> <text...>  # append one line to a named note
-tk note set <text...>                # replace default
+tk note set <text...>                # replace the default
 tk note set --name <slug> -          # replace named from stdin
-tk note edit                         # $EDITOR on default
+tk note edit                         # $EDITOR on the default
 tk note delete --name <slug>         # unlink; --name required
 ```
 
+`use` is machine-local (XDG `note.cue`, keyed by scope name). Documents stay
+committed under `notes/`; the pointer is not stored in `tk.cue`, `me.cue`, or
+`lens.cue`. Unset (or `use default` / `--clear`) keeps the built-in slug
+`default`. `--name` and a positional slug stay one-shot selectors. Personal
+slugs (`grant`, `alice`) with `default` as the shared pad are a convention,
+not a CLI rule.
+
 `add`, `set`, `edit`, and `delete` never self-commit. On a tk-driven scope,
 `add`, `set`, and `delete` ride `sync_needed: dirty` (same as `tk create`);
-`edit` does not. Durability is `tk sync` on a tk-driven scope, or a host
+`edit` and `use` do not. Durability is `tk sync` on a tk-driven scope, or a host
 commit on a repo-driven scope. Slugs follow the
 existing ticket-slug grammar (`a-z0-9` and hyphens, 1–48). `list`, `add`,
-`set`, `edit`, `delete`, and `help` are reserved names and cannot be document
-slugs. `tk status note` prints the path of `notes/default.md` whether or not
-the file exists.
+`set`, `edit`, `delete`, `help`, and `use` are reserved names and cannot be
+document slugs. `tk status note` prints the path of `notes/<effective-slug>.md`
+whether or not the file exists.
 
 ## Output and exit codes
 

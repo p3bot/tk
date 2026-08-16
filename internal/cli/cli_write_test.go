@@ -1015,11 +1015,32 @@ func TestMidRebaseRefusesWrites(t *testing.T) {
 	if _, _, err := run(t, app, "meta", "set", id, "summary", "x"); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("mid-rebase meta set should refuse non-zero, got %v", err)
 	}
+	if _, _, err := run(t, app, "note", "add", "follow-up", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
+		t.Errorf("mid-rebase note add should refuse non-zero, got %v", err)
+	}
+	if _, _, err := run(t, app, "note", "set", "replaced", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
+		t.Errorf("mid-rebase note set should refuse non-zero, got %v", err)
+	}
+	if _, _, err := run(t, app, "note", "delete", "--name", "default", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
+		t.Errorf("mid-rebase note delete should refuse non-zero, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "notes", "default.md")); !os.IsNotExist(err) {
+		t.Errorf("refused note add/set must not create the file, stat err=%v", err)
+	}
 	if _, _, err := run(t, app, "get", id); err != nil {
 		t.Errorf("reads must stay allowed mid-rebase, got %v", err)
 	}
 	if _, _, err := run(t, app, "meta", "get", id); err != nil {
 		t.Errorf("meta get must stay allowed mid-rebase, got %v", err)
 	}
-	_ = dir
+	if _, _, err := run(t, app, "note", "--scope", "wc"); err != nil {
+		t.Errorf("note cat must stay allowed mid-rebase, got %v", err)
+	}
+	if _, _, err := run(t, app, "note", "list", "--scope", "wc"); err != nil {
+		t.Errorf("note list must stay allowed mid-rebase, got %v", err)
+	}
+	t.Setenv("EDITOR", "true")
+	if _, _, err := run(t, app, "note", "edit", "--scope", "wc"); err != nil {
+		t.Errorf("note edit must stay allowed mid-rebase, got %v", err)
+	}
 }

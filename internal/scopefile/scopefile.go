@@ -53,8 +53,51 @@ func CountAllowlistedDirty(ctx context.Context, dir, root string, hasRoot bool) 
 	return n
 }
 
+// NoteDir is the single-level directory of scope worklog documents.
+const NoteDir = "notes"
+
+// NoteDefaultSlug is the document used when --name is omitted (notes/default.md).
+const NoteDefaultSlug = "default"
+
+// IsReservedNoteName reports whether name is a reserved note verb or cobra
+// command (help) and must never be a document.
+func IsReservedNoteName(name string) bool {
+	switch name {
+	case "list", "add", "set", "edit", "delete", "help":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsAddressableNoteSlug reports whether name may be a notes/<name>.md document.
+func IsAddressableNoteSlug(name string) bool {
+	return slug.Valid(name) && !IsReservedNoteName(name)
+}
+
+// NoteFile is the path of notes/<name>.md under dir. name is not validated.
+func NoteFile(dir, name string) string {
+	return filepath.Join(dir, NoteDir, name+".md")
+}
+
+// NoteSlug reports the addressable slug if path is dir/notes/<slug>.md (one level).
+func NoteSlug(path, dir string) (string, bool) {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return "", false
+	}
+	if filepath.Dir(rel) != NoteDir {
+		return "", false
+	}
+	stem, ok := strings.CutSuffix(filepath.Base(rel), ".md")
+	if !ok || !IsAddressableNoteSlug(stem) {
+		return "", false
+	}
+	return stem, true
+}
+
 // IsAllowlisted reports whether path is a ticket .md at dir root or archive/,
-// or tk.cue/.gitignore at root.
+// tk.cue/.gitignore at root, or notes/<addressable-slug>.md (one level).
 func IsAllowlisted(path, dir string) bool {
 	rel, err := filepath.Rel(dir, path)
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
@@ -66,6 +109,9 @@ func IsAllowlisted(path, dir string) bool {
 		return base == "tk.cue" || base == ".gitignore" || LooksLikeTicket(base)
 	case "archive":
 		return LooksLikeTicket(base)
+	case NoteDir:
+		stem, ok := strings.CutSuffix(base, ".md")
+		return ok && IsAddressableNoteSlug(stem)
 	default:
 		return false
 	}

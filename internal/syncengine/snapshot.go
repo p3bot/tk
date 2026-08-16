@@ -11,16 +11,17 @@ import (
 	"github.com/p3bot/tk/internal/token"
 )
 
-type dirtyTicket struct {
+type dirtyPath struct {
 	path  string
 	code  string
 	scope string
+	dir   string
 }
 
 // snapshot: CommitPathsCore under held lock; non-allowlist warned, not committed.
 func snapshot(deps Deps, r Reporter, t Target, rep *syncReport) error {
 	ctx := deps.Ctx
-	var staged []dirtyTicket
+	var staged []dirtyPath
 	var allowlisted []string
 	for _, p := range t.Participants {
 		entries, err := git.DirtyEntries(ctx, t.Root, p.Dir)
@@ -34,7 +35,7 @@ func snapshot(deps Deps, r Reporter, t Target, rep *syncReport) error {
 			}
 			if scopefile.IsAllowlisted(ent.Path, p.Dir) {
 				allowlisted = append(allowlisted, ent.Path)
-				staged = append(staged, dirtyTicket{path: ent.Path, code: ent.Code, scope: p.Name})
+				staged = append(staged, dirtyPath{path: ent.Path, code: ent.Code, scope: p.Name, dir: p.Dir})
 			} else {
 				residue = append(residue, ent.Path)
 			}
@@ -66,7 +67,7 @@ func skipSnapshotPath(path string) bool {
 }
 
 // snapshotMessage: one commit for the whole snapshot (avoids tiny-commit replay piles).
-func snapshotMessage(staged []dirtyTicket) string {
+func snapshotMessage(staged []dirtyPath) string {
 	if len(staged) != 1 {
 		return fmt.Sprintf("tk: sync %d path(s)", len(staged))
 	}
@@ -77,6 +78,9 @@ func snapshotMessage(staged []dirtyTicket) string {
 		return "tk: config " + d.scope
 	case ".gitignore":
 		return "tk: gitignore " + d.scope
+	}
+	if slug, ok := scopefile.NoteSlug(d.path, d.dir); ok {
+		return "tk: note " + d.scope + " " + slug
 	}
 	fullID, slug := parseTicketBasename(base)
 	switch {

@@ -25,7 +25,9 @@ const (
 	integrateError
 )
 
-var conflictMarkers = [][]byte{[]byte("<<<<<<<"), []byte("======="), []byte(">>>>>>>")}
+// conflictStart is git's conflict-hunk opener. The separator (=======) and
+// closer (>>>>>>>) are not sufficient: ======= is a markdown Setext underline.
+var conflictStart = []byte("<<<<<<<")
 
 // conflictKind: mutually exclusive; only kindSchema gates field-merge.
 type conflictKind int
@@ -35,10 +37,14 @@ const (
 	kindSchema
 	kindIgnore
 	kindTicket
+	kindNote
 )
 
 // isConfig: tk.cue or .gitignore; only kindSchema gates .md merges.
 func (k conflictKind) isConfig() bool { return k == kindSchema || k == kindIgnore }
+
+// skipDriveMD: human-resolved kinds reported on the first loop; never the ticket driver.
+func (k conflictKind) skipDriveMD() bool { return k.isConfig() || k == kindNote }
 
 type conflictItem struct {
 	path  string // repo-relative
@@ -110,7 +116,7 @@ func driveStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep
 
 	schemaConflicted := map[string]bool{}
 	for _, it := range items {
-		if !it.kind.isConfig() {
+		if !it.kind.skipDriveMD() {
 			continue
 		}
 		if it.kind == kindSchema {
@@ -120,7 +126,7 @@ func driveStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep
 		if err != nil {
 			return false, fmt.Errorf("enumerate conflict stages for %s: %w", it.path, err)
 		}
-		reportConflictedConfig(r, it, configDeleteEditSide(stages))
+		reportHumanConflict(r, it, configDeleteEditSide(stages))
 		allStaged = false
 	}
 
@@ -139,8 +145,8 @@ func driveStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep
 	return allStaged, nil
 }
 
-// reportConflictedConfig: config_unparseable only for tk.cue, never .gitignore.
-func reportConflictedConfig(r Reporter, it conflictItem, deletedSide string) {
+// reportHumanConflict: first-loop kinds (schema, ignore, notes). config_unparseable only for tk.cue.
+func reportHumanConflict(r Reporter, it conflictItem, deletedSide string) {
 	if deletedSide != "" {
 		if it.kind == kindSchema {
 			r.Err(token.Line(token.ConfigUnparseable, fmt.Sprintf(
@@ -158,6 +164,11 @@ func reportConflictedConfig(r Reporter, it conflictItem, deletedSide string) {
 			"%s: conflicted tk.cue — resolve %s in place, then run tk sync", it.owner.Name, it.path)))
 		return
 	}
+	if it.kind == kindNote {
+		r.Err(fmt.Sprintf(
+			"conflicted note: resolve the conflict markers in %s, then run tk sync", it.path))
+		return
+	}
 	r.Err(fmt.Sprintf(
 		"conflicted .gitignore: resolve the conflict markers in %s, then run tk sync", it.path))
 }
@@ -170,7 +181,7 @@ func mdItemBlocked(r Reporter, it conflictItem, schemaConflicted map[string]bool
 			"unresolvable conflict: resolve the conflict markers in %s, then run tk sync", it.path))
 		*allStaged = false
 		return true
-	case kindSchema, kindIgnore:
+	case kindSchema, kindIgnore, kindNote:
 		return true
 	}
 	if schemaConflicted[it.owner.Dir] {
@@ -202,7 +213,7 @@ func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Dri
 
 	schemaConflicted := map[string]bool{}
 	for _, it := range items {
-		if !it.kind.isConfig() {
+		if !it.kind.skipDriveMD() {
 			continue
 		}
 		stages, err := git.ConflictStages(ctx, t.Root, it.path)
@@ -221,7 +232,7 @@ func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Dri
 			if it.kind == kindSchema {
 				schemaConflicted[it.owner.Dir] = true
 			}
-			reportConflictedConfig(r, it, configDeleteEditSide(stages))
+			reportHumanConflict(r, it, configDeleteEditSide(stages))
 			allStaged = false
 			continue
 		}
@@ -229,7 +240,7 @@ func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Dri
 			if it.kind == kindSchema {
 				schemaConflicted[it.owner.Dir] = true
 			}
-			reportConflictedConfig(r, it, "")
+			reportHumanConflict(r, it, "")
 			allStaged = false
 			continue
 		}
@@ -359,9 +370,11 @@ func classifyConflict(abs string, p Participant) conflictKind {
 		return kindSchema
 	case ".gitignore":
 		return kindIgnore
-	default:
-		return kindTicket
 	}
+	if _, ok := scopefile.NoteSlug(abs, p.Dir); ok {
+		return kindNote
+	}
+	return kindTicket
 }
 
 func owningParticipant(repoRelPath string, t Target) (Participant, bool) {
@@ -484,8 +497,8 @@ func FrontmatterHasStatusConflict(abs string) bool {
 	return len(m.StatusConflict) > 0
 }
 
-// HasConflictMarker reports whether data contains a line starting with a git
-// conflict marker. Shared by resume and CLI merge tests.
+// HasConflictMarker reports whether data contains a line starting with git's
+// conflict opener (<<<<<<<). Shared by resume and CLI merge tests.
 func HasConflictMarker(data []byte) bool {
 	for len(data) > 0 {
 		var line []byte
@@ -494,10 +507,8 @@ func HasConflictMarker(data []byte) bool {
 		} else {
 			line, data = data, nil
 		}
-		for _, marker := range conflictMarkers {
-			if bytes.HasPrefix(line, marker) {
-				return true
-			}
+		if bytes.HasPrefix(line, conflictStart) {
+			return true
 		}
 	}
 	return false

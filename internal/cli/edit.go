@@ -46,13 +46,25 @@ func runEdit(app *App, c *cobra.Command, idArg, scope string) error {
 		return err
 	}
 
-	// $EDITOR may carry flags; split into program + args.
+	fields, err := editorArgv("tk edit")
+	if err != nil {
+		return err
+	}
+	return runEditor(fields, p.Path)
+}
+
+// editorArgv splits $EDITOR (which may carry flags) into program + args.
+func editorArgv(verb string) ([]string, error) {
 	fields := strings.Fields(os.Getenv("EDITOR"))
 	if len(fields) == 0 {
-		return fmt.Errorf("$EDITOR is not set — set it to your editor to use tk edit")
+		return nil, fmt.Errorf("$EDITOR is not set — set it to your editor to use %s", verb)
 	}
-	// Share stdio: edit is the human-in-the-loop verb.
-	args := append(append([]string(nil), fields[1:]...), p.Path)
+	return fields, nil
+}
+
+// runEditor shares stdio so the human-in-the-loop verb can use the terminal.
+func runEditor(fields []string, path string) error {
+	args := append(append([]string(nil), fields[1:]...), path)
 	ed := exec.Command(fields[0], args...)
 	ed.Stdin, ed.Stdout, ed.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := ed.Run(); err != nil {

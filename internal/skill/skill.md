@@ -25,7 +25,7 @@ description: >-
 - Active files live at the scope dir root; terminal status moves them to archive/
 - Built-in statuses: draft, backlog, todo, in-progress, review, blocked, done, cancelled
 - The todo status is next-eligible
-- Manage ticket status through its states; move to done when completed
+- Manage ticket status through its states; MUST mark as done when completed
 
 ## Frontmatter
 

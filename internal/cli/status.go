@@ -23,6 +23,7 @@ var statusKeys = []string{
 	"mode",
 	"lens",
 	"me",
+	"note",
 	"total",
 	"todo",
 	"review",
@@ -73,9 +74,9 @@ func newStatusCmd(app *App) *cobra.Command {
 			"are usage exit 2. The attribute path builds the same pulse map as the full\n" +
 			"dashboard (same reconcile, next selection, counts, integrity, stderr tokens).\n" +
 			"\n" +
-			"Locked keys (order fixed): scope, dir, resolved, mode, lens, me, total, todo,\n" +
-			"review, in-progress, blocked, draft, backlog, done, cancelled, next, claimed,\n" +
-			"blocked_ids, dangling, integrity, uncommitted.\n" +
+			"Locked keys (order fixed): scope, dir, resolved, mode, lens, me, note, total,\n" +
+			"todo, review, in-progress, blocked, draft, backlog, done, cancelled, next,\n" +
+			"claimed, blocked_ids, dangling, integrity, uncommitted.\n" +
 			"\n" +
 			"resolved is how the scope was chosen: flag (--scope), env (TK_SCOPE), or cwd\n" +
 			"(longest-prefix code-root).\n" +
@@ -89,6 +90,9 @@ func newStatusCmd(app *App) *cobra.Command {
 			"\n" +
 			"me is the stored full ticket id of this machine's current-ticket pointer, or\n" +
 			"empty if unset. It is never a path.\n" +
+			"\n" +
+			"note is the cleaned absolute path of notes/default.md, whether or not the file\n" +
+			"exists. Read and write notes with `tk note`.\n" +
 			"\n" +
 			"The active lens filters the working board (non-terminal status counts, claimed,\n" +
 			"blocked_ids) the same way bare list and tk next do. total is the full-scope\n" +
@@ -171,6 +175,11 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 	root, hasRoot := scopefile.GitRoot(dir)
 	mode := statusMode(schema, res.ConfigErrs[scope] != nil, hasRoot)
 
+	notePath, err := absPath(scopefile.NoteFile(dir, scopefile.NoteDefaultSlug))
+	if err != nil {
+		return err
+	}
+
 	pulse := map[string]string{
 		"scope":    scope,
 		"dir":      absDir,
@@ -178,6 +187,7 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 		"mode":     mode,
 		"lens":     strings.Join(lens, " "),
 		"me":       e.reg.Me[scope],
+		"note":     notePath,
 	}
 
 	var (

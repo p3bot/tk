@@ -70,6 +70,36 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
   ambient scope's `tk.cue` (`list`, `set`, `unset`). Optional `required` is soft
   policy only (`required_missing:` on meta/mark; never a hard refuse).
 
+## Notes
+
+Each scope can keep committed markdown worklogs at `<scope-dir>/notes/<slug>.md`.
+They are not tickets: `tk list` does not show them, they are not indexed, and
+they are not part of the agent skill. Humans (or an agent that needs session
+context) use `tk note`.
+
+```sh
+tk note                              # print notes/default.md
+tk note [slug]                       # print notes/<slug>.md
+tk note --name <slug>                # same as tk note [slug]
+tk note list                         # addressable slugs, alphabetical
+
+tk note add <text...>                # append one line to default
+tk note add --name <slug> <text...>  # append one line to a named note
+tk note set <text...>                # replace default
+tk note set --name <slug> -          # replace named from stdin
+tk note edit                         # $EDITOR on default
+tk note delete --name <slug>         # unlink; --name required
+```
+
+`add`, `set`, `edit`, and `delete` never self-commit. On a tk-driven scope,
+`add`, `set`, and `delete` ride `sync_needed: dirty` (same as `tk create`);
+`edit` does not. Durability is `tk sync` on a tk-driven scope, or a host
+commit on a repo-driven scope. Slugs follow the
+existing ticket-slug grammar (`a-z0-9` and hyphens, 1–48). `list`, `add`,
+`set`, `edit`, `delete`, and `help` are reserved names and cannot be document
+slugs. `tk status note` prints the path of `notes/default.md` whether or not
+the file exists.
+
 ## Output and exit codes
 
 - stdout is a path or closed TSV; diagnostics and closed tokens go to stderr.

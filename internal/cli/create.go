@@ -110,7 +110,10 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 	if err != nil {
 		return err
 	}
-	preWriteTags := index.TagMembership(rows)
+	preWriteTags, err := e.db.ScopeTagMembership(scope)
+	if err != nil {
+		return err
+	}
 
 	shortID, err := mintUnusedID(rows)
 	if err != nil {

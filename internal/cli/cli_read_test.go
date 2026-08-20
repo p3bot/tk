@@ -526,6 +526,9 @@ func TestQueryReadOnly(t *testing.T) {
 	if err != nil || !strings.Contains(out, "NOT A STABLE API") {
 		t.Errorf("query --schema = %q err=%v", out, err)
 	}
+	if !strings.Contains(out, "ticket_tags") {
+		t.Errorf("query --schema must document ticket_tags, got %q", out)
+	}
 }
 
 func TestCrossScopeDependsGate(t *testing.T) {
@@ -736,6 +739,8 @@ func TestTagsInventory(t *testing.T) {
 	addTicket(t, dir, "wc-gh56", "old", "done", "a2", "# Old\n", true, "tags: [legacy]\n")
 	addTicket(t, dir, "wc-mn78", "plan", "backlog", "a3", "# Plan\n", false, "tags: [plan]\n")
 	addTicket(t, dir, "wc-pq23", "plain", "todo", "a4", "# Plain\n", false, "")
+	// Repeated tag on one file collapses to one row and still indexes.
+	addTicket(t, dir, "wc-rs45", "dup", "todo", "a5", "# Dup\n", false, "tags: [shared, shared]\n")
 
 	out, _, err = run(t, app, "tags", "--scope", "wc")
 	if err != nil {

@@ -165,11 +165,11 @@ func (e *engine) claimNextUnderLock(ctx context.Context, c *cobra.Command, req c
 	if err != nil {
 		return claimOut{}, err
 	}
-	rows, err := e.db.ScopeTickets(req.scope)
+	candidates, err := e.db.NextCandidates(req.scope)
 	if err != nil {
 		return claimOut{}, err
 	}
-	sel := selectNext(gate, rows, e.reg.Lens[req.scope], req.noLens)
+	sel := selectNext(gate, candidates, e.reg.Lens[req.scope], req.noLens)
 	sel.writeDiagnostics(c)
 	if sel.Chosen == nil {
 		return claimOut{}, emptyQueueError(sel.ApplyLens, sel.Lens, sel.Blocked, sel.ReadyOutsideLens)

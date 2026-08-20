@@ -232,24 +232,19 @@ func (r *Reconciler) appendIntegrityWarnings(scopes []string, res *Result) error
 // appendArchiveDrift flags location-vs-status disagreement using per-scope terminal-ness.
 func (r *Reconciler) appendArchiveDrift(scopes []string, res *Result) error {
 	for _, scope := range scopes {
-		rows, err := r.db.ScopeTickets(scope)
+		custom := customCategories(res.Schema(scope))
+		rows, err := r.db.ArchiveDrift(scope, status.TerminalNames(custom))
 		if err != nil {
 			return err
 		}
-		custom := customCategories(res.Schema(scope))
 		for _, p := range rows {
-			if p.ParseError {
-				continue
-			}
-			terminal := status.IsTerminal(p.Status, custom)
-			switch {
-			case p.Archived && !terminal:
+			if p.Archived {
 				res.Warnings = append(res.Warnings, token.Line(token.ArchiveNonTerminal,
 					fmt.Sprintf("%s is %s under archive/ (%s)", p.ID, p.Status, p.Path)))
-			case !p.Archived && terminal:
-				res.Warnings = append(res.Warnings, token.Line(token.ArchiveTerminalAtRoot,
-					fmt.Sprintf("%s is %s at dir root (%s)", p.ID, p.Status, p.Path)))
+				continue
 			}
+			res.Warnings = append(res.Warnings, token.Line(token.ArchiveTerminalAtRoot,
+				fmt.Sprintf("%s is %s at dir root (%s)", p.ID, p.Status, p.Path)))
 		}
 	}
 	return nil

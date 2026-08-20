@@ -167,10 +167,6 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 		return err
 	}
 
-	rows, err := e.db.ScopeTickets(scope)
-	if err != nil {
-		return err
-	}
 	schema := res.Schema(scope)
 	lens := e.reg.Lens[scope]
 
@@ -196,55 +192,23 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 		"note":     notePath,
 	}
 
-	var (
-		total, todo, review, inProgress, blocked, draft, backlog int
-		done, cancelled                                          int
-		claimed, blockedIDs                                      []*index.Ticket
-	)
-	for _, p := range rows {
-		if p.ParseError {
-			continue
-		}
-		// Full-scope total: every parseable ticket, including archive/ and backlog.
-		total++
-		// Terminal tallies ignore lens and include archive/.
-		switch p.Status {
-		case status.Done:
-			done++
-		case status.Cancelled:
-			cancelled++
-		}
-		if !workingBoardMember(p, lens) {
-			continue
-		}
-		switch p.Status {
-		case status.Todo:
-			todo++
-		case status.Review:
-			review++
-		case status.InProgress:
-			inProgress++
-			claimed = append(claimed, p)
-		case status.Blocked:
-			blocked++
-			blockedIDs = append(blockedIDs, p)
-		case status.Draft:
-			draft++
-		case status.Backlog:
-			backlog++
-		}
+	sp, err := e.db.ScopePulse(scope, lens)
+	if err != nil {
+		return err
 	}
-	sortTickets(claimed)
-	sortTickets(blockedIDs)
 
+	candidates, err := e.db.NextCandidates(scope)
+	if err != nil {
+		return err
+	}
 	// Same next walk as unclaimed tk next; empty next is still a pulse value.
-	sel := selectNext(gate, rows, lens, false)
+	sel := selectNext(gate, candidates, lens, false)
 	nextID := ""
 	if sel.Chosen != nil {
 		nextID = sel.Chosen.ID
 	}
 
-	dangling, err := countSameScopeDangling(e, scope)
+	dangling, err := e.db.SameScopeDanglingDependsCount(scope)
 	if err != nil {
 		return err
 	}
@@ -257,18 +221,18 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 		uncommitted = scopefile.CountAllowlistedDirty(c.Context(), dir, root, hasRoot)
 	}
 
-	pulse["total"] = strconv.Itoa(total)
-	pulse["todo"] = strconv.Itoa(todo)
-	pulse["review"] = strconv.Itoa(review)
-	pulse["in-progress"] = strconv.Itoa(inProgress)
-	pulse["blocked"] = strconv.Itoa(blocked)
-	pulse["draft"] = strconv.Itoa(draft)
-	pulse["backlog"] = strconv.Itoa(backlog)
-	pulse["done"] = strconv.Itoa(done)
-	pulse["cancelled"] = strconv.Itoa(cancelled)
+	pulse["total"] = strconv.Itoa(sp.Total)
+	pulse["todo"] = strconv.Itoa(sp.Todo)
+	pulse["review"] = strconv.Itoa(sp.Review)
+	pulse["in-progress"] = strconv.Itoa(sp.InProgress)
+	pulse["blocked"] = strconv.Itoa(sp.Blocked)
+	pulse["draft"] = strconv.Itoa(sp.Draft)
+	pulse["backlog"] = strconv.Itoa(sp.Backlog)
+	pulse["done"] = strconv.Itoa(sp.Done)
+	pulse["cancelled"] = strconv.Itoa(sp.Cancelled)
 	pulse["next"] = nextID
-	pulse["claimed"] = joinIDs(claimed)
-	pulse["blocked_ids"] = joinIDs(blockedIDs)
+	pulse["claimed"] = joinIDs(sp.Claimed)
+	pulse["blocked_ids"] = joinIDs(sp.BlockedIDs)
 	pulse["dangling"] = strconv.Itoa(dangling)
 	pulse["integrity"] = integrity
 	pulse["uncommitted"] = strconv.Itoa(uncommitted)
@@ -286,48 +250,12 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 	return nil
 }
 
-// workingBoardMember: non-quarantined, non-archive, passes lens (untagged visible).
-func workingBoardMember(p *index.Ticket, lens []string) bool {
-	if p.ParseError || p.Archived {
-		return false
-	}
-	return passesLens(p, lens)
-}
-
 // statusMode: unusable schema → plain-files (never guess repo-driven).
 func statusMode(schema *scopeconfig.Schema, configUnusable bool, hasRoot bool) string {
 	if configUnusable || schema == nil {
 		return scopeadmin.ModePlainFiles
 	}
 	return scopeadmin.DeriveMode(schema.AutoCommit, hasRoot)
-}
-
-func countSameScopeDangling(e *engine, scope string) (int, error) {
-	edges, err := e.db.AllEdges()
-	if err != nil {
-		return 0, err
-	}
-	rows, err := e.db.ScopeTickets(scope)
-	if err != nil {
-		return 0, err
-	}
-	have := map[string]bool{}
-	for _, p := range rows {
-		have[p.ID] = true
-	}
-	n := 0
-	for _, ed := range edges {
-		if ed.Kind != index.EdgeDepends || ed.FromScope != scope {
-			continue
-		}
-		if ed.ToScope != scope {
-			continue
-		}
-		if !have[ed.ToID] {
-			n++
-		}
-	}
-	return n, nil
 }
 
 // ambientIntegrity: parse_error/duplicate/equal_order/archive drift → issues.
@@ -354,19 +282,12 @@ func ambientIntegrity(e *engine, scope string, schema *scopeconfig.Schema) (stri
 	if len(eq) > 0 {
 		return "issues", nil
 	}
-	rows, err := e.db.ScopeTickets(scope)
+	drift, err := e.db.HasArchiveDrift(scope, status.TerminalNames(schemaCustom(schema)))
 	if err != nil {
 		return "", err
 	}
-	custom := schemaCustom(schema)
-	for _, p := range rows {
-		if p.ParseError {
-			continue
-		}
-		terminal := status.IsTerminal(p.Status, custom)
-		if (p.Archived && !terminal) || (!p.Archived && terminal) {
-			return "issues", nil
-		}
+	if drift {
+		return "issues", nil
 	}
 	return "ok", nil
 }

@@ -76,6 +76,38 @@ func TestInDefaultList(t *testing.T) {
 	}
 }
 
+func TestDefaultListNames(t *testing.T) {
+	got := DefaultListNames(customCategories())
+	want := map[string]bool{Draft: true, Todo: true, Review: true, InProgress: true, Blocked: true, "triaged": true}
+	if len(got) != len(want) {
+		t.Fatalf("DefaultListNames = %v, want %d names", got, len(want))
+	}
+	for _, n := range got {
+		if !want[n] {
+			t.Errorf("DefaultListNames unexpected %q in %v", n, got)
+		}
+		if !InDefaultList(n, customCategories()) {
+			t.Errorf("DefaultListNames %q is not InDefaultList", n)
+		}
+	}
+}
+
+func TestTerminalNames(t *testing.T) {
+	got := TerminalNames(customCategories())
+	want := map[string]bool{Done: true, Cancelled: true, "shipped": true, "wontfix": true}
+	if len(got) != len(want) {
+		t.Fatalf("TerminalNames = %v, want %d names", got, len(want))
+	}
+	for _, n := range got {
+		if !want[n] {
+			t.Errorf("TerminalNames unexpected %q in %v", n, got)
+		}
+		if !IsTerminal(n, customCategories()) {
+			t.Errorf("TerminalNames %q is not IsTerminal", n)
+		}
+	}
+}
+
 func TestCategoryOf(t *testing.T) {
 	custom := customCategories()
 	cases := map[string]Category{

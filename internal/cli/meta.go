@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/frontmatter"
-	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/title"
 	"github.com/p3bot/tk/internal/token"
@@ -383,12 +382,12 @@ func runMetaMutate(app *App, c *cobra.Command, op metaOp, idArg, key, valueArg, 
 		preWriteTags map[string]struct{}
 	)
 	if op == metaOpAdd && key == frontmatter.KeyTags {
-		rows, err := e.db.ScopeTickets(scope)
+		inUse, err := e.db.ScopeTagMembership(scope)
 		if err != nil {
 			return err
 		}
 		notifyTagNew = true
-		preWriteTags = index.TagMembership(rows)
+		preWriteTags = inUse
 	}
 
 	m, body, err := readTicketFile(p.Path)

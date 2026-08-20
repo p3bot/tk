@@ -3,6 +3,8 @@
 // name→category map; this package does no I/O or CUE.
 package status
 
+import "sort"
+
 // Category is the closed set of behaviours a status can have.
 type Category string
 
@@ -104,4 +106,41 @@ func InDefaultList(name string, custom map[string]Category) bool {
 		return c == CategoryActive
 	}
 	return false
+}
+
+// DefaultListNames returns built-in then custom status names that appear in the
+// default list. Pass the set into SQL IN filters rather than denormalising category.
+func DefaultListNames(custom map[string]Category) []string {
+	out := make([]string, 0, 8+len(custom))
+	for _, name := range builtinOrder {
+		if builtins[name].inDefaultList {
+			out = append(out, name)
+		}
+	}
+	var extra []string
+	for name, cat := range custom {
+		if cat == CategoryActive {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	return append(out, extra...)
+}
+
+// TerminalNames returns built-in then custom status names in category done.
+func TerminalNames(custom map[string]Category) []string {
+	out := make([]string, 0, 2+len(custom))
+	for _, name := range builtinOrder {
+		if builtins[name].category == CategoryDone {
+			out = append(out, name)
+		}
+	}
+	var extra []string
+	for name, cat := range custom {
+		if cat == CategoryDone {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	return append(out, extra...)
 }

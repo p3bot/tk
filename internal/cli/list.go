@@ -81,32 +81,35 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 		return err
 	}
 
-	rows, err := e.db.ScopeTickets(scope)
-	if err != nil {
-		return err
-	}
 	gate, err := e.buildGate(res, []string{scope})
 	if err != nil {
 		return err
 	}
 
+	inUse, err := e.db.ScopeTagMembership(scope)
+	if err != nil {
+		return err
+	}
 	if len(p.tags) > 0 {
-		warnUnknownTags(c, p.tags, index.TagMembership(rows))
+		warnUnknownTags(c, p.tags, inUse)
 	}
 
 	lens := e.reg.Lens[scope]
 	// --tag is a hard membership filter and supersedes the lens for this invocation.
 	applyLens := !p.noLens && len(lens) > 0 && len(p.tags) == 0
 
-	var kept []*index.Ticket
-	for _, row := range rows {
-		if !listVisible(row, statusFilter, p.all, schema) {
-			continue
-		}
-		if !listTagVisible(row, p.tags, applyLens, lens) {
-			continue
-		}
-		kept = append(kept, row)
+	filter := index.BoardFilter{Scope: scope, All: p.all, Tags: p.tags}
+	if len(statusFilter) > 0 {
+		filter.Statuses = statusNames(statusFilter)
+	} else if !p.all {
+		filter.DefaultStatuses = status.DefaultListNames(schemaCustom(schema))
+	}
+	if applyLens {
+		filter.Lens = lens
+	}
+	kept, err := e.db.BoardTickets(filter)
+	if err != nil {
+		return err
 	}
 	sortTickets(kept)
 
@@ -142,46 +145,16 @@ func parseStatusFilter(names []string, schema *scopeconfig.Schema) (map[string]b
 	return out, nil
 }
 
-// listVisible: status positionals ignore layout; archive/ only under --all when unfiltered.
-func listVisible(p *index.Ticket, statusFilter map[string]bool, all bool, schema *scopeconfig.Schema) bool {
-	// parse_error rows are never board rows (get/search locate them).
-	if p.ParseError {
-		return false
+func statusNames(set map[string]bool) []string {
+	if len(set) == 0 {
+		return nil
 	}
-	if len(statusFilter) > 0 {
-		return statusFilter[p.Status]
+	out := make([]string, 0, len(set))
+	for n := range set {
+		out = append(out, n)
 	}
-	if p.Archived && !all {
-		return false
-	}
-	if all {
-		return true
-	}
-	return status.InDefaultList(p.Status, schemaCustom(schema))
-}
-
-// listTagVisible: --tag is always a hard membership filter (OR across values);
-// untagged never match. Without --tag, an active lens applies (untagged still
-// pass the lens alone). Caller clears applyLens when any --tag is present.
-func listTagVisible(p *index.Ticket, tags []string, applyLens bool, lens []string) bool {
-	if len(tags) > 0 {
-		return matchesAnyTag(p, tags)
-	}
-	if applyLens {
-		return passesLens(p, lens)
-	}
-	return true
-}
-
-func matchesAnyTag(p *index.Ticket, tags []string) bool {
-	for _, want := range tags {
-		for _, have := range p.Tags {
-			if want == have {
-				return true
-			}
-		}
-	}
-	return false
+	sort.Strings(out)
+	return out
 }
 
 func sortTickets(rows []*index.Ticket) {

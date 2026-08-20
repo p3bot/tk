@@ -8,7 +8,6 @@ import (
 
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
-	"github.com/p3bot/tk/internal/status"
 )
 
 func newNextCmd(app *App) *cobra.Command {
@@ -64,11 +63,11 @@ func runNext(app *App, c *cobra.Command, scopeFlag string, noLens bool) error {
 		return err
 	}
 
-	rows, err := e.db.ScopeTickets(scope)
+	candidates, err := e.db.NextCandidates(scope)
 	if err != nil {
 		return err
 	}
-	sel := selectNext(gate, rows, e.reg.Lens[scope], noLens)
+	sel := selectNext(gate, candidates, e.reg.Lens[scope], noLens)
 	sel.writeDiagnostics(c)
 
 	if sel.Chosen != nil {
@@ -89,8 +88,8 @@ type nextSelection struct {
 }
 
 // selectNext: callers own empty-queue policy (next refuses; status emits next\t).
-func selectNext(gate *gate, rows []*index.Ticket, lens []string, noLens bool) nextSelection {
-	candidates := nextCandidates(rows)
+// candidates are already SQL-filtered (todo, not archived, not parse_error).
+func selectNext(gate *gate, candidates []*index.Ticket, lens []string, noLens bool) nextSelection {
 	sortTickets(candidates)
 	applyLens := !noLens && len(lens) > 0
 
@@ -132,16 +131,6 @@ func (s nextSelection) writeDiagnostics(c *cobra.Command) {
 	for _, line := range s.Tokens {
 		stderrln(c, line)
 	}
-}
-
-func nextCandidates(rows []*index.Ticket) []*index.Ticket {
-	var out []*index.Ticket
-	for _, p := range rows {
-		if status.IsNextEligible(p.Status) && !p.Archived && !p.ParseError {
-			out = append(out, p)
-		}
-	}
-	return out
 }
 
 func emptyQueueError(applyLens bool, lens []string, blocked, readyOutsideLens int) error {
@@ -198,16 +187,13 @@ func (e *engine) reconcileClosureResult(ambient, dir string) (*reconcile.Result,
 		for name := range pending {
 			done[name] = true
 		}
-		edges, err := e.db.AllEdges()
+		toScopes, err := e.db.DependsTargetScopes(batch)
 		if err != nil {
 			return nil, nil, err
 		}
-		for _, ed := range edges {
-			if ed.Kind != index.EdgeDepends || !done[ed.FromScope] {
-				continue
-			}
-			if entry, ok := e.reg.Scopes[ed.ToScope]; ok && !done[ed.ToScope] {
-				targets[ed.ToScope] = entry.Dir
+		for _, to := range toScopes {
+			if entry, ok := e.reg.Scopes[to]; ok && !done[to] {
+				targets[to] = entry.Dir
 			}
 		}
 	}

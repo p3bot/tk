@@ -1,7 +1,7 @@
 package index
 
 // SchemaVersion is the on-disk schema version. A mismatch triggers full rebuild (no migrations).
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // schemaSQL is the complete DDL for a fresh index. Path is the physical key so
 // duplicate ids are two rows and archive moves are delete+insert. FTS rowid mirrors
@@ -22,18 +22,28 @@ CREATE TABLE tickets (
     title           TEXT NOT NULL DEFAULT '',
     summary         TEXT NOT NULL DEFAULT '',
     created         TEXT NOT NULL DEFAULT '',
-    tags            TEXT NOT NULL DEFAULT '',
-    custom          TEXT NOT NULL DEFAULT '',
-    status_conflict TEXT NOT NULL DEFAULT '',
-    archived        INTEGER NOT NULL DEFAULT 0,
-    parse_error     INTEGER NOT NULL DEFAULT 0,
+    custom          TEXT NOT NULL DEFAULT '{}',
+    status_conflict TEXT NOT NULL DEFAULT '[]',
+    archived        INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    parse_error     INTEGER NOT NULL DEFAULT 0 CHECK (parse_error IN (0, 1)),
     parse_msg       TEXT NOT NULL DEFAULT '',
-    schema_error    INTEGER NOT NULL DEFAULT 0,
+    schema_error    INTEGER NOT NULL DEFAULT 0 CHECK (schema_error IN (0, 1)),
     mtime_ns        INTEGER NOT NULL DEFAULT 0,
     size            INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_tickets_scope_id ON tickets(scope, id);
-CREATE INDEX idx_tickets_scope ON tickets(scope);
+CREATE INDEX idx_tickets_scope_short_id ON tickets(scope, short_id);
+CREATE INDEX idx_tickets_id ON tickets(id);
+CREATE INDEX idx_tickets_scope_archived_status_order ON tickets(scope, archived, status, order_key);
+CREATE INDEX idx_tickets_scope_order ON tickets(scope, order_key);
+
+CREATE TABLE ticket_tags (
+    path TEXT NOT NULL,
+    tag  TEXT NOT NULL CHECK (tag <> ''),
+    PRIMARY KEY (path, tag),
+    FOREIGN KEY (path) REFERENCES tickets(path) ON DELETE CASCADE
+);
+CREATE INDEX idx_ticket_tags_tag ON ticket_tags(tag, path);
 
 CREATE TABLE edges (
     from_path  TEXT NOT NULL,
@@ -46,6 +56,8 @@ CREATE TABLE edges (
 CREATE INDEX idx_edges_from ON edges(from_id);
 CREATE INDEX idx_edges_to ON edges(to_id);
 CREATE INDEX idx_edges_from_path ON edges(from_path);
+CREATE INDEX idx_edges_to_scope ON edges(to_scope);
+CREATE INDEX idx_edges_from_scope_kind ON edges(from_scope, kind);
 
 CREATE VIRTUAL TABLE fts USING fts5(title, body, tokenize = 'porter unicode61');
 
@@ -63,17 +75,23 @@ CREATE TABLE config_cache (
 `
 
 // SchemaText is the human-facing description for tk query --schema (not a stable API).
-const SchemaText = `tk index schema (version 2)
+const SchemaText = `tk index schema (version 3)
 
 NOT A STABLE API: the index is a derived cache, rebuilt on any schema_version
 bump, and may reshape between releases with no migration. Do not script against
 it — agents use tk deps / list / search / next / get / meta instead.
 
 tickets(path, scope, id, short_id, status, order_key, title, summary, created,
-         tags, custom, status_conflict, archived, parse_error, parse_msg,
+         custom, status_conflict, archived, parse_error, parse_msg,
          schema_error, mtime_ns, size)
-    One row per ticket file, keyed by absolute path. tags and custom are JSON;
-    status_conflict is a JSON array; archived/parse_error/schema_error are 0/1.
+    One row per ticket file, keyed by absolute path. custom is a JSON object
+    (empty {}); status_conflict is a JSON array (empty []);
+    archived/parse_error/schema_error are 0/1. There is no tags column.
+
+ticket_tags(path, tag)
+    One row per tag on a ticket file. PRIMARY KEY (path, tag); path references
+    tickets(path) ON DELETE CASCADE. Empty-string tags are not stored. Join on
+    tickets.path.
 
 edges(from_path, from_id, from_scope, to_id, to_scope, kind)
     One row per depends/related frontmatter entry (full ids only). kind is

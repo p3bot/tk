@@ -42,10 +42,6 @@ func (d *DB) UpsertTicket(p *Ticket) error {
 // upsertTicketTx writes ticket/edges/fts inside a transaction. Atomicity is per-file
 // only: the store is rebuildable, so a crash mid-scope self-heals on the next reconcile.
 func upsertTicketTx(tx *sql.Tx, p *Ticket) error {
-	tagsJSON, err := marshalStrings(p.Tags)
-	if err != nil {
-		return err
-	}
 	conflictJSON, err := marshalStrings(p.StatusConflict)
 	if err != nil {
 		return err
@@ -57,16 +53,16 @@ func upsertTicketTx(tx *sql.Tx, p *Ticket) error {
 
 	_, err = tx.Exec(`
 INSERT INTO tickets (path, scope, id, short_id, status, order_key, title, summary, created,
-                      tags, custom, status_conflict, archived, parse_error, parse_msg, schema_error, mtime_ns, size)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      custom, status_conflict, archived, parse_error, parse_msg, schema_error, mtime_ns, size)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(path) DO UPDATE SET
     scope=excluded.scope, id=excluded.id, short_id=excluded.short_id, status=excluded.status,
     order_key=excluded.order_key, title=excluded.title, summary=excluded.summary, created=excluded.created,
-    tags=excluded.tags, custom=excluded.custom, status_conflict=excluded.status_conflict,
+    custom=excluded.custom, status_conflict=excluded.status_conflict,
     archived=excluded.archived, parse_error=excluded.parse_error, parse_msg=excluded.parse_msg,
     schema_error=excluded.schema_error, mtime_ns=excluded.mtime_ns, size=excluded.size`,
 		p.Path, p.Scope, p.ID, p.ShortID, p.Status, p.OrderKey, p.Title, p.Summary, p.Created,
-		tagsJSON, customJSON, conflictJSON, boolToInt(p.Archived), boolToInt(p.ParseError),
+		customJSON, conflictJSON, boolToInt(p.Archived), boolToInt(p.ParseError),
 		p.ParseMsg, boolToInt(p.SchemaError), p.MtimeNS, p.Size)
 	if err != nil {
 		return fmt.Errorf("upsert ticket %s: %w", p.Path, err)
@@ -82,6 +78,15 @@ ON CONFLICT(path) DO UPDATE SET
 	}
 	if _, err := tx.Exec(`INSERT INTO fts(rowid, title, body) VALUES (?, ?, ?)`, rowid, p.Title, string(p.Body)); err != nil {
 		return fmt.Errorf("index fts for %s: %w", p.Path, err)
+	}
+
+	if _, err := tx.Exec(`DELETE FROM ticket_tags WHERE path = ?`, p.Path); err != nil {
+		return fmt.Errorf("clear tags for %s: %w", p.Path, err)
+	}
+	for _, tag := range uniqueTags(p.Tags) {
+		if _, err := tx.Exec(`INSERT INTO ticket_tags(path, tag) VALUES (?, ?)`, p.Path, tag); err != nil {
+			return fmt.Errorf("insert tag %s for %s: %w", tag, p.Path, err)
+		}
 	}
 
 	if _, err := tx.Exec(`DELETE FROM edges WHERE from_path = ?`, p.Path); err != nil {
@@ -108,6 +113,27 @@ func (d *DB) UpsertTicketWithEdges(p *Ticket, edges []Edge) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// uniqueTags keeps the first non-empty tag. A ticket's tag list is a set;
+// duplicates and empty strings must not become insert failures.
+func uniqueTags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(tags))
+	out := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		out = append(out, tag)
+	}
+	return out
 }
 
 // uniqueEdges keeps the first (from_path, kind, to_id). A depends/related list
@@ -148,6 +174,9 @@ func (d *DB) DeleteByPath(path string) error {
 	if _, err := tx.Exec(`DELETE FROM fts WHERE rowid = ?`, rowid); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM ticket_tags WHERE path = ?`, path); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM edges WHERE from_path = ?`, path); err != nil {
 		return err
 	}
@@ -166,6 +195,9 @@ func (d *DB) DeleteScope(scope string) error {
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec(`DELETE FROM fts WHERE rowid IN (SELECT rowid FROM tickets WHERE scope = ?)`, scope); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM ticket_tags WHERE path IN (SELECT path FROM tickets WHERE scope = ?)`, scope); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM edges WHERE from_scope = ?`, scope); err != nil {
@@ -252,7 +284,7 @@ func (d *DB) ConfigCacheSet(scope string, e ConfigCacheEntry) error {
 
 func marshalStrings(v []string) (string, error) {
 	if len(v) == 0 {
-		return "", nil
+		return "[]", nil
 	}
 	b, err := json.Marshal(v)
 	return string(b), err
@@ -260,7 +292,7 @@ func marshalStrings(v []string) (string, error) {
 
 func marshalCustom(v map[string]any) (string, error) {
 	if len(v) == 0 {
-		return "", nil
+		return "{}", nil
 	}
 	b, err := json.Marshal(v)
 	return string(b), err

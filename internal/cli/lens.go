@@ -68,11 +68,10 @@ func runLens(app *App, c *cobra.Command, args []string, scopeFlag string, clearL
 		if _, err := e.reconcileResult(map[string]string{scope: resolved.Entry.Dir}); err != nil {
 			return err
 		}
-		rows, err := e.db.ScopeTickets(scope)
+		inUse, err := e.db.ScopeTagMembership(scope)
 		if err != nil {
 			return err
 		}
-		inUse := index.TagMembership(rows)
 		if err := e.writeLens(scope, tags); err != nil {
 			return err
 		}

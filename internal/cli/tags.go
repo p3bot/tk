@@ -2,8 +2,6 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
-
-	"github.com/p3bot/tk/internal/index"
 )
 
 func newTagsCmd(app *App) *cobra.Command {
@@ -44,11 +42,11 @@ func runTags(app *App, c *cobra.Command, scopeFlag string) error {
 		return err
 	}
 
-	rows, err := e.db.ScopeTickets(scope)
+	tags, err := e.db.ScopeDistinctTags(scope)
 	if err != nil {
 		return err
 	}
-	for _, tag := range index.DistinctTags(rows) {
+	for _, tag := range tags {
 		stdoutln(c, tag)
 	}
 	return nil

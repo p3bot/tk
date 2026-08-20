@@ -18,13 +18,31 @@ type gate struct {
 	dupSet  map[string]bool
 }
 
-// buildGate scopes the duplicate-id set to homeScopes (listed/selected scopes only).
+// buildGate loads homeScopes plus resolved depend-target tickets (and the depends
+// edges those subject tickets need), not the machine-wide dump.
 func (e *engine) buildGate(res *reconcile.Result, homeScopes []string) (*gate, error) {
-	all, err := e.db.AllTickets()
+	tickets, err := e.db.TicketsInScopes(homeScopes)
 	if err != nil {
 		return nil, err
 	}
-	edges, err := e.db.AllEdges()
+	edges, err := e.db.DependsFromScopes(homeScopes)
+	if err != nil {
+		return nil, err
+	}
+	have := make(map[string]bool, len(tickets))
+	for _, p := range tickets {
+		have[p.ID] = true
+	}
+	var missing []string
+	seen := map[string]bool{}
+	for _, ed := range edges {
+		if have[ed.ToID] || seen[ed.ToID] {
+			continue
+		}
+		seen[ed.ToID] = true
+		missing = append(missing, ed.ToID)
+	}
+	extra, err := e.db.TicketsByFullIDs(missing)
 	if err != nil {
 		return nil, err
 	}
@@ -40,13 +58,14 @@ func (e *engine) buildGate(res *reconcile.Result, homeScopes []string) (*gate, e
 		schemas: map[string]*scopeconfig.Schema{},
 		dupSet:  dup,
 	}
-	for _, p := range all {
+	for _, p := range tickets {
+		g.byID[p.ID] = append(g.byID[p.ID], p)
+	}
+	for _, p := range extra {
 		g.byID[p.ID] = append(g.byID[p.ID], p)
 	}
 	for _, ed := range edges {
-		if ed.Kind == index.EdgeDepends {
-			g.depends[ed.FromPath] = append(g.depends[ed.FromPath], ed.ToID)
-		}
+		g.depends[ed.FromPath] = append(g.depends[ed.FromPath], ed.ToID)
 	}
 	for name, s := range res.Schemas {
 		g.schemas[name] = s

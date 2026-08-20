@@ -1,7 +1,7 @@
 package index
 
 // SchemaVersion is the on-disk schema version. A mismatch triggers full rebuild (no migrations).
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // schemaSQL is the complete DDL for a fresh index. Path is the physical key so
 // duplicate ids are two rows and archive moves are delete+insert. FTS rowid mirrors
@@ -51,7 +51,9 @@ CREATE TABLE edges (
     from_scope TEXT NOT NULL,
     to_id      TEXT NOT NULL,
     to_scope   TEXT NOT NULL,
-    kind       TEXT NOT NULL
+    kind       TEXT NOT NULL CHECK (kind IN ('depends', 'related')),
+    PRIMARY KEY (from_path, kind, to_id),
+    FOREIGN KEY (from_path) REFERENCES tickets(path) ON DELETE CASCADE
 );
 CREATE INDEX idx_edges_from ON edges(from_id);
 CREATE INDEX idx_edges_to ON edges(to_id);
@@ -75,7 +77,7 @@ CREATE TABLE config_cache (
 `
 
 // SchemaText is the human-facing description for tk query --schema (not a stable API).
-const SchemaText = `tk index schema (version 3)
+const SchemaText = `tk index schema (version 4)
 
 NOT A STABLE API: the index is a derived cache, rebuilt on any schema_version
 bump, and may reshape between releases with no migration. Do not script against
@@ -94,9 +96,10 @@ ticket_tags(path, tag)
     tickets.path.
 
 edges(from_path, from_id, from_scope, to_id, to_scope, kind)
-    One row per depends/related frontmatter entry (full ids only). kind is
-    'depends' or 'related'. Cross-scope edges have from_scope != to_scope; a row
-    whose to_id matches no ticket is a dangling edge.
+    One row per depends/related frontmatter entry (full ids only). PRIMARY KEY
+    (from_path, kind, to_id); CHECK kind IN ('depends', 'related'); from_path
+    references tickets(path) ON DELETE CASCADE. to_id is not a foreign key and
+    may dangle. Cross-scope edges have from_scope != to_scope.
 
 fts(title, body)
     FTS5 corpus; rowid mirrors tickets.rowid. Query with MATCH and rank by

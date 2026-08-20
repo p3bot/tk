@@ -431,14 +431,20 @@ func TestSearchAttachesTags(t *testing.T) {
 func TestDeleteRemovesTags(t *testing.T) {
 	db := openTemp(t)
 	p := tagged(proj("wc", "ab2c", "todo", "a0"), "x")
+	keep := tagged(proj("ui", "de34", "todo", "a0"), "y")
 	_ = db.UpsertTicket(p)
+	_ = db.UpsertTicket(keep)
 	if err := db.DeleteByPath(p.Path); err != nil {
 		t.Fatal(err)
 	}
 	var n int
-	_ = db.sql.QueryRow(`SELECT COUNT(*) FROM ticket_tags`).Scan(&n)
+	_ = db.sql.QueryRow(`SELECT COUNT(*) FROM ticket_tags WHERE path = ?`, p.Path).Scan(&n)
 	if n != 0 {
 		t.Fatalf("tags survived delete: %d", n)
+	}
+	_ = db.sql.QueryRow(`SELECT COUNT(*) FROM ticket_tags WHERE path = ?`, keep.Path).Scan(&n)
+	if n != 1 {
+		t.Fatalf("keeper tags = %d, want 1", n)
 	}
 }
 

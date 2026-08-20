@@ -136,8 +136,9 @@ func uniqueTags(tags []string) []string {
 	return out
 }
 
-// uniqueEdges keeps the first (from_path, kind, to_id). A depends/related list
-// is a set; duplicate entries must not become duplicate rows.
+// uniqueEdges keeps the first (from_path, kind, to_id). The PK also enforces
+// the set; collapsing here so a duplicate frontmatter entry does not fail the
+// whole file as a unique-violation.
 func uniqueEdges(edges []Edge) []Edge {
 	if len(edges) < 2 {
 		return edges
@@ -155,7 +156,7 @@ func uniqueEdges(edges []Edge) []Edge {
 	return out
 }
 
-// DeleteByPath removes the row, edges, and FTS entry for a vanished file.
+// DeleteByPath removes the ticket row and FTS entry for a vanished file.
 func (d *DB) DeleteByPath(path string) error {
 	tx, err := d.sql.Begin()
 	if err != nil {
@@ -174,12 +175,6 @@ func (d *DB) DeleteByPath(path string) error {
 	if _, err := tx.Exec(`DELETE FROM fts WHERE rowid = ?`, rowid); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM ticket_tags WHERE path = ?`, path); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM edges WHERE from_path = ?`, path); err != nil {
-		return err
-	}
 	if _, err := tx.Exec(`DELETE FROM tickets WHERE path = ?`, path); err != nil {
 		return err
 	}
@@ -195,12 +190,6 @@ func (d *DB) DeleteScope(scope string) error {
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec(`DELETE FROM fts WHERE rowid IN (SELECT rowid FROM tickets WHERE scope = ?)`, scope); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM ticket_tags WHERE path IN (SELECT path FROM tickets WHERE scope = ?)`, scope); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM edges WHERE from_scope = ?`, scope); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM tickets WHERE scope = ?`, scope); err != nil {

@@ -3,6 +3,7 @@ package index
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -260,6 +261,215 @@ func TestUpsertDedupesEdges(t *testing.T) {
 	}
 	if len(all) != 3 {
 		t.Fatalf("edges = %+v, want 3 (depends+related to de34, depends to gh56)", all)
+	}
+}
+
+func TestSchemaEdgesRelation(t *testing.T) {
+	db := openTemp(t)
+	if SchemaVersion <= 3 {
+		t.Fatalf("SchemaVersion = %d, want > 3", SchemaVersion)
+	}
+	var sql string
+	if err := db.sql.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='edges'`).Scan(&sql); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"PRIMARY KEY (from_path, kind, to_id)",
+		"CHECK (kind IN ('depends', 'related'))",
+		"FOREIGN KEY (from_path) REFERENCES tickets(path) ON DELETE CASCADE",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("edges DDL missing %q:\n%s", want, sql)
+		}
+	}
+	if strings.Contains(sql, "FOREIGN KEY (to_id)") || strings.Contains(sql, "REFERENCES tickets(id)") {
+		t.Errorf("to_id must not be a foreign key:\n%s", sql)
+	}
+
+	rows, err := db.sql.Query(`PRAGMA table_info(edges)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	pk := map[string]int{}
+	for rows.Next() {
+		var cid, notnull, pkOrd int
+		var name, ctype string
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pkOrd); err != nil {
+			t.Fatal(err)
+		}
+		if pkOrd > 0 {
+			pk[name] = pkOrd
+		}
+	}
+	if pk["from_path"] != 1 || pk["kind"] != 2 || pk["to_id"] != 3 || len(pk) != 3 {
+		t.Fatalf("edges PK columns = %v, want from_path=1 kind=2 to_id=3", pk)
+	}
+
+	fkRows, err := db.sql.Query(`PRAGMA foreign_key_list(edges)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = fkRows.Close() }()
+	var nFK int
+	for fkRows.Next() {
+		var id, seq int
+		var table, from, to, onUpdate, onDelete, match string
+		if err := fkRows.Scan(&id, &seq, &table, &from, &to, &onUpdate, &onDelete, &match); err != nil {
+			t.Fatal(err)
+		}
+		nFK++
+		if table != "tickets" || from != "from_path" || to != "path" || onDelete != "CASCADE" {
+			t.Fatalf("edges FK = table=%s from=%s to=%s on_delete=%s", table, from, to, onDelete)
+		}
+	}
+	if nFK != 1 {
+		t.Fatalf("edges foreign keys = %d, want 1", nFK)
+	}
+
+	idxRows, err := db.sql.Query(`SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='edges'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idxRows.Close() }()
+	idx := map[string]bool{}
+	for idxRows.Next() {
+		var name string
+		if err := idxRows.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		idx[name] = true
+	}
+	for _, name := range []string{
+		"idx_edges_from", "idx_edges_to", "idx_edges_from_path",
+		"idx_edges_to_scope", "idx_edges_from_scope_kind",
+	} {
+		if !idx[name] {
+			t.Errorf("missing index %s in %v", name, idx)
+		}
+	}
+
+	for _, want := range []string{
+		"PRIMARY KEY", "CHECK kind IN", "ON DELETE CASCADE", "may dangle",
+	} {
+		if !strings.Contains(SchemaText, want) {
+			t.Errorf("SchemaText missing %q:\n%s", want, SchemaText)
+		}
+	}
+}
+
+func TestEdgesConstraints(t *testing.T) {
+	db := openTemp(t)
+	from := proj("wc", "ab2c", "todo", "a0")
+	if err := db.UpsertTicket(from); err != nil {
+		t.Fatal(err)
+	}
+	insert := func(kind, toID string) error {
+		_, err := db.sql.Exec(`INSERT INTO edges(from_path, from_id, from_scope, to_id, to_scope, kind) VALUES (?, ?, ?, ?, ?, ?)`,
+			from.Path, from.ID, from.Scope, toID, "wc", kind)
+		return err
+	}
+
+	if err := insert(EdgeDepends, "wc-missing"); err != nil {
+		t.Fatalf("dangling to_id should insert: %v", err)
+	}
+	if err := insert(EdgeDepends, "wc-missing"); err == nil {
+		t.Fatal("duplicate (from_path, kind, to_id) should fail")
+	}
+	if err := insert(EdgeRelated, "wc-missing"); err != nil {
+		t.Fatalf("related to the same target should insert: %v", err)
+	}
+	if err := insert("blocked", "wc-zz99"); err == nil {
+		t.Fatal("kind='blocked' should fail CHECK")
+	}
+
+	all, err := db.AllEdges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("edges = %+v, want depends+related to wc-missing", all)
+	}
+	var sawDepends, sawRelated bool
+	for _, e := range all {
+		if e.ToID != "wc-missing" || e.FromPath != from.Path {
+			t.Fatalf("unexpected edge %+v", e)
+		}
+		switch e.Kind {
+		case EdgeDepends:
+			sawDepends = true
+		case EdgeRelated:
+			sawRelated = true
+		}
+	}
+	if !sawDepends || !sawRelated {
+		t.Fatalf("want both kinds, got %+v", all)
+	}
+}
+
+func TestDeleteTicketCascadesOutgoingEdges(t *testing.T) {
+	db := openTemp(t)
+	src := proj("wc", "ab2c", "todo", "a0")
+	dst := proj("wc", "de34", "todo", "a1")
+	other := proj("ui", "gh56", "todo", "a0")
+	if err := db.UpsertTicketWithEdges(src, []Edge{
+		{FromPath: src.Path, FromID: src.ID, FromScope: "wc", ToID: dst.ID, ToScope: "wc", Kind: EdgeDepends},
+		{FromPath: src.Path, FromID: src.ID, FromScope: "wc", ToID: "wc-gone", ToScope: "wc", Kind: EdgeRelated},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertTicketWithEdges(dst, []Edge{
+		{FromPath: dst.Path, FromID: dst.ID, FromScope: "wc", ToID: src.ID, ToScope: "wc", Kind: EdgeDepends},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertTicket(other); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.sql.Exec(`DELETE FROM tickets WHERE path = ?`, src.Path); err != nil {
+		t.Fatal(err)
+	}
+	all, err := db.AllEdges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].FromPath != dst.Path || all[0].ToID != src.ID {
+		t.Fatalf("after deleting src, edges = %+v, want dst's dangling depends on src", all)
+	}
+
+	if err := db.UpsertTicketWithEdges(other, []Edge{
+		{FromPath: other.Path, FromID: other.ID, FromScope: "ui", ToID: "ui-keep", ToScope: "ui", Kind: EdgeRelated},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteByPath(dst.Path); err != nil {
+		t.Fatal(err)
+	}
+	all, err = db.AllEdges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].FromPath != other.Path {
+		t.Fatalf("DeleteByPath edges = %+v, want only ui keeper", all)
+	}
+
+	keep := proj("wc", "zz99", "todo", "a2")
+	if err := db.UpsertTicketWithEdges(keep, []Edge{
+		{FromPath: keep.Path, FromID: keep.ID, FromScope: "wc", ToID: "wc-gone", ToScope: "wc", Kind: EdgeDepends},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteScope("ui"); err != nil {
+		t.Fatal(err)
+	}
+	all, err = db.AllEdges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].FromPath != keep.Path {
+		t.Fatalf("DeleteScope edges = %+v, want only wc keeper", all)
 	}
 }
 

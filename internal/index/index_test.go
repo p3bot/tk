@@ -234,6 +234,35 @@ func TestReadOnlyQueryGuard(t *testing.T) {
 	}
 }
 
+func TestForeignKeysPragmaIsOn(t *testing.T) {
+	db := openTemp(t)
+	var v int
+	if err := db.sql.QueryRow(`PRAGMA foreign_keys`).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	if v != 1 {
+		t.Fatalf("foreign_keys = %d, want 1", v)
+	}
+}
+
+func TestUpsertDedupesEdges(t *testing.T) {
+	db := openTemp(t)
+	p := proj("wc", "ab2c", "todo", "a0")
+	dup := Edge{FromPath: p.Path, FromID: "wc-ab2c", FromScope: "wc", ToID: "wc-de34", ToScope: "wc", Kind: EdgeDepends}
+	rel := Edge{FromPath: p.Path, FromID: "wc-ab2c", FromScope: "wc", ToID: "wc-de34", ToScope: "wc", Kind: EdgeRelated}
+	other := Edge{FromPath: p.Path, FromID: "wc-ab2c", FromScope: "wc", ToID: "wc-gh56", ToScope: "wc", Kind: EdgeDepends}
+	if err := db.UpsertTicketWithEdges(p, []Edge{dup, dup, rel, other, dup}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := db.AllEdges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("edges = %+v, want 3 (depends+related to de34, depends to gh56)", all)
+	}
+}
+
 func TestConfigCache(t *testing.T) {
 	db := openTemp(t)
 	if _, ok, _ := db.ConfigCacheGet("wc"); ok {

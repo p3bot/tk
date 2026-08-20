@@ -51,9 +51,14 @@ func Open(stateDir string) (*DB, error) {
 	return db, nil
 }
 
-// openAt applies connection pragmas. MaxOpenConns=1: one process, one intentional writer.
+// openAt applies connection pragmas.
+// MaxOpenConns=1: database/sql pooling fights SQLite's locking; one connection
+// per process. Multi-process writers are expected and serialised by WAL plus
+// busy_timeout.
+// foreign_keys(on): SQLite defaults this off; this store wants the engine to
+// enforce FKs whenever the schema declares them.
 func openAt(path string) (*DB, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(%d)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(off)",
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(%d)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(on)",
 		path, busyTimeoutMS)
 	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {

@@ -101,13 +101,32 @@ func (d *DB) UpsertTicketWithEdges(p *Ticket, edges []Edge) error {
 	if err := upsertTicketTx(tx, p); err != nil {
 		return err
 	}
-	for _, e := range edges {
+	for _, e := range uniqueEdges(edges) {
 		if _, err := tx.Exec(`INSERT INTO edges(from_path, from_id, from_scope, to_id, to_scope, kind) VALUES (?, ?, ?, ?, ?, ?)`,
 			e.FromPath, e.FromID, e.FromScope, e.ToID, e.ToScope, e.Kind); err != nil {
 			return fmt.Errorf("insert edge %s->%s: %w", e.FromID, e.ToID, err)
 		}
 	}
 	return tx.Commit()
+}
+
+// uniqueEdges keeps the first (from_path, kind, to_id). A depends/related list
+// is a set; duplicate entries must not become duplicate rows.
+func uniqueEdges(edges []Edge) []Edge {
+	if len(edges) < 2 {
+		return edges
+	}
+	seen := make(map[string]struct{}, len(edges))
+	out := make([]Edge, 0, len(edges))
+	for _, e := range edges {
+		key := e.FromPath + "\x00" + e.Kind + "\x00" + e.ToID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, e)
+	}
+	return out
 }
 
 // DeleteByPath removes the row, edges, and FTS entry for a vanished file.

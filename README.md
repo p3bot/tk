@@ -91,7 +91,8 @@ tk note add --name <slug> <text...>  # append one line to a named note
 tk note set <text...>                # replace the default
 tk note set --name <slug> -          # replace named from stdin
 tk note edit                         # $EDITOR on the default
-tk note delete --name <slug>         # unlink; --name required
+tk note delete                       # unlink the default
+tk note delete --name <slug>         # unlink named (one-shot)
 ```
 
 `use` is machine-local (XDG `note.cue`, keyed by scope name). Documents stay

@@ -31,10 +31,10 @@ func newNoteCmd(app *App) *cobra.Command {
 			"slug / --name) prints the file bytes. Missing and empty files are empty stdout,\n" +
 			"exit 0. `list` prints addressable slugs, one per line, alphabetical.\n" +
 			"`add` appends one line; `set` replaces the file (`-` reads stdin); `edit` opens\n" +
-			"$EDITOR; `delete --name <slug>` unlinks. `use` sets this machine's default slug.\n" +
-			"Omit --name and a positional slug to use that machine-local default (built-in\n" +
-			"`default` when unset) except on delete, which requires --name. --name and a\n" +
-			"positional slug are one-shot selectors and never write the stored default.\n" +
+			"$EDITOR; `delete` unlinks the default (`--name` is one-shot). `use` sets this\n" +
+			"machine's default slug. Omit --name and a positional slug to use that\n" +
+			"machine-local default (built-in `default` when unset). --name and a positional\n" +
+			"slug are one-shot selectors and never write the stored default.\n" +
 			"Personal slugs (`grant`, `alice`) with `default` as the shared pad are a\n" +
 			"convention, not a CLI rule.\n" +
 			"\n" +
@@ -145,19 +145,21 @@ func newNoteEditCmd(app *App) *cobra.Command {
 func newNoteDeleteCmd(app *App) *cobra.Command {
 	var scope, name string
 	cmd := &cobra.Command{
-		Use:   "delete --name <slug>",
+		Use:   "delete [--name slug]",
 		Short: "Remove a note file",
-		Long: "Unlink a regular note file. --name is required. Missing is success and silent.\n" +
-			"An empty notes/ directory is removed. Prints nothing. Never self-commits;\n" +
-			"a tk-driven scope may ride sync_needed: dirty. Durability is tk sync\n" +
-			"(tk-driven) or a host commit (repo-driven).",
+		Long: "Unlink a regular note file. Omit --name to unlink this machine's default\n" +
+			"(built-in `default` when unset). --name is a one-shot selector and never\n" +
+			"writes the stored default. Missing is success and silent. An empty notes/\n" +
+			"directory is removed. Prints nothing. Never self-commits; a tk-driven scope\n" +
+			"may ride sync_needed: dirty. Durability is tk sync (tk-driven) or a host\n" +
+			"commit (repo-driven).",
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runNoteDelete(app, c, scope, name, c.Flags().Changed("name"))
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient; wins over ambient)")
-	cmd.Flags().StringVar(&name, "name", "", "note slug (required)")
+	cmd.Flags().StringVar(&name, "name", "", "note slug (one-shot; defaults to this machine's default)")
 	return cmd
 }
 
@@ -332,9 +334,6 @@ func runNoteEdit(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet
 }
 
 func runNoteDelete(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet bool) error {
-	if !nameSet {
-		return usageErrorf("delete requires --name")
-	}
 	n, err := openNote(app, c, scopeFlag)
 	if err != nil {
 		return err

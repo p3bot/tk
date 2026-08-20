@@ -113,7 +113,7 @@ func TestNoteAddAppendDeleteDefault(t *testing.T) {
 		t.Errorf("cat after two adds = %q", out)
 	}
 
-	out, errOut, err = run(t, app, "note", "delete", "--name", "default", "--scope", "wc")
+	out, errOut, err = run(t, app, "note", "delete", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("delete: %v stderr=%q", err, errOut)
 	}
@@ -174,7 +174,7 @@ func TestNoteAddGlueAndEmptyCreate(t *testing.T) {
 	}
 }
 
-func TestNoteAddSetDeleteUsage(t *testing.T) {
+func TestNoteAddSetUsage(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 
@@ -194,9 +194,6 @@ func TestNoteAddSetDeleteUsage(t *testing.T) {
 	}
 
 	out, _, err = run(t, app, "note", "set", "", "--scope", "wc")
-	assertUsageEmpty(t, out, err)
-
-	out, _, err = run(t, app, "note", "delete", "--scope", "wc")
 	assertUsageEmpty(t, out, err)
 }
 
@@ -277,7 +274,7 @@ func TestNoteDeleteMissingIsSuccess(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 
-	out, _, err := run(t, app, "note", "delete", "--name", "default", "--scope", "wc")
+	out, _, err := run(t, app, "note", "delete", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("delete missing: %v", err)
 	}
@@ -1168,8 +1165,11 @@ func TestNoteUseDeleteLeavesPointer(t *testing.T) {
 	if _, _, err := run(t, app, "note", "add", "--name", "shared", "x", "--scope", "wc"); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := run(t, app, "note", "add", "--name", "default", "pad", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
 
-	out, _, err := run(t, app, "note", "delete", "--name", "grant", "--scope", "wc")
+	out, _, err := run(t, app, "note", "delete", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -1192,14 +1192,38 @@ func TestNoteUseDeleteLeavesPointer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if out != "shared\n" {
-		t.Errorf("list = %q want slugs only", out)
+	if out != "default\nshared\n" {
+		t.Errorf("list = %q want default and shared", out)
 	}
 	if strings.Contains(out, "/") || strings.Contains(out, "*") || strings.Contains(out, "grant") {
 		t.Errorf("list must stay slugs only with no default marker, got %q", out)
 	}
 	if _, err := os.Stat(namedNotePath(dir, "grant")); !os.IsNotExist(err) {
 		t.Errorf("grant.md should be gone, stat err=%v", err)
+	}
+	got, err := os.ReadFile(defaultNotePath(dir))
+	if err != nil {
+		t.Fatalf("default.md should remain: %v", err)
+	}
+	if string(got) != "pad\n" {
+		t.Errorf("default.md = %q want pad\\n", got)
+	}
+
+	if _, _, err := run(t, app, "note", "delete", "--name", "default", "--scope", "wc"); err != nil {
+		t.Fatalf("named delete of default: %v", err)
+	}
+	if _, err := os.Stat(defaultNotePath(dir)); !os.IsNotExist(err) {
+		t.Errorf("--name default should unlink default.md, stat err=%v", err)
+	}
+	if loadNoteMap(t, app)["wc"] != "grant" {
+		t.Errorf("one-shot delete must leave the pointer, stored = %q", loadNoteMap(t, app)["wc"])
+	}
+	got, err = os.ReadFile(namedNotePath(dir, "shared"))
+	if err != nil {
+		t.Fatalf("shared.md should remain: %v", err)
+	}
+	if string(got) != "x\n" {
+		t.Errorf("shared.md = %q", got)
 	}
 }
 
@@ -1394,6 +1418,19 @@ func TestNoteUseHelpAndSkill(t *testing.T) {
 	}
 	if strings.Contains(statusHelp, "notes/default.md, whether") {
 		t.Error("status Long must not hard-code notes/default.md as the only path")
+	}
+	if strings.Contains(help, "except on delete") || strings.Contains(help, "requires --name") {
+		t.Errorf("note Long must not require --name on delete, got:\n%s", help)
+	}
+	deleteHelp, _, err := run(t, app, "note", "delete", "--help")
+	if err != nil {
+		t.Fatalf("note delete --help: %v", err)
+	}
+	if !strings.Contains(deleteHelp, "Omit --name") {
+		t.Errorf("delete Long should say omit --name, got:\n%s", deleteHelp)
+	}
+	if strings.Contains(deleteHelp, "required") {
+		t.Errorf("delete help must not say --name is required, got:\n%s", deleteHelp)
 	}
 
 	skill, _, err := run(t, app, "skill")

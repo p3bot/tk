@@ -21,7 +21,7 @@ type engine struct {
 	rec *reconcile.Reconciler
 }
 
-func (a *App) openEngine(c *cobra.Command) (*engine, error) {
+func (a *App) openEngine(_ *cobra.Command) (*engine, error) {
 	reg, err := registry.NewStore(a.Ctx, a.ConfigDir).Load()
 	if err != nil {
 		return nil, err
@@ -29,9 +29,6 @@ func (a *App) openEngine(c *cobra.Command) (*engine, error) {
 	db, err := index.Open(a.StateDir)
 	if err != nil {
 		return nil, err
-	}
-	if db.LocalDiskWarning != "" {
-		stderrln(c, db.LocalDiskWarning)
 	}
 	return &engine{app: a, reg: reg, db: db, rec: reconcile.New(db, a.Ctx)}, nil
 }

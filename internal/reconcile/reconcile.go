@@ -7,6 +7,7 @@ package reconcile
 
 import (
 	"fmt"
+	"os"
 	"sort"
 
 	"cuelang.org/go/cue"
@@ -141,8 +142,53 @@ func (r *Reconciler) pruneForgotten(registered map[string]bool) error {
 	return nil
 }
 
+type pending struct {
+	ticket *index.Ticket
+	edges  []index.Edge
+}
+
+func diskStat(path string) error {
+	_, err := os.Stat(path)
+	return err
+}
+
+// applyScopeWrite is one scope's SQL writes after the writer lock is held:
+// post-lock existence decides whether a path may have a row, then SetLastIndex.
+func applyScopeWrite(w *index.WriteTx, name string, now int64, listed map[string]statEntry, existing map[string]index.RowStat, upserts map[string]pending, stat func(string) error) error {
+	for _, path := range sortedMapKeys(upserts) {
+		err := stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				if err := w.DeleteByPath(path); err != nil {
+					return err
+				}
+				continue
+			}
+			continue
+		}
+		item := upserts[path]
+		if err := w.UpsertTicketWithEdges(item.ticket, item.edges); err != nil {
+			return err
+		}
+	}
+	for path := range existing {
+		if _, ok := listed[path]; ok {
+			continue
+		}
+		err := stat(path)
+		if err != nil && os.IsNotExist(err) {
+			if err := w.DeleteByPath(path); err != nil {
+				return err
+			}
+		}
+	}
+	return w.SetLastIndex(name, now)
+}
+
 // reconcileScope stats dir+archive, reparses changed/new/racy files, deletes vanished rows.
-// reachable false leaves rows untouched.
+// reachable false leaves rows untouched. Directory listing, LastIndex, ScopeRows, and
+// parse run before the scope write transaction; disk existence is re-checked after
+// the writer lock is held.
 func (r *Reconciler) reconcileScope(name, dir string, now int64) (reachable bool, err error) {
 	files, ok := statScope(name, dir)
 	if !ok {
@@ -158,6 +204,7 @@ func (r *Reconciler) reconcileScope(name, dir string, now int64) (reachable bool
 		return false, err
 	}
 
+	upserts := map[string]pending{}
 	for path, st := range files {
 		prev, seen := existing[path]
 		// Racy-index: mtime >= last-index is dirty (same-tick edit looks unchanged otherwise).
@@ -169,20 +216,12 @@ func (r *Reconciler) reconcileScope(name, dir string, now int64) (reachable bool
 			// Transient I/O on a listed file: skip this pass, do not drop or quarantine.
 			continue
 		}
-		if err := r.db.UpsertTicketWithEdges(p, edges); err != nil {
-			return false, err
-		}
+		upserts[path] = pending{ticket: p, edges: edges}
 	}
 
-	for path := range existing {
-		if _, stillThere := files[path]; !stillThere {
-			if err := r.db.DeleteByPath(path); err != nil {
-				return false, err
-			}
-		}
-	}
-
-	if err := r.db.SetLastIndex(name, now); err != nil {
+	if err := r.db.RunScopeWrite(func(w *index.WriteTx) error {
+		return applyScopeWrite(w, name, now, files, existing, upserts, diskStat)
+	}); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -258,6 +297,10 @@ func customCategories(s *scopeconfig.Schema) map[string]status.Category {
 }
 
 func sortedKeys(m map[string]string) []string {
+	return sortedMapKeys(m)
+}
+
+func sortedMapKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

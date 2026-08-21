@@ -26,15 +26,21 @@ const busyTimeoutMS = 5000
 type DB struct {
 	sql  *sql.DB
 	path string
-	// LocalDiskWarning is set when the parent dir is non-local (WAL-unsafe); the store still opens.
-	LocalDiskWarning string
 }
 
 // Open opens (or creates) the index at <stateDir>/index.db with WAL and busy_timeout,
-// ensuring schema currency (rebuild on mismatch/corruption) and recording any local-disk warning.
+// ensuring schema currency (rebuild on mismatch/corruption). Non-local directories
+// (NFS/CIFS/FUSE on Linux/Darwin) are refused before the SQLite handle is opened.
 func Open(stateDir string) (*DB, error) {
+	return openIndex(stateDir, classifyNonLocal)
+}
+
+func openIndex(stateDir string, classify func(string) string) (*DB, error) {
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create XDG state directory %s: %w", stateDir, err)
+	}
+	if msg := classify(stateDir); msg != "" {
+		return nil, errors.New(msg)
 	}
 	path := filepath.Join(stateDir, DBName)
 
@@ -42,7 +48,6 @@ func Open(stateDir string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.LocalDiskWarning = localDiskWarning(stateDir)
 
 	if err := db.ensureSchema(); err != nil {
 		_ = db.Close()
@@ -57,9 +62,16 @@ func Open(stateDir string) (*DB, error) {
 // busy_timeout.
 // foreign_keys(on): SQLite defaults this off; this store wants the engine to
 // enforce FKs whenever the schema declares them.
+// _txlock=immediate: Begin takes the WAL writer lock before any statement so
+// the mtime-guard SELECT cannot observe a snapshot that a later write-through
+// would make stale.
+func indexDSN(path string, busyMS int) string {
+	return fmt.Sprintf("file:%s?_pragma=busy_timeout(%d)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(on)&_txlock=immediate",
+		path, busyMS)
+}
+
 func openAt(path string) (*DB, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(%d)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(on)",
-		path, busyTimeoutMS)
+	dsn := indexDSN(path, busyTimeoutMS)
 	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open index %s: %w", path, err)

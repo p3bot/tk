@@ -3,7 +3,6 @@
 package index
 
 import (
-	"fmt"
 	"syscall"
 )
 
@@ -17,18 +16,14 @@ var nonLocalMagic = map[int64]string{
 	0x65735546: "FUSE",
 }
 
-// localDiskWarning is best-effort: unstatfs-able or unrecognised type yields no warning.
-func localDiskWarning(dir string) string {
+// classifyNonLocal is best-effort: unstatfs-able or unrecognised type yields no refuse.
+func classifyNonLocal(dir string) string {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(dir, &st); err != nil {
 		return ""
 	}
 	if label, ok := nonLocalMagic[st.Type]; ok {
-		return diskWarnMsg(dir, label)
+		return nonLocalMsg(dir, label)
 	}
 	return ""
-}
-
-func diskWarnMsg(dir, label string) string {
-	return fmt.Sprintf("index directory %s looks like a %s (non-local) filesystem; WAL is unsafe there — set XDG_STATE_HOME to a local disk", dir, label)
 }

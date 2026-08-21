@@ -3,7 +3,6 @@
 package index
 
 import (
-	"fmt"
 	"strings"
 	"syscall"
 )
@@ -19,15 +18,15 @@ var nonLocalFSType = map[string]string{
 	"macfuse": "FUSE",
 }
 
-// localDiskWarning is best-effort: unstatfs-able or unrecognised type yields no warning.
-func localDiskWarning(dir string) string {
+// classifyNonLocal is best-effort: unstatfs-able or unrecognised type yields no refuse.
+func classifyNonLocal(dir string) string {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(dir, &st); err != nil {
 		return ""
 	}
 	name := int8SliceToString(st.Fstypename[:])
 	if label, ok := nonLocalFSType[name]; ok {
-		return diskWarnMsg(dir, label)
+		return nonLocalMsg(dir, label)
 	}
 	return ""
 }
@@ -41,8 +40,4 @@ func int8SliceToString(b []int8) string {
 		buf = append(buf, byte(c))
 	}
 	return strings.ToLower(string(buf))
-}
-
-func diskWarnMsg(dir, label string) string {
-	return fmt.Sprintf("index directory %s looks like a %s (non-local) filesystem; WAL is unsafe there — set XDG_STATE_HOME to a local disk", dir, label)
 }

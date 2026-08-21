@@ -39,8 +39,48 @@ func (d *DB) UpsertTicket(p *Ticket) error {
 	return d.UpsertTicketWithEdges(p, nil)
 }
 
-// upsertTicketTx writes ticket/edges/fts inside a transaction. Atomicity is per-file
-// only: the store is rebuildable, so a crash mid-scope self-heals on the next reconcile.
+// runWrite runs fn inside one BEGIN IMMEDIATE transaction (DSN _txlock=immediate).
+func (d *DB) runWrite(fn func(*sql.Tx) error) error {
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// WriteTx is the SQL write surface of one RunScopeWrite transaction.
+type WriteTx struct {
+	tx *sql.Tx
+}
+
+// RunScopeWrite holds the WAL writer lock for one scope reconcile pass: upserts,
+// vanished-path deletes, and SetLastIndex commit together; failure rolls back.
+func (d *DB) RunScopeWrite(fn func(*WriteTx) error) error {
+	return d.runWrite(func(tx *sql.Tx) error {
+		return fn(&WriteTx{tx: tx})
+	})
+}
+
+// UpsertTicketWithEdges writes p and edges unless a stored row is newer.
+func (w *WriteTx) UpsertTicketWithEdges(p *Ticket, edges []Edge) error {
+	return upsertTicketWithEdgesTx(w.tx, p, edges)
+}
+
+// DeleteByPath removes the ticket row for path, or no-ops when none exists.
+func (w *WriteTx) DeleteByPath(path string) error {
+	return deleteByPathTx(w.tx, path)
+}
+
+// SetLastIndex records the scope reconcile watermark.
+func (w *WriteTx) SetLastIndex(scope string, ns int64) error {
+	return setLastIndexExec(w.tx, scope, ns)
+}
+
+// upsertTicketTx writes ticket/fts/tags and clears edges inside an open transaction.
 func upsertTicketTx(tx *sql.Tx, p *Ticket) error {
 	conflictJSON, err := marshalStrings(p.StatusConflict)
 	if err != nil {
@@ -98,12 +138,19 @@ ON CONFLICT(path) DO UPDATE SET
 
 // UpsertTicketWithEdges upserts a ticket and its full edge list in one transaction.
 func (d *DB) UpsertTicketWithEdges(p *Ticket, edges []Edge) error {
-	tx, err := d.sql.Begin()
+	return d.runWrite(func(tx *sql.Tx) error {
+		return upsertTicketWithEdgesTx(tx, p, edges)
+	})
+}
+
+func upsertTicketWithEdgesTx(tx *sql.Tx, p *Ticket, edges []Edge) error {
+	stale, err := storedMtimeNewer(tx, p.Path, p.MtimeNS)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-
+	if stale {
+		return nil
+	}
 	if err := upsertTicketTx(tx, p); err != nil {
 		return err
 	}
@@ -113,7 +160,21 @@ func (d *DB) UpsertTicketWithEdges(p *Ticket, edges []Edge) error {
 			return fmt.Errorf("insert edge %s->%s: %w", e.FromID, e.ToID, err)
 		}
 	}
-	return tx.Commit()
+	return nil
+}
+
+// storedMtimeNewer is the clobber guard: a stored row newer than incoming means
+// a write-through won; skip tickets, FTS, tags, and edges. Equal mtime writes.
+func storedMtimeNewer(tx *sql.Tx, path string, incoming int64) (bool, error) {
+	var stored int64
+	err := tx.QueryRow(`SELECT mtime_ns FROM tickets WHERE path = ?`, path).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("mtime guard %s: %w", path, err)
+	}
+	return stored > incoming, nil
 }
 
 // uniqueTags keeps the first non-empty tag. A ticket's tag list is a set;
@@ -160,16 +221,16 @@ func uniqueEdges(edges []Edge) []Edge {
 // DeleteByPath removes the ticket row and FTS entry for a vanished file.
 // FTS has no FK to tickets, so the FTS row is deleted first while rowid is still known.
 func (d *DB) DeleteByPath(path string) error {
-	tx, err := d.sql.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return d.runWrite(func(tx *sql.Tx) error {
+		return deleteByPathTx(tx, path)
+	})
+}
 
+func deleteByPathTx(tx *sql.Tx, path string) error {
 	var rowid int64
-	err = tx.QueryRow(`SELECT rowid FROM tickets WHERE path = ?`, path).Scan(&rowid)
+	err := tx.QueryRow(`SELECT rowid FROM tickets WHERE path = ?`, path).Scan(&rowid)
 	if errors.Is(err, sql.ErrNoRows) {
-		return tx.Commit()
+		return nil
 	}
 	if err != nil {
 		return err
@@ -180,30 +241,26 @@ func (d *DB) DeleteByPath(path string) error {
 	if _, err := tx.Exec(`DELETE FROM tickets WHERE path = ?`, path); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 // DeleteScope drops every trace of a scope (rows, FTS, edges, timestamps, config cache).
 func (d *DB) DeleteScope(scope string) error {
-	tx, err := d.sql.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.Exec(`DELETE FROM fts WHERE rowid IN (SELECT rowid FROM tickets WHERE scope = ?)`, scope); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM tickets WHERE scope = ?`, scope); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM scope_meta WHERE scope = ?`, scope); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM config_cache WHERE scope = ?`, scope); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return d.runWrite(func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM fts WHERE rowid IN (SELECT rowid FROM tickets WHERE scope = ?)`, scope); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM tickets WHERE scope = ?`, scope); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM scope_meta WHERE scope = ?`, scope); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM config_cache WHERE scope = ?`, scope); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // IndexedScopes returns scopes that currently have index rows, meta, or cache entries.
@@ -238,7 +295,15 @@ func (d *DB) LastIndex(scope string) (int64, error) {
 
 // SetLastIndex records the scope's reconcile timestamp.
 func (d *DB) SetLastIndex(scope string, ns int64) error {
-	_, err := d.sql.Exec(`INSERT INTO scope_meta(scope, last_index) VALUES (?, ?)
+	return setLastIndexExec(d.sql, scope, ns)
+}
+
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func setLastIndexExec(e execer, scope string, ns int64) error {
+	_, err := e.Exec(`INSERT INTO scope_meta(scope, last_index) VALUES (?, ?)
                           ON CONFLICT(scope) DO UPDATE SET last_index = excluded.last_index`, scope, ns)
 	return err
 }

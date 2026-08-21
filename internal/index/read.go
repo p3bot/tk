@@ -235,6 +235,18 @@ func (d *DB) EdgesByTarget(toID string) ([]Edge, error) {
 	                     FROM edges WHERE to_id = ? ORDER BY from_id, kind`, toID)
 }
 
+// EdgesFromPath returns outgoing edges from one ticket file (the physical key).
+func (d *DB) EdgesFromPath(fromPath string) ([]Edge, error) {
+	return d.queryEdges(`SELECT from_path, from_id, from_scope, to_id, to_scope, kind
+	                     FROM edges WHERE from_path = ? ORDER BY kind, to_id`, fromPath)
+}
+
+// EdgesFromID returns outgoing edges from every file claiming fromID (logical graph node).
+func (d *DB) EdgesFromID(fromID string) ([]Edge, error) {
+	return d.queryEdges(`SELECT from_path, from_id, from_scope, to_id, to_scope, kind
+	                     FROM edges WHERE from_id = ? ORDER BY from_path, kind, to_id`, fromID)
+}
+
 // EdgesToScope returns every edge whose target lies in toScope (ordered for stable reports).
 func (d *DB) EdgesToScope(toScope string) ([]Edge, error) {
 	return d.queryEdges(`SELECT from_path, from_id, from_scope, to_id, to_scope, kind

@@ -1,7 +1,7 @@
 package index
 
 // SchemaVersion is the on-disk schema version. A mismatch triggers full rebuild (no migrations).
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 // schemaSQL is the complete DDL for a fresh index. Path is the physical key so
 // duplicate ids are two rows and archive moves are delete+insert. FTS is
@@ -58,7 +58,6 @@ CREATE TABLE edges (
 );
 CREATE INDEX idx_edges_from ON edges(from_id);
 CREATE INDEX idx_edges_to ON edges(to_id);
-CREATE INDEX idx_edges_from_path ON edges(from_path);
 CREATE INDEX idx_edges_to_scope ON edges(to_scope);
 CREATE INDEX idx_edges_from_scope_kind ON edges(from_scope, kind);
 
@@ -78,7 +77,7 @@ CREATE TABLE config_cache (
 `
 
 // SchemaText is the human-facing description for tk query --schema (not a stable API).
-const SchemaText = `tk index schema (version 5)
+const SchemaText = `tk index schema (version 6)
 
 NOT A STABLE API: the index is a derived cache, rebuilt on any schema_version
 bump, and may reshape between releases with no migration. Do not script against

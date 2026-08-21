@@ -477,12 +477,15 @@ func TestSchemaEdgesRelation(t *testing.T) {
 		idx[name] = true
 	}
 	for _, name := range []string{
-		"idx_edges_from", "idx_edges_to", "idx_edges_from_path",
+		"idx_edges_from", "idx_edges_to",
 		"idx_edges_to_scope", "idx_edges_from_scope_kind",
 	} {
 		if !idx[name] {
 			t.Errorf("missing index %s in %v", name, idx)
 		}
+	}
+	if idx["idx_edges_from_path"] {
+		t.Fatal("idx_edges_from_path is a prefix of the edges primary key and must not exist")
 	}
 
 	for _, want := range []string{
@@ -540,6 +543,76 @@ func TestEdgesConstraints(t *testing.T) {
 	}
 	if !sawDepends || !sawRelated {
 		t.Fatalf("want both kinds, got %+v", all)
+	}
+}
+
+func TestEdgesFromPathAndFromID(t *testing.T) {
+	db := openTemp(t)
+	a := proj("wc", "ab2c", "todo", "a0")
+	coll := proj("wc", "ab2c", "done", "a1")
+	coll.Path = "/tmp/wc/archive/ab2c.md"
+	b := proj("ui", "de34", "todo", "a0")
+	other := proj("ui", "gh56", "todo", "a0")
+	if err := db.UpsertTicketWithEdges(a, []Edge{
+		{FromPath: a.Path, FromID: a.ID, FromScope: "wc", ToID: b.ID, ToScope: "ui", Kind: EdgeDepends},
+		{FromPath: a.Path, FromID: a.ID, FromScope: "wc", ToID: "wc-gone", ToScope: "wc", Kind: EdgeRelated},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertTicketWithEdges(coll, []Edge{
+		{FromPath: coll.Path, FromID: coll.ID, FromScope: "wc", ToID: other.ID, ToScope: "ui", Kind: EdgeDepends},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertTicketWithEdges(b, []Edge{
+		{FromPath: b.Path, FromID: b.ID, FromScope: "ui", ToID: a.ID, ToScope: "wc", Kind: EdgeDepends},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertTicket(other); err != nil {
+		t.Fatal(err)
+	}
+
+	fromFile, err := db.EdgesFromPath(a.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fromFile) != 2 || fromFile[0].Kind != EdgeDepends || fromFile[0].ToID != b.ID ||
+		fromFile[1].Kind != EdgeRelated || fromFile[1].ToID != "wc-gone" {
+		t.Fatalf("EdgesFromPath(a) = %+v, want depends to ui-de34 then related to wc-gone", fromFile)
+	}
+	collFile, err := db.EdgesFromPath(coll.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(collFile) != 1 || collFile[0].ToID != other.ID {
+		t.Fatalf("EdgesFromPath(coll) = %+v, want only coll's depends on ui-gh56", collFile)
+	}
+
+	fromID, err := db.EdgesFromID(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fromID) != 3 {
+		t.Fatalf("EdgesFromID(wc-ab2c) = %+v, want union of both files (3 edges)", fromID)
+	}
+	if fromID[0].FromPath != a.Path || fromID[0].Kind != EdgeDepends ||
+		fromID[1].FromPath != a.Path || fromID[1].Kind != EdgeRelated ||
+		fromID[2].FromPath != coll.Path {
+		t.Fatalf("EdgesFromID order = %+v, want a path (depends, related) then coll path", fromID)
+	}
+
+	in, err := db.EdgesByTarget(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in) != 1 || in[0].FromID != b.ID {
+		t.Fatalf("EdgesByTarget(wc-ab2c) = %+v, want ui-de34's depends", in)
+	}
+
+	none, err := db.EdgesFromPath("/no/such.md")
+	if err != nil || len(none) != 0 {
+		t.Fatalf("missing path = %+v err=%v, want empty", none, err)
 	}
 }
 

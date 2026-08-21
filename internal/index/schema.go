@@ -1,11 +1,12 @@
 package index
 
 // SchemaVersion is the on-disk schema version. A mismatch triggers full rebuild (no migrations).
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // schemaSQL is the complete DDL for a fresh index. Path is the physical key so
-// duplicate ids are two rows and archive moves are delete+insert. FTS rowid mirrors
-// tickets.rowid; edges.from_path lets edge delete stay precise under duplicate id.
+// duplicate ids are two rows and archive moves are delete+insert. FTS is
+// contentless-delete (rowid mirrors tickets.rowid; rebuild drops both, no VACUUM);
+// edges.from_path lets edge delete stay precise under duplicate id.
 const schemaSQL = `
 CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
@@ -61,7 +62,7 @@ CREATE INDEX idx_edges_from_path ON edges(from_path);
 CREATE INDEX idx_edges_to_scope ON edges(to_scope);
 CREATE INDEX idx_edges_from_scope_kind ON edges(from_scope, kind);
 
-CREATE VIRTUAL TABLE fts USING fts5(title, body, tokenize = 'porter unicode61');
+CREATE VIRTUAL TABLE fts USING fts5(title, body, content='', contentless_delete=1, tokenize = 'porter unicode61');
 
 CREATE TABLE scope_meta (
     scope      TEXT PRIMARY KEY,
@@ -77,7 +78,7 @@ CREATE TABLE config_cache (
 `
 
 // SchemaText is the human-facing description for tk query --schema (not a stable API).
-const SchemaText = `tk index schema (version 4)
+const SchemaText = `tk index schema (version 5)
 
 NOT A STABLE API: the index is a derived cache, rebuilt on any schema_version
 bump, and may reshape between releases with no migration. Do not script against
@@ -102,7 +103,9 @@ edges(from_path, from_id, from_scope, to_id, to_scope, kind)
     may dangle. Cross-scope edges have from_scope != to_scope.
 
 fts(title, body)
-    FTS5 corpus; rowid mirrors tickets.rowid. Query with MATCH and rank by
+    Contentless-delete FTS5 inverted index (content='', contentless_delete=1),
+    not a document store. rowid mirrors tickets.rowid. Title and body are
+    tokenized at write time and not stored. Query with MATCH and rank by
     bm25(fts).
 
 scope_meta(scope, last_index)

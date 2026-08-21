@@ -73,6 +73,7 @@ ON CONFLICT(path) DO UPDATE SET
 		return fmt.Errorf("resolve rowid for %s: %w", p.Path, err)
 	}
 
+	// Contentless-delete stores no document, so this DELETE is valid; ON CONFLICT UPDATE keeps tickets.rowid.
 	if _, err := tx.Exec(`DELETE FROM fts WHERE rowid = ?`, rowid); err != nil {
 		return fmt.Errorf("clear fts for %s: %w", p.Path, err)
 	}
@@ -157,6 +158,7 @@ func uniqueEdges(edges []Edge) []Edge {
 }
 
 // DeleteByPath removes the ticket row and FTS entry for a vanished file.
+// FTS has no FK to tickets, so the FTS row is deleted first while rowid is still known.
 func (d *DB) DeleteByPath(path string) error {
 	tx, err := d.sql.Begin()
 	if err != nil {

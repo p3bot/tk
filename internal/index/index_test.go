@@ -1,6 +1,7 @@
 package index
 
 import (
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -132,6 +133,140 @@ func TestSearchMalformedQueryIsTyped(t *testing.T) {
 	}
 	if _, err := db.Search("", "network"); err != nil {
 		t.Fatalf("valid query should not error: %v", err)
+	}
+}
+
+func TestSchemaFTSContentlessDelete(t *testing.T) {
+	db := openTemp(t)
+	if SchemaVersion <= 4 {
+		t.Fatalf("SchemaVersion = %d, want > 4", SchemaVersion)
+	}
+
+	var ddl string
+	if err := db.sql.QueryRow(`SELECT sql FROM sqlite_master WHERE name='fts'`).Scan(&ddl); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"content=''",
+		"contentless_delete=1",
+		"tokenize = 'porter unicode61'",
+	} {
+		if !strings.Contains(ddl, want) {
+			t.Errorf("fts DDL missing %q:\n%s", want, ddl)
+		}
+	}
+
+	rows, err := db.sql.Query(`PRAGMA table_info(tickets)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			t.Fatal(err)
+		}
+		if name == "body" {
+			t.Fatal("tickets.body must not exist")
+		}
+	}
+
+	schemaText := strings.ToLower(SchemaText)
+	for _, want := range []string{
+		"contentless-delete",
+		"not a document store",
+	} {
+		if !strings.Contains(schemaText, want) {
+			t.Errorf("SchemaText missing %q:\n%s", want, SchemaText)
+		}
+	}
+}
+
+func TestSearchQuarantineAndDeleteClearsFTS(t *testing.T) {
+	db := openTemp(t)
+	q := proj("wc", "ab2c", "todo", "a0")
+	q.ParseError = true
+	q.ParseMsg = "broken frontmatter"
+	q.Body = []byte("uniquequarantinetoken xyzzy")
+	if err := db.UpsertTicket(q); err != nil {
+		t.Fatal(err)
+	}
+
+	var rowid int64
+	if err := db.sql.QueryRow(`SELECT rowid FROM tickets WHERE path = ?`, q.Path).Scan(&rowid); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, err := db.Search("wc", "uniquequarantinetoken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Ticket.ID != q.ID || !hits[0].Ticket.ParseError {
+		t.Fatalf("quarantine MATCH = %+v", hits)
+	}
+
+	var title, body sql.NullString
+	if err := db.sql.QueryRow(`SELECT title, body FROM fts WHERE rowid = ?`, rowid).Scan(&title, &body); err != nil {
+		t.Fatal(err)
+	}
+	if title.Valid || body.Valid {
+		t.Fatalf("fts stored document text title=%v body=%v", title, body)
+	}
+
+	if err := db.DeleteByPath(q.Path); err != nil {
+		t.Fatal(err)
+	}
+	hits, err = db.Search("wc", "uniquequarantinetoken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("search after delete = %+v, want none", hits)
+	}
+	var n int
+	if err := db.sql.QueryRow(`SELECT COUNT(*) FROM fts WHERE rowid = ?`, rowid).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("fts rows for deleted rowid %d = %d, want 0", rowid, n)
+	}
+}
+
+func TestUpsertReplacesFTSTokens(t *testing.T) {
+	db := openTemp(t)
+	p := proj("wc", "ab2c", "todo", "a0")
+	p.Title = "oldtitleterm"
+	p.Body = []byte("oldbodyterm")
+	if err := db.UpsertTicket(p); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := db.Search("wc", "oldbodyterm")
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("initial body MATCH = %+v err=%v", hits, err)
+	}
+
+	p.Title = "newtitleterm"
+	p.Body = []byte("newbodyterm")
+	if err := db.UpsertTicket(p); err != nil {
+		t.Fatal(err)
+	}
+	for _, old := range []string{"oldtitleterm", "oldbodyterm"} {
+		hits, err = db.Search("wc", old)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(hits) != 0 {
+			t.Fatalf("stale MATCH for %q after rewrite: %+v", old, hits)
+		}
+	}
+	for _, term := range []string{"newtitleterm", "newbodyterm"} {
+		hits, err = db.Search("wc", term)
+		if err != nil || len(hits) != 1 || hits[0].Ticket.ID != p.ID {
+			t.Fatalf("rewrite MATCH for %q = %+v err=%v", term, hits, err)
+		}
 	}
 }
 

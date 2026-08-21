@@ -401,8 +401,8 @@ func TestUpsertDedupesEdges(t *testing.T) {
 
 func TestSchemaEdgesRelation(t *testing.T) {
 	db := openTemp(t)
-	if SchemaVersion <= 3 {
-		t.Fatalf("SchemaVersion = %d, want > 3", SchemaVersion)
+	if SchemaVersion <= 5 {
+		t.Fatalf("SchemaVersion = %d, want > 5", SchemaVersion)
 	}
 	var sql string
 	if err := db.sql.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='edges'`).Scan(&sql); err != nil {
@@ -613,6 +613,10 @@ func TestEdgesFromPathAndFromID(t *testing.T) {
 	none, err := db.EdgesFromPath("/no/such.md")
 	if err != nil || len(none) != 0 {
 		t.Fatalf("missing path = %+v err=%v, want empty", none, err)
+	}
+	noneID, err := db.EdgesFromID("no-such-id")
+	if err != nil || len(noneID) != 0 {
+		t.Fatalf("missing id = %+v err=%v, want empty", noneID, err)
 	}
 }
 

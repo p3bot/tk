@@ -9,6 +9,18 @@ import (
 	"github.com/p3bot/tk/internal/status"
 )
 
+func TestSortTicketsOrderKeyThenID(t *testing.T) {
+	rows := []*Ticket{
+		{ID: "wc-de34", OrderKey: "a1"},
+		{ID: "wc-gh56", OrderKey: "a0"},
+		{ID: "wc-ab2c", OrderKey: "a0"},
+	}
+	SortTickets(rows)
+	if rows[0].ID != "wc-ab2c" || rows[1].ID != "wc-gh56" || rows[2].ID != "wc-de34" {
+		t.Fatalf("order = %s %s %s", rows[0].ID, rows[1].ID, rows[2].ID)
+	}
+}
+
 func TestSchemaHasQuerySurface(t *testing.T) {
 	db := openTemp(t)
 	if SchemaVersion <= 2 {

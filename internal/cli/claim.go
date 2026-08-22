@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
@@ -161,7 +162,7 @@ func (e *engine) claimNextUnderLock(ctx context.Context, c *cobra.Command, req c
 	}
 	e.printWarnings(c, res.Warnings)
 
-	gate, err := e.buildGate(res, targets)
+	gate, err := depgate.Load(e.gateDeps(), res, targets)
 	if err != nil {
 		return claimOut{}, err
 	}
@@ -169,8 +170,8 @@ func (e *engine) claimNextUnderLock(ctx context.Context, c *cobra.Command, req c
 	if err != nil {
 		return claimOut{}, err
 	}
-	sel := selectNext(gate, candidates, e.reg.Lens[req.scope], req.noLens)
-	sel.writeDiagnostics(c)
+	sel := gate.SelectNext(candidates, e.reg.Lens[req.scope], req.noLens)
+	writeNextDiagnostics(c, sel)
 	if sel.Chosen == nil {
 		return claimOut{}, emptyQueueError(sel.ApplyLens, sel.Lens, sel.Blocked, sel.ReadyOutsideLens)
 	}

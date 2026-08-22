@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/status"
@@ -80,7 +81,7 @@ func runMark(app *App, c *cobra.Command, idArg, newStatus, scopeFlag string) err
 		return err
 	}
 	schema := res.Schema(scope)
-	custom := schemaCustom(schema)
+	custom := schema.CustomStatuses()
 	if !status.IsKnown(newStatus, custom) {
 		return usageErrorf("%q is not a known status for scope %q", newStatus, scope)
 	}
@@ -153,7 +154,7 @@ func runMark(app *App, c *cobra.Command, idArg, newStatus, scopeFlag string) err
 	stdoutln(c, out)
 	// Soft only after success: never fail a completed mark if gate/index read fails.
 	if oldStatus != newStatus && markReadyActive(newStatus) {
-		// Edges are keyed by path; use post-move path so evalDepends still finds them.
+		// Edges are keyed by path; use post-move path so EvalDepends still finds them.
 		p.Path = newPath
 		if line, werr := e.openDependsWarnLine(res, scope, p, newStatus); werr == nil && line != "" {
 			stderrln(c, line)
@@ -180,11 +181,11 @@ func markReadyActive(s string) bool {
 
 // openDependsWarnLine returns the depends_open: line when p has unmet depends (list waiting-on).
 func (e *engine) openDependsWarnLine(res *reconcile.Result, scope string, p *index.Ticket, newStatus string) (string, error) {
-	gate, err := e.buildGate(res, []string{scope})
+	gate, err := depgate.Load(e.gateDeps(), res, []string{scope})
 	if err != nil {
 		return "", err
 	}
-	ds := gate.evalDepends(p)
+	ds := gate.EvalDepends(p)
 	if len(ds.WaitingOn) == 0 {
 		return "", nil
 	}

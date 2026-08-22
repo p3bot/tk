@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/scopeadmin"
 	"github.com/p3bot/tk/internal/scopeconfig"
@@ -162,7 +163,7 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 	if err != nil {
 		return err
 	}
-	gate, err := e.buildGate(res, targets)
+	gate, err := depgate.Load(e.gateDeps(), res, targets)
 	if err != nil {
 		return err
 	}
@@ -202,7 +203,7 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 		return err
 	}
 	// Same next walk as unclaimed tk next; empty next is still a pulse value.
-	sel := selectNext(gate, candidates, lens, false)
+	sel := gate.SelectNext(candidates, lens, false)
 	nextID := ""
 	if sel.Chosen != nil {
 		nextID = sel.Chosen.ID
@@ -237,7 +238,7 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 	pulse["integrity"] = integrity
 	pulse["uncommitted"] = strconv.Itoa(uncommitted)
 
-	sel.writeDiagnostics(c)
+	writeNextDiagnostics(c, sel)
 	if key != "" {
 		if v := pulse[key]; v != "" {
 			stdoutln(c, v)
@@ -282,7 +283,7 @@ func ambientIntegrity(e *engine, scope string, schema *scopeconfig.Schema) (stri
 	if len(eq) > 0 {
 		return "issues", nil
 	}
-	drift, err := e.db.HasArchiveDrift(scope, status.TerminalNames(schemaCustom(schema)))
+	drift, err := e.db.HasArchiveDrift(scope, status.TerminalNames(schema.CustomStatuses()))
 	if err != nil {
 		return "", err
 	}

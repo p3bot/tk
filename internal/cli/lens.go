@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/xdg"
 )
@@ -103,23 +102,6 @@ func (e *engine) writeLens(scope string, tags []string) error {
 		reg.Lens[scope] = tags
 	}
 	return store.WriteLens(reg.Lens)
-}
-
-// passesLens: empty lens shows all; untagged tickets are never hidden.
-func passesLens(p *index.Ticket, lens []string) bool {
-	if len(lens) == 0 || len(p.Tags) == 0 {
-		return true
-	}
-	set := map[string]bool{}
-	for _, t := range lens {
-		set[t] = true
-	}
-	for _, t := range p.Tags {
-		if set[t] {
-			return true
-		}
-	}
-	return false
 }
 
 // lensEcho rides stderr only — never a TSV stdout field.

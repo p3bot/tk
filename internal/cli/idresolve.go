@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/token"
@@ -88,7 +89,7 @@ func suppressDuplicateID(warnings []string, id string) []string {
 
 func (e *engine) scopeForID(idArg string, form idForm, scopeFlag string) (string, error) {
 	if form == idFull {
-		return scopeOfFullID(idArg), nil
+		return id.ScopeOfFullID(idArg), nil
 	}
 	resolved, err := e.resolveAmbient(scopeFlag)
 	if err != nil {
@@ -117,15 +118,6 @@ func duplicateRefusal(rows []*index.Ticket) error {
 	}
 	return fmt.Errorf("%s", token.Line(token.DuplicateID,
 		fmt.Sprintf("%s is claimed by %d files: %s — resolve with tk doctor --repair", rows[0].ID, len(rows), joinComma(paths))))
-}
-
-func scopeOfFullID(fullID string) string {
-	for i := 0; i < len(fullID); i++ {
-		if fullID[i] == '-' {
-			return fullID[:i]
-		}
-	}
-	return fullID
 }
 
 func joinComma(items []string) string {

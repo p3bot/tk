@@ -89,7 +89,7 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 		return err
 	}
 	schema := res.Schema(scope)
-	custom := schemaCustom(schema)
+	custom := schema.CustomStatuses()
 
 	newStatus := status.Draft
 	if statusArg != "" {

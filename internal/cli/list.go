@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
@@ -81,7 +82,7 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 		return err
 	}
 
-	gate, err := e.buildGate(res, []string{scope})
+	gate, err := depgate.Load(e.gateDeps(), res, []string{scope})
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,7 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 	if len(statusFilter) > 0 {
 		filter.Statuses = statusNames(statusFilter)
 	} else if !p.all {
-		filter.DefaultStatuses = status.DefaultListNames(schemaCustom(schema))
+		filter.DefaultStatuses = status.DefaultListNames(schema.CustomStatuses())
 	}
 	if applyLens {
 		filter.Lens = lens
@@ -111,19 +112,19 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 	if err != nil {
 		return err
 	}
-	sortTickets(kept)
+	index.SortTickets(kept)
 
-	tokens := newTokenSet()
+	tokens := depgate.NewTokenSet()
 	for _, row := range kept {
-		ds := gate.evalDepends(row)
-		tokens.add(ds.Tokens)
+		ds := gate.EvalDepends(row)
+		tokens.Add(ds.Tokens)
 		stdoutln(c, tsvLine(row.ID, row.Status, row.Title, strings.Join(ds.WaitingOn, " ")))
 	}
 
 	if applyLens {
 		stderrln(c, lensEcho(lens))
 	}
-	for _, line := range tokens.lines() {
+	for _, line := range tokens.Lines() {
 		stderrln(c, line)
 	}
 	return nil
@@ -134,7 +135,7 @@ func parseStatusFilter(names []string, schema *scopeconfig.Schema) (map[string]b
 	if len(names) == 0 {
 		return nil, nil
 	}
-	custom := schemaCustom(schema)
+	custom := schema.CustomStatuses()
 	out := map[string]bool{}
 	for _, n := range names {
 		if !status.IsKnown(n, custom) {
@@ -156,34 +157,6 @@ func statusNames(set map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
-
-func sortTickets(rows []*index.Ticket) {
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].OrderKey != rows[j].OrderKey {
-			return rows[i].OrderKey < rows[j].OrderKey
-		}
-		return rows[i].ID < rows[j].ID
-	})
-}
-
-// tokenSet de-dupes diagnostic lines in first-seen order.
-type tokenSet struct {
-	seen  map[string]bool
-	order []string
-}
-
-func newTokenSet() *tokenSet { return &tokenSet{seen: map[string]bool{}} }
-
-func (t *tokenSet) add(lines []string) {
-	for _, l := range lines {
-		if !t.seen[l] {
-			t.seen[l] = true
-			t.order = append(t.order, l)
-		}
-	}
-}
-
-func (t *tokenSet) lines() []string { return t.order }
 
 // tsvLine flattens tab/CR/LF in fields so one ticket stays one TSV record.
 func tsvLine(fields ...string) string {

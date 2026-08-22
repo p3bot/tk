@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
@@ -218,6 +219,10 @@ func (s *Server) loadRegistry() (*registry.Registry, error) {
 	return registry.NewStore(ctx, configDir).Load()
 }
 
+func (s *Server) gateDeps(reg *registry.Registry) depgate.Deps {
+	return depgate.Deps{DB: s.db, Rec: s.rec, Reg: reg}
+}
+
 func registeredSet(reg *registry.Registry) map[string]bool {
 	out := make(map[string]bool, len(reg.Scopes))
 	for name := range reg.Scopes {
@@ -319,7 +324,7 @@ func scopeIntegrity(db *index.DB, scope string, schema *scopeconfig.Schema) (str
 	if len(eq) > 0 {
 		return "issues", nil
 	}
-	drift, err := db.HasArchiveDrift(scope, status.TerminalNames(schemaCustom(schema)))
+	drift, err := db.HasArchiveDrift(scope, status.TerminalNames(schema.CustomStatuses()))
 	if err != nil {
 		return "", err
 	}

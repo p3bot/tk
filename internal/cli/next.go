@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/reconcile"
 )
 
@@ -58,7 +58,7 @@ func runNext(app *App, c *cobra.Command, scopeFlag string, noLens bool) error {
 	if err != nil {
 		return err
 	}
-	gate, err := e.buildGate(res, targets)
+	gate, err := depgate.Load(e.gateDeps(), res, targets)
 	if err != nil {
 		return err
 	}
@@ -67,8 +67,8 @@ func runNext(app *App, c *cobra.Command, scopeFlag string, noLens bool) error {
 	if err != nil {
 		return err
 	}
-	sel := selectNext(gate, candidates, e.reg.Lens[scope], noLens)
-	sel.writeDiagnostics(c)
+	sel := gate.SelectNext(candidates, e.reg.Lens[scope], noLens)
+	writeNextDiagnostics(c, sel)
 
 	if sel.Chosen != nil {
 		stdoutln(c, sel.Chosen.Path)
@@ -77,54 +77,7 @@ func runNext(app *App, c *cobra.Command, scopeFlag string, noLens bool) error {
 	return emptyQueueError(sel.ApplyLens, sel.Lens, sel.Blocked, sel.ReadyOutsideLens)
 }
 
-// nextSelection is shared by status and next so eligibility/tokens cannot fork.
-type nextSelection struct {
-	Chosen           *index.Ticket
-	Tokens           []string
-	Blocked          int
-	ReadyOutsideLens int
-	ApplyLens        bool
-	Lens             []string
-}
-
-// selectNext: callers own empty-queue policy (next refuses; status emits next\t).
-// candidates are already SQL-filtered (todo, not archived, not parse_error).
-func selectNext(gate *gate, candidates []*index.Ticket, lens []string, noLens bool) nextSelection {
-	sortTickets(candidates)
-	applyLens := !noLens && len(lens) > 0
-
-	tokens := newTokenSet()
-	var chosen *index.Ticket
-	blocked, readyOutsideLens := 0, 0
-	for _, p := range candidates {
-		ds := gate.evalDepends(p)
-		tokens.add(ds.Tokens)
-		if !gate.nextEligible(p, ds) {
-			// Held drives blocked diagnostic; duplicate-id skip does not.
-			if ds.Held() {
-				blocked++
-			}
-			continue
-		}
-		if applyLens && !passesLens(p, lens) {
-			readyOutsideLens++
-			continue
-		}
-		if chosen == nil {
-			chosen = p
-		}
-	}
-	return nextSelection{
-		Chosen:           chosen,
-		Tokens:           tokens.lines(),
-		Blocked:          blocked,
-		ReadyOutsideLens: readyOutsideLens,
-		ApplyLens:        applyLens,
-		Lens:             lens,
-	}
-}
-
-func (s nextSelection) writeDiagnostics(c *cobra.Command) {
+func writeNextDiagnostics(c *cobra.Command, s depgate.Selection) {
 	if s.ApplyLens {
 		stderrln(c, lensEcho(s.Lens))
 	}

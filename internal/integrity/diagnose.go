@@ -168,7 +168,7 @@ func (d *diagnoser) collisions(scope string) error {
 }
 
 func (d *diagnoser) perRow(dir string, rows []*index.Ticket, schema *scopeconfig.Schema, autoCommit, autoCommitKnown bool) {
-	custom := schemaCustom(schema)
+	custom := schema.CustomStatuses()
 	for _, p := range rows {
 		if p.ParseError {
 			d.add(token.Line(token.ParseError, fmt.Sprintf("%s: %s (%s)", p.ID, p.ParseMsg, p.Path)))
@@ -597,13 +597,6 @@ func reaches(node, target string, adj map[string][]string, visited map[string]bo
 		}
 	}
 	return false
-}
-
-func schemaCustom(s *scopeconfig.Schema) map[string]status.Category {
-	if s == nil {
-		return nil
-	}
-	return s.Statuses
 }
 
 func schemaAutoCommit(s *scopeconfig.Schema) bool {

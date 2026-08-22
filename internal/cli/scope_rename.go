@@ -171,7 +171,7 @@ func renamePlan(dir, oldName, newName string) ([]rewrite.Op, error) {
 			return nil, fmt.Errorf("cannot rename: %s has unparseable frontmatter — fix it first: %w", f, err)
 		}
 		// Frontmatter id is authority (filename can disagree); out-of-scope id refuses.
-		if !id.IsFullTicketID(m.ID) || scopeOfFullID(m.ID) != oldName {
+		if !id.IsFullTicketID(m.ID) || id.ScopeOfFullID(m.ID) != oldName {
 			return nil, fmt.Errorf("cannot rename: %s declares id %q, which is not a ticket id in scope %q — fix its frontmatter id (tk doctor reports this) then re-run", f, m.ID, oldName)
 		}
 		newID := newName + strings.TrimPrefix(m.ID, oldName)
@@ -257,7 +257,7 @@ func rekeySessionMaps(store *registry.Store, reg *registry.Registry, oldName, ne
 }
 
 func rewriteFullID(full, oldName, newName string) string {
-	if id.IsFullTicketID(full) && scopeOfFullID(full) == oldName {
+	if id.IsFullTicketID(full) && id.ScopeOfFullID(full) == oldName {
 		return newName + strings.TrimPrefix(full, oldName)
 	}
 	return full

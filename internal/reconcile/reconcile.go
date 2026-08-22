@@ -271,7 +271,7 @@ func (r *Reconciler) appendIntegrityWarnings(scopes []string, res *Result) error
 // appendArchiveDrift flags location-vs-status disagreement using per-scope terminal-ness.
 func (r *Reconciler) appendArchiveDrift(scopes []string, res *Result) error {
 	for _, scope := range scopes {
-		custom := customCategories(res.Schema(scope))
+		custom := res.Schema(scope).CustomStatuses()
 		rows, err := r.db.ArchiveDrift(scope, status.TerminalNames(custom))
 		if err != nil {
 			return err
@@ -287,13 +287,6 @@ func (r *Reconciler) appendArchiveDrift(scopes []string, res *Result) error {
 		}
 	}
 	return nil
-}
-
-func customCategories(s *scopeconfig.Schema) map[string]status.Category {
-	if s == nil {
-		return nil
-	}
-	return s.Statuses
 }
 
 func sortedKeys(m map[string]string) []string {

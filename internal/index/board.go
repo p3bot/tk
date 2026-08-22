@@ -2,6 +2,7 @@ package index
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/p3bot/tk/internal/status"
 )
@@ -49,6 +50,16 @@ func (d *DB) BoardTickets(f BoardFilter) ([]*Ticket, error) {
 	}
 	q += ` ORDER BY order_key, id`
 	return d.queryTickets(q, args...)
+}
+
+// SortTickets orders rows by (order_key, id), matching BoardTickets and NextCandidates.
+func SortTickets(rows []*Ticket) {
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].OrderKey != rows[j].OrderKey {
+			return rows[i].OrderKey < rows[j].OrderKey
+		}
+		return rows[i].ID < rows[j].ID
+	})
 }
 
 // NextCandidates returns todo, non-archived, non-quarantined rows in a scope,

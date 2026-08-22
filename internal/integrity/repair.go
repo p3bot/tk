@@ -249,7 +249,7 @@ func repairArchive(deps Deps, rep Reporter, t *Target, reportDeferred bool) erro
 		return err
 	}
 	deferred := map[string]bool{}
-	custom := schemaCustom(t.Schema)
+	custom := t.Schema.CustomStatuses()
 	for _, p := range rows {
 		if p.ParseError {
 			continue

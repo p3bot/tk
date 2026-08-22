@@ -161,7 +161,7 @@ func (e *engine) reorderBounds(scope string, subject *index.Ticket, rows []*inde
 		}
 		others = append(others, p)
 	}
-	sortTickets(others)
+	index.SortTickets(others)
 
 	switch {
 	case dest.first:

@@ -21,6 +21,26 @@ func writeCfg(t *testing.T, content string) string {
 	return dir
 }
 
+func TestCustomStatusesNilReceiver(t *testing.T) {
+	var s *Schema
+	if s.CustomStatuses() != nil {
+		t.Fatal("nil schema must yield nil custom statuses")
+	}
+	s = &Schema{Statuses: map[string]status.Category{"shipped": status.CategoryDone}}
+	got := s.CustomStatuses()
+	if got["shipped"] != status.CategoryDone {
+		t.Fatalf("CustomStatuses = %v", got)
+	}
+
+	var nilSchema *Schema
+	if !nilSchema.StatusKnown(status.Todo) || nilSchema.StatusKnown("shipped") {
+		t.Fatal("nil schema must know built-ins only")
+	}
+	if !nilSchema.StatusTerminal(status.Done) || nilSchema.StatusTerminal("shipped") {
+		t.Fatal("nil schema must treat only built-in done as terminal")
+	}
+}
+
 func TestLoadValid(t *testing.T) {
 	ctx := cuecontext.New()
 	dir := writeCfg(t, `

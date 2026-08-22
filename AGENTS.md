@@ -87,6 +87,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `resolve` — ambient scope resolution and name-drift fail-closed
   - `scopeadmin` — scope verbs and the shared registration checks
   - `index` — the machine-wide SQLite read model (WAL, FTS5, tickets + edges)
+  - `depgate` — in-memory depends waiting-on and next selection; shared by CLI and tkv
   - `reconcile` — git-free read-through that brings the index up to date from the files
   - `git` — the external-git wrapper; full read/integrate/push surface (fetch, rebase,
     stage enumeration and reads, blob merge, author date, push, unpushed count)

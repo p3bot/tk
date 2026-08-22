@@ -113,7 +113,7 @@ func buildDependsGraph(scope string, all bool, custom map[string]status.Category
 
 	nodes := map[string]graphNode{}
 	for _, full := range ids {
-		n := graphNode{ID: full, ShortID: full, Title: full, Scope: scopeOfFullID(full)}
+		n := graphNode{ID: full, ShortID: full, Title: full, Scope: id.ScopeOfFullID(full)}
 		if t := byID[full]; t != nil {
 			n.ShortID = t.ShortID
 			n.Title = t.Title

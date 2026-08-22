@@ -82,6 +82,22 @@ func TestIsFullTicketID(t *testing.T) {
 	}
 }
 
+func TestScopeOfFullID(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"wc-ab2c", "wc"},
+		{"other-ab2c", "other"},
+		{"nothyphen", "nothyphen"},
+		{"", ""},
+		{"wc-", "wc"},
+		{"-ab2c", ""},
+	}
+	for _, tc := range cases {
+		if got := ScopeOfFullID(tc.in); got != tc.want {
+			t.Errorf("ScopeOfFullID(%q) = %q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestMintShape(t *testing.T) {
 	for i := 0; i < 2000; i++ {
 		got, err := Mint(rand.Reader)

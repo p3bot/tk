@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
@@ -50,6 +51,10 @@ func (e *engine) syncDeps(c *cobra.Command) syncengine.Deps {
 		DB:       e.db,
 		Rec:      e.rec,
 	}
+}
+
+func (e *engine) gateDeps() depgate.Deps {
+	return depgate.Deps{DB: e.db, Rec: e.rec, Reg: e.reg}
 }
 
 func (e *engine) registeredSet() map[string]bool {

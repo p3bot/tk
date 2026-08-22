@@ -99,9 +99,9 @@ func (s *Server) dependsGraph(w http.ResponseWriter, r *http.Request) error {
 	}
 	tickets = append(tickets, extra...)
 
-	layout := buildDependsGraph(selected, page.All, schemaCustom(res.Schema(selected)), tickets, outEdges, inEdges)
+	layout := buildDependsGraph(selected, page.All, res.Schema(selected).CustomStatuses(), tickets, outEdges, inEdges)
 	page.SVG = renderDepSVG(layout)
-	page.Isolated = countIsolated(selected, page.All, schemaCustom(res.Schema(selected)), tickets, layout)
+	page.Isolated = countIsolated(selected, page.All, res.Schema(selected).CustomStatuses(), tickets, layout)
 	page.Nodes = len(layout.Nodes)
 	page.Edges = len(layout.Edges)
 	return s.render(w, "depends", page)

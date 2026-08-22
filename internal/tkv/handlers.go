@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/gitroot"
 	"github.com/p3bot/tk/internal/id"
@@ -143,7 +144,7 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 	row.Integrity = integ
 
 	if !res.Unreachable[name] {
-		gate, err := loadGate(s.db, s.rec, reg, res, []string{name})
+		gate, err := depgate.Load(s.gateDeps(reg), res, []string{name})
 		if err != nil {
 			return row, err
 		}
@@ -151,7 +152,7 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 		if err != nil {
 			return row, err
 		}
-		if next := gate.selectNext(candidates, reg.Lens[name]); next != nil {
+		if next := gate.SelectNext(candidates, reg.Lens[name], false).Chosen; next != nil {
 			row.Next = next.ID
 			row.NextHref = inspectHref(next.ID)
 		}
@@ -216,7 +217,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	schema := res.Schema(name)
-	custom := schemaCustom(schema)
+	custom := schema.CustomStatuses()
 	backlog := r.URL.Query().Get("backlog") == "1"
 	archived := r.URL.Query().Get("archived") == "1"
 	tags := r.URL.Query()["tag"]
@@ -237,7 +238,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	gate, err := loadGate(s.db, s.rec, reg, res, []string{name})
+	gate, err := depgate.Load(s.gateDeps(reg), res, []string{name})
 	if err != nil {
 		return err
 	}
@@ -247,7 +248,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		if next := gate.selectNext(candidates, lens); next != nil {
+		if next := gate.SelectNext(candidates, lens, false).Chosen; next != nil {
 			nextID = next.ID
 			nextHref = inspectHref(next.ID)
 		}
@@ -264,7 +265,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	for _, st := range colNames {
 		col := kanbanCol{Status: st}
 		for _, p := range byStatus[st] {
-			waiting := gate.waitingOn(p)
+			waiting := gate.EvalDepends(p).WaitingOn
 			card := kanbanCard{
 				ID:          p.ID,
 				ShortID:     p.ShortID,
@@ -459,7 +460,7 @@ func (s *Server) inspect(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return errNotFound(fmt.Sprintf("unknown ticket id %q", idArg))
 	}
-	if full && scopeOfFullID(idArg) != name {
+	if full && id.ScopeOfFullID(idArg) != name {
 		return errNotFound(fmt.Sprintf("ticket %q does not belong to scope %q", idArg, name))
 	}
 	reg, err := s.loadRegistry()

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/token"
 )
 
@@ -139,6 +140,44 @@ func TestNextSelectionAndBlocked(t *testing.T) {
 	}
 	if !strings.HasSuffix(strings.TrimSpace(out), "wc-de34-auth.md") {
 		t.Errorf("next should pick de34 after ab2c done, got %q", out)
+	}
+}
+
+func TestNextStdoutMatchesDepgateSelectNext(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "network", "todo", "a0", "# Network\n", false, "")
+	addTicket(t, dir, "wc-de34", "auth", "todo", "a1", "# Auth\n", false, "depends: [wc-ab2c]\n")
+
+	out, _, err := run(t, app, "next", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("next: %v", err)
+	}
+	printed := strings.TrimSpace(out)
+
+	e, err := app.openEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.close()
+	res, err := e.reconcileResult(map[string]string{"wc": dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate, err := depgate.Load(e.gateDeps(), res, []string{"wc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := e.db.NextCandidates("wc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sel := gate.SelectNext(candidates, e.reg.Lens["wc"], false)
+	if sel.Chosen == nil {
+		t.Fatal("library chose nothing")
+	}
+	if sel.Chosen.Path != printed {
+		t.Fatalf("library path %q vs tk next stdout %q", sel.Chosen.Path, printed)
 	}
 }
 

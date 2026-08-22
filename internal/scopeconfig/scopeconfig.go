@@ -53,6 +53,14 @@ type Schema struct {
 	Fields map[string]Field
 }
 
+// CustomStatuses returns declared custom statuses. A nil schema yields nil (built-ins only).
+func (s *Schema) CustomStatuses() map[string]status.Category {
+	if s == nil {
+		return nil
+	}
+	return s.Statuses
+}
+
 // ConfigError marks a tk.cue that cannot be trusted (absent, uncompilable, or schema-invalid).
 type ConfigError struct {
 	Dir    string
@@ -339,23 +347,21 @@ func cueReason(err error) string {
 	return strings.Join(strings.Fields(err.Error()), " ")
 }
 
-func (s *Schema) customCategories() map[string]status.Category {
-	return s.Statuses
-}
-
 // StatusKnown reports whether name is a built-in or a status this scope declares.
+// A nil schema knows the built-ins only.
 func (s *Schema) StatusKnown(name string) bool {
-	return status.IsKnown(name, s.customCategories())
+	return status.IsKnown(name, s.CustomStatuses())
 }
 
 // StatusTerminal reports whether name is terminal for this scope.
+// A nil schema uses built-in terminal-ness only.
 func (s *Schema) StatusTerminal(name string) bool {
-	return status.IsTerminal(name, s.customCategories())
+	return status.IsTerminal(name, s.CustomStatuses())
 }
 
 // Category returns the category of a status known to this scope.
 func (s *Schema) Category(name string) (status.Category, bool) {
-	return status.CategoryOf(name, s.customCategories())
+	return status.CategoryOf(name, s.CustomStatuses())
 }
 
 // Field returns the declared custom field of the given name, if any.

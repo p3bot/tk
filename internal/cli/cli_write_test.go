@@ -532,7 +532,7 @@ func TestMarkOpenDependsDanglingAndMulti(t *testing.T) {
 		t.Errorf("dangling mark stderr want %q, got %q", wantDangle, errOut)
 	}
 
-	// Multi open depends: warning lists sorted full ids (evalDepends sort order).
+	// Multi open depends: warning lists sorted full ids (EvalDepends sort order).
 	_, aID := createID(t, app, "wc", "DepA")
 	_, bID := createID(t, app, "wc", "DepB")
 	_, multiID := createID(t, app, "wc", "Multi")

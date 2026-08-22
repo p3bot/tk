@@ -74,6 +74,16 @@ func IsFullTicketID(s string) bool {
 	return IsScopeName(scope) && IsShortID(short)
 }
 
+// ScopeOfFullID returns the text before the first '-'. No hyphen returns s
+// unchanged. This does not validate the scope or short-id; use IsFullTicketID.
+func ScopeOfFullID(s string) string {
+	i := strings.IndexByte(s, '-')
+	if i < 0 {
+		return s
+	}
+	return s[:i]
+}
+
 // Mint draws a fresh length-4 short-id from r.
 // First char is a uniform letter; positions 2–4 are a 50/50 letter/digit class flip.
 // Collision checking lives at the call site under the scope flock, not here.

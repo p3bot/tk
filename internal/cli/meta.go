@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/frontmatter"
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/title"
 	"github.com/p3bot/tk/internal/token"
@@ -465,7 +466,7 @@ func (e *engine) checkDependsAdd(subjectID, subjectScope, targetFull string) err
 		return fmt.Errorf("%s", token.Line(token.DependsSelf,
 			fmt.Sprintf("%s depends on itself — remove the self-edge", subjectID)))
 	}
-	targetScope := scopeOfFullID(targetFull)
+	targetScope := id.ScopeOfFullID(targetFull)
 	if targetScope == subjectScope {
 		ok, err := e.nonQuarantinedExists(subjectScope, targetFull)
 		if err != nil {

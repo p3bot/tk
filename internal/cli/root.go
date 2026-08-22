@@ -119,6 +119,7 @@ func newRootCmd(app *App) *cobra.Command {
 	scope := newScopeCmd(app)
 	sync := newSyncCmd(app)
 	doctor := newDoctorCmd(app)
+	reindex := newReindexCmd(app)
 	skill := newSkillCmd(app)
 
 	create.GroupID = groupWorkID
@@ -142,12 +143,13 @@ func newRootCmd(app *App) *cobra.Command {
 	scope.GroupID = groupAdminID
 	sync.GroupID = groupAdminID
 	doctor.GroupID = groupAdminID
+	reindex.GroupID = groupAdminID
 	skill.GroupID = groupAdminID
 
 	root.AddCommand(
 		create, get, edit, mark, reorder, next,
 		list, status, meta, deps, search, query, lens, me, note, tags,
-		scope, sync, doctor, skill,
+		scope, sync, doctor, reindex, skill,
 	)
 	return root
 }

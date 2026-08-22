@@ -75,7 +75,7 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 	return s.render(w, "hub", hubPage{
 		Title:  "maintenance",
 		Chrome: ch,
-		Lead:   "Read-only health for every registered scope. Repairs, sync, and scope admin stay on the tk CLI (tk doctor, tk sync, tk scope).",
+		Lead:   "Read-only health for every registered scope. Repairs, index rebuild, sync, and scope admin stay on the tk CLI (tk doctor, tk reindex, tk sync, tk scope).",
 		Items: []hubItem{
 			{
 				Title: "Integrity",

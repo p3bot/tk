@@ -3,7 +3,7 @@
 // mismatch or corruption triggers a full drop-and-rebuild, not a migration.
 // Authority stays in the files; this package only does SQLite I/O.
 // Row agreement with disk is reconcile's job; full Rebuild is a composition-root
-// admin op (e.g. doctor --reindex) that empties the cache before reconcile fills it.
+// admin op (tk reindex) that empties the cache before reconcile fills it.
 package index
 
 import (

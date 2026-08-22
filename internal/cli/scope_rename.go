@@ -132,7 +132,7 @@ func runScopeRename(app *App, c *cobra.Command, oldName, newName string) error {
 	if err := e.rekeyRegistry(oldName, newName); err != nil {
 		return err
 	}
-	if err := e.reindexRenamed(newName, dir); err != nil {
+	if err := e.reconcileRenamed(newName, dir); err != nil {
 		return err
 	}
 
@@ -263,9 +263,9 @@ func rewriteFullID(full, oldName, newName string) string {
 	return full
 }
 
-// reindexRenamed loads the new name from disk; pruneForgotten drops the old
+// reconcileRenamed loads the new name from disk; pruneForgotten drops the old
 // registry key's rows once it is absent from registered (no separate DeleteScope).
-func (e *engine) reindexRenamed(newName, dir string) error {
+func (e *engine) reconcileRenamed(newName, dir string) error {
 	reg, err := registry.NewStore(e.app.Ctx, e.app.ConfigDir).Load()
 	if err != nil {
 		return err

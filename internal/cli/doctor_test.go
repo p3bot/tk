@@ -188,47 +188,6 @@ func TestDoctorSelfDependsIsNotAlsoACycle(t *testing.T) {
 	}
 }
 
-func TestDoctorReindexWithRepairRebuildsAfterRepairs(t *testing.T) {
-	app := newApp(t)
-	t.Setenv("TK_SCOPE", "wc")
-	dir := initScope(t, app, "wc")
-	addTicket(t, dir, "wc-ab2c", "alpha", "todo", "a0", "# Alpha\n", false, "")
-	addTicket(t, dir, "wc-ab2c", "beta", "todo", "a1", "# Beta\n", false, "")
-	// Seed the index, then delete a file behind tk's back: the end state must not carry the removed row.
-	if _, _, err := run(t, app, "list"); err != nil {
-		t.Fatalf("seed index: %v", err)
-	}
-	addTicket(t, dir, "wc-gh78", "ghost", "todo", "a2", "# Ghost\n", false, "")
-	if _, _, err := run(t, app, "list"); err != nil {
-		t.Fatalf("seed ghost: %v", err)
-	}
-	if err := os.Remove(filepath.Join(dir, "wc-gh78-ghost.md")); err != nil {
-		t.Fatal(err)
-	}
-
-	out, _, err := run(t, app, "doctor", "--reindex", "--repair")
-	if err != nil {
-		t.Fatalf("doctor --reindex --repair: %v", err)
-	}
-	if !strings.Contains(out, "repaired duplicate id: wc-ab2c -> wc-ab2ca") {
-		t.Errorf("the repair must still run, got %q", out)
-	}
-
-	list, _, err := run(t, app, "list")
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if !strings.Contains(list, "wc-ab2ca") {
-		t.Errorf("post-repair index must carry the extended id, got %q", list)
-	}
-	if strings.Contains(list, "wc-gh78") {
-		t.Errorf("full rebuild must drop the row for a deleted file, got %q", list)
-	}
-	if got := strings.Count(list, "wc-ab2c\t"); got != 1 {
-		t.Errorf("kept side must appear exactly once, got %d in %q", got, list)
-	}
-}
-
 func TestDoctorFlagsInvalidOrderKeys(t *testing.T) {
 	app := newApp(t)
 	t.Setenv("TK_SCOPE", "wc")
@@ -299,16 +258,16 @@ func TestDoctorRepairEdgeVerifyNamesPostRepairReferrers(t *testing.T) {
 	}
 }
 
-func TestDoctorReindexRepairSeesUnindexedCollision(t *testing.T) {
+func TestDoctorRepairSeesUnindexedCollision(t *testing.T) {
 	app := newApp(t)
 	t.Setenv("TK_SCOPE", "wc")
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "alpha", "todo", "a0", "# Alpha\n", false, "")
 	addTicket(t, dir, "wc-ab2c", "beta", "todo", "a1", "# Beta\n", false, "")
 
-	out, _, err := run(t, app, "doctor", "--reindex", "--repair")
+	out, _, err := run(t, app, "doctor", "--repair")
 	if err != nil {
-		t.Fatalf("doctor --reindex --repair: %v", err)
+		t.Fatalf("doctor --repair: %v", err)
 	}
 	if !strings.Contains(out, "repaired duplicate id: wc-ab2c -> wc-ab2ca") {
 		t.Fatalf("an on-disk collision absent from the index must still be repaired, got %q", out)
@@ -527,41 +486,6 @@ func TestLensIgnoresLeftoverKnownTags(t *testing.T) {
 	}
 	if strings.Contains(errOut, "knownTags") || strings.Contains(errOut, "schema_warn:") {
 		t.Errorf("lens must not warn on free-form tags or leftover knownTags, got %q", errOut)
-	}
-}
-
-func TestDoctorReindexRebuilds(t *testing.T) {
-	app := newApp(t)
-	t.Setenv("TK_SCOPE", "wc")
-	dir := initScope(t, app, "wc")
-	addTicket(t, dir, "wc-ab2c", "x", "todo", "a0", "# X\n", false, "")
-	// --reindex never mutates ticket files and still reports cleanly.
-	if _, _, err := run(t, app, "doctor", "--reindex"); err != nil {
-		t.Fatalf("doctor --reindex: %v", err)
-	}
-	if !fileExists(dir, "wc-ab2c-x.md") {
-		t.Errorf("--reindex must not touch ticket files")
-	}
-
-	addTicket(t, dir, "wc-de34", "ghost", "todo", "a1", "# Ghost\n", false, "")
-	if _, _, err := run(t, app, "list"); err != nil {
-		t.Fatalf("seed index: %v", err)
-	}
-	if err := os.Remove(filepath.Join(dir, "wc-de34-ghost.md")); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := run(t, app, "doctor", "--reindex"); err != nil {
-		t.Fatalf("doctor --reindex: %v", err)
-	}
-	list, _, err := run(t, app, "list")
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if strings.Contains(list, "wc-de34") {
-		t.Errorf("rebuild must drop the row for a removed file, got %q", list)
-	}
-	if !strings.Contains(list, "wc-ab2c") {
-		t.Errorf("rebuild must keep the surviving ticket, got %q", list)
 	}
 }
 

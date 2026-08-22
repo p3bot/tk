@@ -10,9 +10,8 @@ import (
 	"github.com/p3bot/tk/internal/resolve"
 )
 
-// doctorFlags: bare doctor diagnoses only; --repair / --re-space-order mutate; --reindex rebuilds.
+// doctorFlags: bare doctor diagnoses only; --repair / --re-space-order mutate.
 type doctorFlags struct {
-	reindex      bool
 	repair       bool
 	reSpaceOrder bool
 	all          bool
@@ -27,21 +26,20 @@ func (f doctorFlags) integrityFlags() integrity.Flags {
 func newDoctorCmd(app *App) *cobra.Command {
 	var f doctorFlags
 	cmd := &cobra.Command{
-		Use:   "doctor [--reindex] [--repair] [--re-space-order] [--all]",
+		Use:   "doctor [--repair] [--re-space-order] [--all]",
 		Short: "Diagnose integrity, and optionally repair, across scopes",
 		Long: "Diagnose every integrity class over the ambient scope (or every registered\n" +
 			"scope when there is none), reporting each with its stable token. Bare doctor\n" +
 			"never mutates ticket files or tk.cue. --repair fixes id collisions, equal order\n" +
 			"keys, and archive layout drift; --re-space-order shortens a band of over-long\n" +
 			"order keys; both need a scope (ambient, TK_SCOPE, or --all) and refuse on a\n" +
-			"mid-rebase auto-commit git-root. --reindex rebuilds the index from files. There\n" +
-			"is no --scope flag on doctor.",
+			"mid-rebase auto-commit git-root. There is no --scope flag on doctor. Rebuild the\n" +
+			"derived index with tk reindex.",
 		Args: usageArgs(cobra.NoArgs),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runDoctor(app, c, f)
 		},
 	}
-	cmd.Flags().BoolVar(&f.reindex, "reindex", false, "rebuild the index from files (never mutates ticket files)")
 	cmd.Flags().BoolVar(&f.repair, "repair", false, "repair id collisions, equal order keys, and archive layout drift")
 	cmd.Flags().BoolVar(&f.reSpaceOrder, "re-space-order", false, "re-space a band of pathologically long order keys")
 	cmd.Flags().BoolVar(&f.all, "all", false, "act on every registered scope (mutating flags only)")
@@ -70,16 +68,8 @@ func runDoctor(app *App, c *cobra.Command, f doctorFlags) error {
 		}
 	}
 
-	// Rebuild then machine-wide reconcile: Rebuild only drops tables; reconcile repopulates.
-	targets := e.targetsFor(reportScopes)
-	if f.reindex {
-		if err := e.db.Rebuild(); err != nil {
-			return err
-		}
-		targets = e.allTargets()
-	}
-
 	// Post-repair reconcile feeds the report; doctor prints its own report, so no ride-along echo.
+	targets := e.targetsFor(reportScopes)
 	res, err := e.reconcileResult(targets)
 	if err != nil {
 		return err

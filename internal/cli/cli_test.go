@@ -44,6 +44,9 @@ func TestUsageErrorsExitTwo(t *testing.T) {
 		{"too few args", []string{"scope", "forget"}},
 		{"too many args", []string{"scope", "forget", "a", "b"}},
 		{"rebind missing name", []string{"scope", "rebind", dir}},
+		{"doctor reindex flag", []string{"doctor", "--reindex"}},
+		{"reindex extra arg", []string{"reindex", "x"}},
+		{"reindex unknown flag", []string{"reindex", "--scope", "wc"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -214,7 +217,7 @@ func TestRootHelpGroups(t *testing.T) {
 
 			wantWork := []string{"create", "get", "edit", "mark", "reorder", "next"}
 			wantBoard := []string{"list", "status", "meta", "deps", "search", "query", "lens", "me", "note", "tags"}
-			wantAdmin := []string{"scope", "sync", "doctor", "skill"}
+			wantAdmin := []string{"scope", "sync", "doctor", "reindex", "skill"}
 			if got := commandsInSectionOrder(work); !slicesEqual(got, wantWork) {
 				t.Errorf("Work order = %v, want %v\n%s", got, wantWork, work)
 			}

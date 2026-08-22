@@ -61,6 +61,7 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"required_missing:",
 		"scope field",
 		"mark does not enforce depends",
+		"tk reindex",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {
@@ -93,6 +94,16 @@ func TestSkillDoesNotTeachMe(t *testing.T) {
 	}
 	if !strings.Contains(text, "registry, lens, and me only") {
 		t.Error("skill forget line must name the me entry alongside registry and lens")
+	}
+}
+
+func TestSkillDoesNotTeachDoctorReindex(t *testing.T) {
+	text := skill.Text()
+	if strings.Contains(text, "tk doctor --reindex") || strings.Contains(text, "[--reindex]") {
+		t.Error("skill must not list --reindex on doctor; cache rebuild is tk reindex")
+	}
+	if !strings.Contains(text, "tk reindex") {
+		t.Error("skill must teach tk reindex")
 	}
 }
 

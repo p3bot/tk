@@ -71,7 +71,8 @@ tk scope field list [--scope S]                                     # List custo
 tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # Upsert field; full replace from flags (omit --required demotes)
 tk scope field unset <name> [--scope S]                             # Remove field declaration only (tickets untouched)
 tk sync [--scope S] [--all]                                         # Snapshot/integrate/push auto-commit roots (claim also pushes)
-tk doctor [--reindex] [--repair] [--re-space-order] [--all]         # Diagnose integrity; optional repair
+tk doctor [--repair] [--re-space-order] [--all]                     # Diagnose integrity; optional repair
+tk reindex                                                          # Rebuild the machine-wide index from files
 tk skill                                                            # Print this agent skill contract
 tk skill install [agents...] [--local]                              # Install into agentdex skills roots
 tk skill list [--local]                                             # List installed skill copies (default agent set)
@@ -110,6 +111,8 @@ Durability (`tk status mode`):
 - repo-driven: host git commit/push (no `tk sync`)
 - plain-files: no git step
 
-Integrity: `tk doctor` -> optional `--repair` | `--re-space-order` | `--reindex` | `--all`
+Integrity: `tk doctor` -> optional `--repair` | `--re-space-order` | `--all`
+
+Index: `tk reindex` when the index is wrong relative to files
 
 Recovery: `tk status` -> `tk doctor` -> fix residue -> `tk sync` if tk-driven

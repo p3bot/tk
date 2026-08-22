@@ -72,7 +72,7 @@ func runGet(app *App, c *cobra.Command, idArg, scope string, content bool) error
 func ensureFileExists(p *index.Ticket) error {
 	if _, err := os.Stat(p.Path); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("ticket %s resolves to %s but the file is missing — run tk doctor --reindex", p.ID, p.Path)
+			return fmt.Errorf("ticket %s resolves to %s but the file is missing — run tk reindex", p.ID, p.Path)
 		}
 		return fmt.Errorf("stat %s: %w", p.Path, err)
 	}

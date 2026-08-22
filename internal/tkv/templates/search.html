@@ -1,0 +1,38 @@
+{{define "search"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — tkv</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>search</h1>
+<form class="search-page" action="/search" method="get">
+  {{if .Scope}}<input type="hidden" name="scope" value="{{.Scope}}">{{end}}
+  <input type="search" name="q" value="{{.Query}}" placeholder="full-text query" aria-label="query">
+  <button type="submit">search</button>
+</form>
+{{if .Scope}}<p class="bound">scope {{.Scope}}</p>{{end}}
+{{if .Query}}
+<ul class="hits">
+  {{range .Hits}}
+  <li>
+    <a href="{{.Href}}">{{.ID}}</a>
+    <span class="status">{{.Status}}</span>
+    <span class="title">{{.Title}}</span>
+    {{if .Summary}}<p>{{.Summary}}</p>{{end}}
+    <span class="scope">{{.Scope}}</span>
+  </li>
+  {{else}}
+  <li class="empty">No matches.</li>
+  {{end}}
+</ul>
+{{end}}
+</main>
+</body>
+</html>
+{{end}}

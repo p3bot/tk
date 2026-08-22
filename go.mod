@@ -7,6 +7,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/p3bot/agentdex v0.0.2
 	github.com/spf13/cobra v1.10.2
+	github.com/yuin/goldmark v1.8.5
 	golang.org/x/term v0.44.0
 	golang.org/x/text v0.40.0
 	modernc.org/sqlite v1.54.0

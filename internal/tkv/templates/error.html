@@ -1,0 +1,23 @@
+{{define "error"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — tkv</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>{{.Status}}</h1>
+<p>{{.Message}}</p>
+{{if .Paths}}
+<ul>
+  {{range .Paths}}<li><code>{{.}}</code></li>{{end}}
+</ul>
+{{end}}
+</main>
+</body>
+</html>
+{{end}}

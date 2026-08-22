@@ -1,0 +1,55 @@
+{{define "hub"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — tkv</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>{{.Title}}</h1>
+{{if .Lead}}<p class="lead">{{.Lead}}</p>{{end}}
+<section class="hub" aria-label="{{.Title}}">
+{{range .Items}}
+  <article class="hub-card">
+    <h2>{{.Title}}</h2>
+    <p>{{.Blurb}}</p>
+    {{if .Href}}<p><a href="{{.Href}}">Open</a></p>{{else if .Ready}}<p class="hub-status">on this page</p>{{else}}<p class="hub-status">planned</p>{{end}}
+  </article>
+{{end}}
+</section>
+{{if .Rows}}
+<h2>scopes</h2>
+<table class="overview">
+<thead>
+<tr>
+  <th>name</th>
+  <th>mode</th>
+  <th>dangling</th>
+  <th>integrity</th>
+</tr>
+</thead>
+<tbody>
+{{range .Rows}}
+<tr{{if .Note}} class="has-note"{{end}}>
+  <td><a href="/scope/{{.Name}}">{{.Name}}</a></td>
+  <td>{{.Mode}}</td>
+  <td>{{.Dangling}}</td>
+  <td class="integrity-{{.Integrity}}">{{.Integrity}}</td>
+</tr>
+{{if .Note}}
+<tr class="note"><td colspan="4">{{.Note}}</td></tr>
+{{end}}
+{{else}}
+<tr><td colspan="4" class="empty">No scopes registered.</td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+</main>
+</body>
+</html>
+{{end}}

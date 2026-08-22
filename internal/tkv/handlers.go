@@ -1,0 +1,734 @@
+package tkv
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html/template"
+	"net/http"
+	"net/url"
+	"os"
+	"sort"
+	"strings"
+
+	"github.com/p3bot/tk/internal/frontmatter"
+	"github.com/p3bot/tk/internal/gitroot"
+	"github.com/p3bot/tk/internal/id"
+	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/reconcile"
+	"github.com/p3bot/tk/internal/registry"
+	"github.com/p3bot/tk/internal/scopeadmin"
+	"github.com/p3bot/tk/internal/scopeconfig"
+	"github.com/p3bot/tk/internal/status"
+)
+
+type overviewPage struct {
+	Title  string
+	Chrome chrome
+	Rows   []overviewRow
+}
+
+type overviewRow struct {
+	Name       string
+	Mode       string
+	Total      int
+	Todo       int
+	InProgress int
+	Blocked    int
+	Review     int
+	Draft      int
+	Backlog    int
+	Done       int
+	Cancelled  int
+	Next       string
+	NextHref   string
+	Claimed    []idLink
+	Dangling   int
+	Integrity  string
+	Note       string
+}
+
+type idLink struct {
+	ID   string
+	Href string
+}
+
+func (s *Server) overview(w http.ResponseWriter, _ *http.Request) error {
+	reg, err := s.loadRegistry()
+	if err != nil {
+		return err
+	}
+	res, err := s.rec.Reconcile(allTargets(reg), registeredSet(reg), nowNS())
+	if err != nil {
+		return err
+	}
+	ch, err := s.chromeFor(reg, "", "", navOverview)
+	if err != nil {
+		return err
+	}
+	names := scopeNames(reg)
+	rows := make([]overviewRow, 0, len(names))
+	for _, name := range names {
+		row, err := s.overviewRow(reg, res, name)
+		if err != nil {
+			return err
+		}
+		rows = append(rows, row)
+	}
+	return s.render(w, "overview", overviewPage{Title: "scopes", Chrome: ch, Rows: rows})
+}
+
+func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name string) (overviewRow, error) {
+	entry := reg.Scopes[name]
+	row := overviewRow{Name: name, Integrity: "ok"}
+	if res.Unreachable[name] {
+		row.Mode = scopeadmin.ModeUnknown
+		row.Note = fmt.Sprintf("Directory is not reachable: %s", entry.Dir)
+	}
+
+	_, inRepo := gitroot.RepoRoot(entry.Dir)
+	schema := res.Schema(name)
+	cfgErr := res.ConfigErrs[name]
+	if row.Note == "" {
+		driftName := ""
+		if cfgErr == nil && schema != nil {
+			driftName = schema.Name
+		} else if cueName, nameErr := scopeconfig.ReadName(s.app.Ctx, entry.Dir); nameErr == nil {
+			driftName = cueName
+		}
+		if driftName != "" && driftName != name {
+			row.Note = fmt.Sprintf("Name drift: registry key %q but tk.cue name is %q", name, driftName)
+		}
+	}
+	if cfgErr != nil {
+		if row.Mode == "" {
+			row.Mode = scopeadmin.ModePlainFiles
+		}
+		msg := fmt.Sprintf("Config unparseable: %s", cfgErr.Reason)
+		if row.Note == "" {
+			row.Note = msg
+		} else {
+			row.Note = row.Note + " — " + msg
+		}
+	}
+	if row.Mode == "" {
+		row.Mode = statusMode(schema, cfgErr != nil, inRepo)
+	}
+
+	pulse, err := s.db.ScopePulse(name, reg.Lens[name])
+	if err != nil {
+		return row, err
+	}
+	row.Total = pulse.Total
+	row.Todo = pulse.Todo
+	row.InProgress = pulse.InProgress
+	row.Blocked = pulse.Blocked
+	row.Review = pulse.Review
+	row.Draft = pulse.Draft
+	row.Backlog = pulse.Backlog
+	row.Done = pulse.Done
+	row.Cancelled = pulse.Cancelled
+	row.Claimed = ticketLinks(pulse.Claimed)
+
+	dangling, err := s.db.SameScopeDanglingDependsCount(name)
+	if err != nil {
+		return row, err
+	}
+	row.Dangling = dangling
+
+	integ, err := scopeIntegrity(s.db, name, schema)
+	if err != nil {
+		return row, err
+	}
+	row.Integrity = integ
+
+	if !res.Unreachable[name] {
+		gate, err := loadGate(s.db, s.rec, reg, res, []string{name})
+		if err != nil {
+			return row, err
+		}
+		candidates, err := s.db.NextCandidates(name)
+		if err != nil {
+			return row, err
+		}
+		if next := gate.selectNext(candidates, reg.Lens[name]); next != nil {
+			row.Next = next.ID
+			row.NextHref = inspectHref(next.ID)
+		}
+	}
+	return row, nil
+}
+
+func ticketLinks(rows []*index.Ticket) []idLink {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make([]idLink, len(rows))
+	for i, p := range rows {
+		out[i] = idLink{ID: p.ID, Href: inspectHref(p.ID)}
+	}
+	return out
+}
+
+type kanbanPage struct {
+	Title  string
+	Chrome chrome
+	Name   string
+	All    bool
+	Tags   []string
+	Active []string
+	Pulse  kanbanPulse
+	Cols   []kanbanCol
+}
+
+type kanbanPulse struct {
+	Todo       int
+	InProgress int
+	Blocked    int
+	Review     int
+	Draft      int
+	Backlog    int
+	Next       string
+	NextHref   string
+	Claimed    []idLink
+	BlockedIDs []idLink
+}
+
+type kanbanCol struct {
+	Status string
+	Cards  []kanbanCard
+}
+
+type kanbanCard struct {
+	ShortID     string
+	Title       string
+	Href        string
+	Tags        []string
+	WaitingOn   []idLink
+	SchemaError bool
+}
+
+func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
+	name := r.PathValue("name")
+	if !id.IsScopeName(name) {
+		return errNotFound("unknown scope")
+	}
+	reg, err := s.loadRegistry()
+	if err != nil {
+		return err
+	}
+	if _, ok := reg.Scopes[name]; !ok {
+		return errNotFound(fmt.Sprintf("unknown scope %q", name))
+	}
+	res, err := s.rec.Reconcile(allTargets(reg), registeredSet(reg), nowNS())
+	if err != nil {
+		return err
+	}
+	schema := res.Schema(name)
+	all := r.URL.Query().Get("all") == "1"
+	tags := r.URL.Query()["tag"]
+	lens := reg.Lens[name]
+	filter := index.BoardFilter{Scope: name, All: all, Tags: tags}
+	if !all {
+		filter.DefaultStatuses = status.DefaultListNames(schemaCustom(schema))
+	}
+	if len(tags) == 0 && len(lens) > 0 {
+		filter.Lens = lens
+	}
+	tickets, err := s.db.BoardTickets(filter)
+	if err != nil {
+		return err
+	}
+	gate, err := loadGate(s.db, s.rec, reg, res, []string{name})
+	if err != nil {
+		return err
+	}
+	pulse, err := s.db.ScopePulse(name, lens)
+	if err != nil {
+		return err
+	}
+	kp := kanbanPulse{
+		Todo:       pulse.Todo,
+		InProgress: pulse.InProgress,
+		Blocked:    pulse.Blocked,
+		Review:     pulse.Review,
+		Draft:      pulse.Draft,
+		Backlog:    pulse.Backlog,
+		Claimed:    ticketLinks(pulse.Claimed),
+		BlockedIDs: ticketLinks(pulse.BlockedIDs),
+	}
+	if !res.Unreachable[name] {
+		candidates, err := s.db.NextCandidates(name)
+		if err != nil {
+			return err
+		}
+		if next := gate.selectNext(candidates, lens); next != nil {
+			kp.Next = next.ID
+			kp.NextHref = inspectHref(next.ID)
+		}
+	}
+
+	present := make([]string, 0, len(tickets))
+	byStatus := map[string][]*index.Ticket{}
+	for _, p := range tickets {
+		byStatus[p.Status] = append(byStatus[p.Status], p)
+		present = append(present, p.Status)
+	}
+	colNames := kanbanColumns(schemaCustom(schema), all, present)
+	cols := make([]kanbanCol, 0, len(colNames))
+	for _, st := range colNames {
+		col := kanbanCol{Status: st}
+		for _, p := range byStatus[st] {
+			waiting := gate.waitingOn(p)
+			card := kanbanCard{
+				ShortID:     p.ShortID,
+				Title:       p.Title,
+				Href:        "/scope/" + name + "/" + p.ShortID,
+				Tags:        p.Tags,
+				WaitingOn:   waitLinks(waiting),
+				SchemaError: p.SchemaError,
+			}
+			col.Cards = append(col.Cards, card)
+		}
+		cols = append(cols, col)
+	}
+
+	distinct, err := s.db.ScopeDistinctTags(name)
+	if err != nil {
+		return err
+	}
+	ch, err := s.chromeFor(reg, name, "", navBoard)
+	if err != nil {
+		return err
+	}
+	return s.render(w, "kanban", kanbanPage{
+		Title:  name,
+		Chrome: ch,
+		Name:   name,
+		All:    all,
+		Tags:   distinct,
+		Active: tags,
+		Pulse:  kp,
+		Cols:   cols,
+	})
+}
+
+func waitLinks(ids []string) []idLink {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]idLink, len(ids))
+	for i, id := range ids {
+		out[i] = idLink{ID: id, Href: inspectHref(id)}
+	}
+	return out
+}
+
+func kanbanColumns(custom map[string]status.Category, all bool, present []string) []string {
+	cols := status.DefaultListNames(custom)
+	if !all {
+		return cols
+	}
+	seen := map[string]bool{}
+	for _, c := range cols {
+		seen[c] = true
+	}
+	for _, name := range status.Builtins() {
+		if !seen[name] {
+			cols = append(cols, name)
+			seen[name] = true
+		}
+	}
+	var extra []string
+	for name := range custom {
+		if !seen[name] {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	cols = append(cols, extra...)
+	seenPresent := map[string]bool{}
+	var unknown []string
+	for _, st := range present {
+		if st == "" || seen[st] || seenPresent[st] {
+			continue
+		}
+		seenPresent[st] = true
+		unknown = append(unknown, st)
+	}
+	sort.Strings(unknown)
+	return append(cols, unknown...)
+}
+
+type inspectPage struct {
+	Title       string
+	Chrome      chrome
+	ID          string
+	Status      string
+	Order       string
+	TicketTitle string
+	Summary     string
+	Tags        []string
+	Created     string
+	Custom      []customField
+	Archived    bool
+	SchemaErr   bool
+	Path        string
+	ParseMsg    string
+	RawText     string
+	Body        template.HTML
+	Depends     []neighbour
+	Depended    []neighbour
+	Related     []neighbour
+	Links       []string
+}
+
+type customField struct {
+	Key   string
+	Value string
+}
+
+type neighbour struct {
+	ID         string
+	Status     string
+	Title      string
+	Href       string
+	Unresolved bool
+}
+
+func (s *Server) inspect(w http.ResponseWriter, r *http.Request) error {
+	name := r.PathValue("name")
+	idArg := r.PathValue("id")
+	if !id.IsScopeName(name) {
+		return errNotFound("unknown scope")
+	}
+	full, ok := parseIDArg(idArg)
+	if !ok {
+		return errNotFound(fmt.Sprintf("unknown ticket id %q", idArg))
+	}
+	if full && scopeOfFullID(idArg) != name {
+		return errNotFound(fmt.Sprintf("ticket %q does not belong to scope %q", idArg, name))
+	}
+	reg, err := s.loadRegistry()
+	if err != nil {
+		return err
+	}
+	entry, ok := reg.Scopes[name]
+	if !ok {
+		return errNotFound(fmt.Sprintf("unknown scope %q", name))
+	}
+	if _, err := s.rec.Reconcile(map[string]string{name: entry.Dir}, registeredSet(reg), nowNS()); err != nil {
+		return err
+	}
+
+	var rows []*index.Ticket
+	if full {
+		rows, err = s.db.TicketsByID(name, idArg)
+	} else {
+		rows, err = s.db.TicketsByShortID(name, idArg)
+	}
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return errNotFound(fmt.Sprintf("unknown ticket id %q", idArg))
+	}
+	if len(rows) > 1 {
+		paths := make([]string, len(rows))
+		for i, p := range rows {
+			paths[i] = p.Path
+		}
+		sort.Strings(paths)
+		return errDuplicate(rows[0].ID, paths)
+	}
+	p := rows[0]
+	page, err := s.inspectPage(reg, p)
+	if err != nil {
+		return err
+	}
+	return s.render(w, "inspect", page)
+}
+
+func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPage, error) {
+	ch, err := s.chromeFor(reg, p.Scope, "", navBoard)
+	if err != nil {
+		return inspectPage{}, err
+	}
+	out := inspectPage{
+		Title:       p.ID,
+		Chrome:      ch,
+		ID:          p.ID,
+		Status:      p.Status,
+		Order:       p.OrderKey,
+		TicketTitle: p.Title,
+		Summary:     p.Summary,
+		Tags:        p.Tags,
+		Created:     p.Created,
+		Custom:      formatCustom(p.Custom),
+		Archived:    p.Archived,
+		SchemaErr:   p.SchemaError,
+		Path:        p.Path,
+		ParseMsg:    p.ParseMsg,
+	}
+
+	raw, err := os.ReadFile(p.Path)
+	if err != nil {
+		if out.ParseMsg == "" {
+			out.ParseMsg = fmt.Sprintf("read %s: %v", p.Path, err)
+		}
+	} else {
+		interior, body, present := frontmatter.Split(raw)
+		if present {
+			if m, err := frontmatter.Parse(interior); err == nil {
+				out.Links = m.Links
+			}
+		}
+		if p.ParseError {
+			out.RawText = string(raw)
+		} else {
+			if !present {
+				body = raw
+			}
+			html, err := renderMarkdown(body)
+			if err != nil {
+				return inspectPage{}, err
+			}
+			out.Body = html
+		}
+	}
+
+	out.Depends, out.Depended, out.Related, err = s.inspectGraph(p.ID)
+	if err != nil {
+		return inspectPage{}, err
+	}
+	return out, nil
+}
+
+func formatCustom(m map[string]any) []customField {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]customField, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, customField{Key: k, Value: formatValue(m[k])})
+	}
+	return out
+}
+
+func formatValue(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case nil:
+		return ""
+	default:
+		b, err := json.Marshal(t)
+		if err != nil {
+			return fmt.Sprint(v)
+		}
+		return string(b)
+	}
+}
+
+func (s *Server) inspectGraph(fullID string) (depends, depended, related []neighbour, err error) {
+	from, err := s.db.EdgesFromID(fullID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	to, err := s.db.EdgesByTarget(fullID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var ids []string
+	seenID := map[string]bool{}
+	add := func(id string) {
+		if id == "" || seenID[id] {
+			return
+		}
+		seenID[id] = true
+		ids = append(ids, id)
+	}
+	for _, e := range from {
+		add(e.ToID)
+	}
+	for _, e := range to {
+		add(e.FromID)
+	}
+	tickets, err := s.db.TicketsByFullIDs(ids)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	byID := map[string]*index.Ticket{}
+	for _, t := range tickets {
+		if _, ok := byID[t.ID]; !ok {
+			byID[t.ID] = t
+		}
+	}
+	seenDep, seenBy, seenRel := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, e := range from {
+		switch e.Kind {
+		case index.EdgeDepends:
+			if seenDep[e.ToID] {
+				continue
+			}
+			seenDep[e.ToID] = true
+			depends = append(depends, makeNeighbour(e.ToID, byID))
+		case index.EdgeRelated:
+			if seenRel[e.ToID] {
+				continue
+			}
+			seenRel[e.ToID] = true
+			related = append(related, makeNeighbour(e.ToID, byID))
+		}
+	}
+	for _, e := range to {
+		switch e.Kind {
+		case index.EdgeDepends:
+			if seenBy[e.FromID] {
+				continue
+			}
+			seenBy[e.FromID] = true
+			depended = append(depended, makeNeighbour(e.FromID, byID))
+		case index.EdgeRelated:
+			if seenRel[e.FromID] {
+				continue
+			}
+			seenRel[e.FromID] = true
+			related = append(related, makeNeighbour(e.FromID, byID))
+		}
+	}
+	return depends, depended, related, nil
+}
+
+func makeNeighbour(fullID string, byID map[string]*index.Ticket) neighbour {
+	n := neighbour{ID: fullID, Href: inspectHref(fullID)}
+	if t := byID[fullID]; t != nil {
+		n.Status = t.Status
+		n.Title = t.Title
+		return n
+	}
+	n.Unresolved = true
+	return n
+}
+
+type searchPage struct {
+	Title  string
+	Chrome chrome
+	Query  string
+	Scope  string
+	Hits   []searchHitView
+}
+
+type searchHitView struct {
+	ID      string
+	Status  string
+	Title   string
+	Summary string
+	Scope   string
+	Href    string
+}
+
+func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	reg, err := s.loadRegistry()
+	if err != nil {
+		return err
+	}
+	if scope != "" {
+		if !id.IsScopeName(scope) {
+			return errNotFound(fmt.Sprintf("unknown scope %q", scope))
+		}
+		if _, ok := reg.Scopes[scope]; !ok {
+			return errNotFound(fmt.Sprintf("unknown scope %q", scope))
+		}
+	}
+	targets := allTargets(reg)
+	if scope != "" {
+		targets = map[string]string{scope: reg.Scopes[scope].Dir}
+	}
+	if _, err := s.rec.Reconcile(targets, registeredSet(reg), nowNS()); err != nil {
+		return err
+	}
+	ch, err := s.chromeFor(reg, scope, q, navSearch)
+	if err != nil {
+		return err
+	}
+	page := searchPage{Title: "search", Chrome: ch, Query: q, Scope: scope}
+	if q == "" {
+		return s.render(w, "search", page)
+	}
+	hits, err := s.db.Search(scope, q)
+	if err != nil {
+		if errors.Is(err, index.ErrSearchQuery) {
+			return errBadRequest(fmt.Sprintf("malformed search query %q", q))
+		}
+		return err
+	}
+	page.Hits = make([]searchHitView, 0, len(hits))
+	for _, h := range hits {
+		p := h.Ticket
+		page.Hits = append(page.Hits, searchHitView{
+			ID:      p.ID,
+			Status:  p.Status,
+			Title:   p.Title,
+			Summary: p.Summary,
+			Scope:   p.Scope,
+			Href:    inspectHref(p.ID),
+		})
+	}
+	return s.render(w, "search", page)
+}
+
+// boardQuery is used from templates via a method on kanbanPage... kept as helper for tests.
+func boardQuery(all bool, tags []string) string {
+	v := url.Values{}
+	if all {
+		v.Set("all", "1")
+	}
+	for _, t := range tags {
+		v.Add("tag", t)
+	}
+	enc := v.Encode()
+	if enc == "" {
+		return ""
+	}
+	return "?" + enc
+}
+
+func tagActive(tags []string, tag string) bool {
+	for _, t := range tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+func (p kanbanPage) AllHref() string {
+	if p.All {
+		return "/scope/" + p.Name + boardQuery(false, p.Active)
+	}
+	return "/scope/" + p.Name + boardQuery(true, p.Active)
+}
+
+func (p kanbanPage) TagHref(tag string) string {
+	var next []string
+	if tagActive(p.Active, tag) {
+		for _, t := range p.Active {
+			if t != tag {
+				next = append(next, t)
+			}
+		}
+	} else {
+		next = append(append([]string{}, p.Active...), tag)
+	}
+	return "/scope/" + p.Name + boardQuery(p.All, next)
+}
+
+func (p kanbanPage) TagOn(tag string) bool { return tagActive(p.Active, tag) }

@@ -2,6 +2,7 @@
 
 `tk` tracks feature work as plain markdown files, one ticket per file, edited in
 place. It indexes, queues, and locates tickets; the filesystem is the editor.
+Humans can run `tkv` for a local read-only dashboard.
 
 The implementation is the source of truth.
 
@@ -25,6 +26,7 @@ brew install p3bot/tap/tk
 
 ```bash
 go install github.com/p3bot/tk/cmd/tk@latest
+go install github.com/p3bot/tk/cmd/tkv@latest
 ```
 
 ### Build from Source
@@ -32,6 +34,7 @@ go install github.com/p3bot/tk/cmd/tk@latest
 ```bash
 go build ./...
 go build -o tk ./cmd/tk
+go build -o tkv ./cmd/tkv
 ```
 
 Requires Go 1.26. Pure Go, no cgo. The external `git` binary is used only to

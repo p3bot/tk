@@ -1,0 +1,39 @@
+{{define "depends"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — tkv</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>depends</h1>
+<p class="lead">{{.Lead}}</p>
+{{if not .Scope}}
+<p>Pick a scope to draw its depends graph.</p>
+<ul class="scope-pick">
+  {{range .Chrome.Scopes}}
+  <li><a href="/graphs/depends?scope={{.}}">{{.}}</a></li>
+  {{else}}
+  <li class="empty">No scopes registered.</li>
+  {{end}}
+</ul>
+{{else}}
+<p class="board-controls">
+  <a href="{{.AllHref}}">{{if .All}}working board{{else}}all tickets{{end}}</a>
+  <span class="bound">{{.Nodes}} nodes · {{.Edges}} edges</span>
+</p>
+{{if .SVG}}
+<div class="graph-wrap">{{.SVG}}</div>
+{{else}}
+<p class="empty">No depends edges among these tickets.{{if not .All}} Try <a href="{{.AllHref}}">all tickets</a> to include archive.{{end}}</p>
+{{end}}
+{{if eq .Isolated 1}}<p class="bound">1 ticket has no depends edges and is omitted.</p>{{else if .Isolated}}<p class="bound">{{.Isolated}} tickets have no depends edges and are omitted.</p>{{end}}
+{{end}}
+</main>
+</body>
+</html>
+{{end}}

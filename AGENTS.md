@@ -8,7 +8,7 @@ live authority and must not override the tree.
 
 ## Implementation status
 
-P1 through P7 have landed. `tk` runs as a Cobra CLI with the machine-local CUE
+P1 through P7 have landed, plus `tkv`'s read-only first slice. `tk` runs as a Cobra CLI with the machine-local CUE
 registry, scope `tk.cue` evaluation, ambient resolution, and the full `tk scope`
 verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `field`); the machine-wide
 SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
@@ -25,7 +25,9 @@ orchestration split into acquiring wrappers over locks-held cores); and P7's
 `tk skill` — the agent contract (embedded `skill.md` as the sole runtime source:
 Commands, Ticket files, Identifiers, Workflows; structure and hot-path guidance
 tests; no design-doc dependency) plus agentdex-backed `skill install`/`list`/
-`uninstall` (paths from the agent catalog; no hardcoded product skills dirs).
+`uninstall` (paths from the agent catalog; no hardcoded product skills dirs);
+and `tkv` — a human-facing localhost dashboard (`cmd/tkv`) for read-only
+overview, kanban, inspect, search, depends graph, and maintenance (agents keep using `tk`).
 
 - Prefer packages, tests, and the embedded skill over prose when they disagree.
 - Short-ids are letter-first by construction (the `IsShortID` predicate and the
@@ -64,6 +66,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
 - Go version: 1.26 (pure Go, no cgo)
 - `cmd/tk/main.go` — minimal entry point: run, map a signal or error to an exit
   code, exit (all command logic is in `internal/cli`)
+- `cmd/tkv/main.go` — thin entry for the human viewer (logic in `internal/tkv`)
 - `internal/` — pure wire-contract primitives, then the engines built on them:
   - `id` — scope/short-id/full-id predicates, `crypto/rand` mint, collision-repair extension
   - `collision` — pure same-id keeper total order (`KeepBefore`); shared by repair and fmmerge
@@ -97,6 +100,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `integrity` — doctor diagnose report and shared repair orchestration (acquiring + locks-held core)
   - `syncengine` — per-root snapshot/integrate/integrity/push; `tk sync` and claim
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
+  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph)
   - `cli` — Cobra command tree, exit codes, signals, colour/TTY, path hand-off
 
 ## Build, test, lint, format
@@ -120,6 +124,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
 | Config | CUE (`cuelang.org/go`) | Typed, validated schema for scope config and frontmatter. |
 | Index | SQLite (`modernc.org/sqlite`) | Pure Go, FTS5 compiled in, WAL mode. |
 | Version control | External `git` binary | Shelled out, owner `tk` scopes only. Full commit and read/integrate/push surface built (P6a); `tk sync` and claim (todo→in-progress) are the tk-owned push paths (P6b). |
+| Markdown (tkv) | `github.com/yuin/goldmark` | CommonMark for ticket inspect; raw HTML off. |
 
 TIP: Both `modernc.org/sqlite` and `cuelang.org/go` are pure Go by design. Do not
 introduce a cgo-based SQLite driver (e.g. `mattn/go-sqlite3`) — it breaks the

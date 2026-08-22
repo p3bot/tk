@@ -1,0 +1,49 @@
+{{define "kanban"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — tkv</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>{{.Name}}</h1>
+<section class="pulse" aria-label="pulse">
+  <span>todo {{.Pulse.Todo}}</span>
+  <span>in-progress {{.Pulse.InProgress}}</span>
+  <span>blocked {{.Pulse.Blocked}}</span>
+  <span>review {{.Pulse.Review}}</span>
+  <span>draft {{.Pulse.Draft}}</span>
+  <span>backlog {{.Pulse.Backlog}}</span>
+  <span>next {{if .Pulse.NextHref}}<a href="{{.Pulse.NextHref}}">{{.Pulse.Next}}</a>{{else}}—{{end}}</span>
+  <span>claimed {{range $i, $c := .Pulse.Claimed}}{{if $i}} {{end}}<a href="{{$c.Href}}">{{$c.ID}}</a>{{else}}—{{end}}</span>
+  <span>blocked {{range $i, $c := .Pulse.BlockedIDs}}{{if $i}} {{end}}<a href="{{$c.Href}}">{{$c.ID}}</a>{{else}}—{{end}}</span>
+</section>
+<p class="board-controls">
+  <a href="{{.AllHref}}">{{if .All}}default board{{else}}all tickets{{end}}</a>
+  {{range .Tags}}
+    <a class="tag{{if $.TagOn .}} on{{end}}" href="{{$.TagHref .}}">{{.}}</a>
+  {{end}}
+</p>
+<section class="kanban" aria-label="board">
+{{range .Cols}}
+  <div class="col">
+    <h2>{{.Status}} <span class="count">{{len .Cards}}</span></h2>
+    {{range .Cards}}
+    <article class="card">
+      <a href="{{.Href}}"><span class="id">{{.ShortID}}</span><span class="title">{{.Title}}</span></a>
+      {{if .Tags}}<span class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</span>{{end}}
+      {{if .SchemaError}}<span class="waiting">schema_error: a depends/related entry is not a legal full ticket id</span>{{end}}
+      {{if .WaitingOn}}<span class="waiting">waiting {{range .WaitingOn}}<a href="{{.Href}}">{{.ID}}</a> {{end}}</span>{{end}}
+    </article>
+    {{end}}
+  </div>
+{{end}}
+</section>
+</main>
+</body>
+</html>
+{{end}}

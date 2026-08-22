@@ -1,0 +1,69 @@
+{{define "inspect"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — tkv</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "chrome" .}}
+<main class="inspect">
+<article class="body">
+  {{if .ParseMsg}}<p class="banner">{{.ParseMsg}}</p>{{end}}
+  {{if .SchemaErr}}<p class="banner">schema_error: a depends/related entry is not a legal full ticket id</p>{{end}}
+  {{if .RawText}}<pre class="raw">{{.RawText}}</pre>{{else}}{{.Body}}{{end}}
+</article>
+<aside>
+  <h2>ticket</h2>
+  <dl>
+    <div><dt>id</dt><dd>{{.ID}}</dd></div>
+    <div><dt>status</dt><dd>{{.Status}}</dd></div>
+    <div><dt>order</dt><dd>{{.Order}}</dd></div>
+    <div><dt>title</dt><dd>{{.TicketTitle}}</dd></div>
+    <div><dt>summary</dt><dd>{{.Summary}}</dd></div>
+    <div><dt>tags</dt><dd>{{range .Tags}}<span class="tag">{{.}}</span> {{end}}</dd></div>
+    <div><dt>created</dt><dd>{{.Created}}</dd></div>
+    {{range .Custom}}
+    <div><dt>{{.Key}}</dt><dd>{{.Value}}</dd></div>
+    {{end}}
+    <div><dt>archived</dt><dd>{{if .Archived}}yes{{else}}no{{end}}</dd></div>
+    <div><dt>schema_error</dt><dd>{{if .SchemaErr}}yes{{else}}no{{end}}</dd></div>
+    <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
+  </dl>
+  <h2>depends on</h2>
+  {{template "neighbours" .Depends}}
+  <h2>depended on by</h2>
+  {{template "neighbours" .Depended}}
+  <h2>related</h2>
+  {{template "neighbours" .Related}}
+  {{if .Links}}
+  <h2>links</h2>
+  <ul>
+    {{range .Links}}<li><a href="{{.}}">{{.}}</a></li>{{end}}
+  </ul>
+  {{end}}
+</aside>
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "neighbours"}}
+{{if .}}
+<ul class="neighbours">
+  {{range .}}
+  <li>
+    {{if .Unresolved}}
+      <span class="unresolved">{{.ID}}</span> unresolved
+    {{else}}
+      <a href="{{.Href}}">{{.ID}}</a> {{.Status}} {{.Title}}
+    {{end}}
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">none</p>
+{{end}}
+{{end}}

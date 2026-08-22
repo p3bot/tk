@@ -1,0 +1,32 @@
+{{define "chrome"}}
+<header class="chrome">
+  <div class="chrome-row chrome-primary">
+    <a class="brand" href="/">tkv</a>
+    <nav class="primary" aria-label="sections">
+      <a href="/"{{if eq .Chrome.Section "overview"}} class="current"{{end}}>Overview</a>
+      <a href="{{.Chrome.BoardHref}}"{{if eq .Chrome.Section "board"}} class="current"{{end}}>Board</a>
+      <a href="{{.Chrome.SearchHref}}"{{if eq .Chrome.Section "search"}} class="current"{{end}}>Search</a>
+      <a href="{{.Chrome.GraphsHref}}"{{if eq .Chrome.Section "graphs"}} class="current"{{end}}>Graphs</a>
+      <a href="{{.Chrome.MaintenanceHref}}"{{if eq .Chrome.Section "maintenance"}} class="current"{{end}}>Maintenance</a>
+    </nav>
+    <form class="search" action="/search" method="get">
+      {{if .Chrome.Selected}}<input type="hidden" name="scope" value="{{.Chrome.Selected}}">{{end}}
+      <input type="search" name="q" placeholder="search" value="{{.Chrome.Query}}" aria-label="search">
+    </form>
+  </div>
+  <div class="chrome-row chrome-context">
+    <nav class="scopes" aria-label="scopes">
+      {{range .Chrome.Scopes}}
+        <a href="/scope/{{.}}"{{if eq $.Chrome.Selected .}} class="selected"{{end}}>{{.}}</a>
+      {{end}}
+    </nav>
+    <dl class="meta">
+      <div><dt>scope</dt><dd>{{.Chrome.Selected}}</dd></div>
+      <div><dt>mode</dt><dd>{{.Chrome.Mode}}</dd></div>
+      <div><dt>lens</dt><dd>{{.Chrome.Lens}}</dd></div>
+      <div><dt>me</dt><dd>{{.Chrome.Me}}</dd></div>
+      <div><dt>integrity</dt><dd class="integrity-{{.Chrome.Integrity}}">{{.Chrome.Integrity}}</dd></div>
+    </dl>
+  </div>
+</header>
+{{end}}

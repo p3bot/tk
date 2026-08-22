@@ -1,0 +1,64 @@
+{{define "overview"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — tkv</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>scopes</h1>
+<table class="overview">
+<thead>
+<tr>
+  <th>name</th>
+  <th>mode</th>
+  <th>todo</th>
+  <th>in-progress</th>
+  <th>blocked</th>
+  <th>review</th>
+  <th>draft</th>
+  <th>backlog</th>
+  <th>done</th>
+  <th>cancelled</th>
+  <th>total</th>
+  <th>next</th>
+  <th>claimed</th>
+  <th>dangling</th>
+  <th>integrity</th>
+</tr>
+</thead>
+<tbody>
+{{range .Rows}}
+<tr{{if .Note}} class="has-note"{{end}}>
+  <td><a href="/scope/{{.Name}}">{{.Name}}</a></td>
+  <td>{{.Mode}}</td>
+  <td>{{.Todo}}</td>
+  <td>{{.InProgress}}</td>
+  <td>{{.Blocked}}</td>
+  <td>{{.Review}}</td>
+  <td>{{.Draft}}</td>
+  <td>{{.Backlog}}</td>
+  <td>{{.Done}}</td>
+  <td>{{.Cancelled}}</td>
+  <td>{{.Total}}</td>
+  <td>{{if .NextHref}}<a href="{{.NextHref}}">{{.Next}}</a>{{else}}{{.Next}}{{end}}</td>
+  <td>{{range $i, $c := .Claimed}}{{if $i}} {{end}}<a href="{{$c.Href}}">{{$c.ID}}</a>{{end}}</td>
+  <td>{{.Dangling}}</td>
+  <td class="integrity-{{.Integrity}}">{{.Integrity}}</td>
+</tr>
+{{if .Note}}
+<tr class="note"><td colspan="15">{{.Note}}</td></tr>
+{{end}}
+{{else}}
+<tr><td colspan="15" class="empty">No scopes registered.</td></tr>
+{{end}}
+</tbody>
+</table>
+</main>
+</body>
+</html>
+{{end}}

@@ -1,4 +1,13 @@
 (() => {
+  for (const sw of document.querySelectorAll("[data-board-switch]")) {
+    sw.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        sw.click();
+      }
+    });
+  }
+
   const input = document.querySelector("[data-board-filter]");
   const board = document.querySelector(".kanban");
   if (!input || !board) {

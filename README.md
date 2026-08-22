@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/tk-logo.svg" alt="tk" width="128" height="128">
+</p>
+
 # tk — Agent Ticket Management CLI
 
 `tk` tracks feature work as plain markdown files, one ticket per file, edited in

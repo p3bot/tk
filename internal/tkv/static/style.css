@@ -4,6 +4,7 @@
   --muted: #57534e;
   --line: #d6d3d1;
   --card: #fffdf8;
+  --ticket: #fff;
   --accent: #1d4ed8;
   --ok: #166534;
   --issues: #9f1239;
@@ -98,6 +99,47 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
 .board-controls { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.8rem; }
 .board-controls .next { color: var(--muted); }
 .board-controls .board-filter { margin-left: auto; }
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-right: 0.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 550;
+}
+.switch:hover { text-decoration: none; color: var(--fg); }
+.switch.on { color: var(--fg); }
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.switch-ui {
+  width: 1.85rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  background: #e7e5e4;
+  border: 1px solid var(--line);
+  position: relative;
+  flex: 0 0 auto;
+}
+.switch-ui::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.06);
+}
+.switch.on .switch-ui {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch.on .switch-ui::after { left: 0.9rem; }
 .next-badge {
   display: inline-block;
   margin-left: 0.25rem;
@@ -136,7 +178,7 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
   margin: 0 0 0.45rem;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fff;
+  background: var(--ticket);
   color: inherit;
 }
 .card[hidden] { display: none; }
@@ -147,7 +189,7 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
 .card .title { display: block; font-weight: 650; margin: 0.15rem 0; }
 .card .waiting { display: block; font-size: 0.875rem; color: var(--issues); }
 .inspect { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1.5rem; align-items: start; }
-.body { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; }
+.body { background: var(--ticket); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; }
 .body h1 { margin-top: 0; }
 .body pre, .raw {
   overflow: auto;

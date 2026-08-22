@@ -22,8 +22,8 @@ const (
 	Draft      = "draft"
 	Backlog    = "backlog"
 	Todo       = "todo"
-	Review     = "review"
 	InProgress = "in-progress"
+	Review     = "review"
 	Blocked    = "blocked"
 	Done       = "done"
 	Cancelled  = "cancelled"
@@ -40,14 +40,14 @@ var builtins = map[string]builtin{
 	Draft:      {category: CategoryActive, inDefaultList: true, nextEligible: false},
 	Backlog:    {category: CategoryBacklog, inDefaultList: false, nextEligible: false},
 	Todo:       {category: CategoryActive, inDefaultList: true, nextEligible: true},
-	Review:     {category: CategoryActive, inDefaultList: true, nextEligible: false},
 	InProgress: {category: CategoryActive, inDefaultList: true, nextEligible: false},
+	Review:     {category: CategoryActive, inDefaultList: true, nextEligible: false},
 	Blocked:    {category: CategoryActive, inDefaultList: true, nextEligible: false},
 	Done:       {category: CategoryDone, inDefaultList: false, nextEligible: false},
 	Cancelled:  {category: CategoryDone, inDefaultList: false, nextEligible: false},
 }
 
-var builtinOrder = []string{Draft, Backlog, Todo, Review, InProgress, Blocked, Done, Cancelled}
+var builtinOrder = []string{Draft, Backlog, Todo, InProgress, Review, Blocked, Done, Cancelled}
 
 // Builtins returns the eight built-in status names in canonical order.
 func Builtins() []string {

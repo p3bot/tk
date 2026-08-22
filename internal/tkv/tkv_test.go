@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/resolve"
 	"github.com/p3bot/tk/internal/scopeconfig"
+	"github.com/p3bot/tk/internal/status"
 )
 
 func newTestApp(t *testing.T) *App {
@@ -358,6 +360,18 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	if !strings.Contains(b, "ab2c") || !strings.Contains(b, "Network redesign") {
 		t.Fatalf("kanban missing card: %s", b)
 	}
+	blPos := strings.Index(b, "<h2>blocked ")
+	dPos := strings.Index(b, "<h2>draft ")
+	tPos := strings.Index(b, "<h2>todo ")
+	iPos := strings.Index(b, "<h2>in-progress ")
+	rPos := strings.Index(b, "<h2>review ")
+	if blPos < 0 || dPos < 0 || tPos < 0 || iPos < 0 || rPos < 0 ||
+		!(blPos < dPos && dPos < tPos && tPos < iPos && iPos < rPos) {
+		t.Fatalf("kanban column order want blocked draft todo in-progress review: %s", b)
+	}
+	if strings.Contains(b, "<h2>backlog ") || strings.Contains(b, "<h2>done ") || strings.Contains(b, "<h2>cancelled ") {
+		t.Fatalf("default board showed backlog or archived columns: %s", b)
+	}
 	if !strings.Contains(b, "waiting") || !strings.Contains(b, "wc-ab2c") {
 		t.Fatalf("kanban missing waiting-on: %s", b)
 	}
@@ -370,8 +384,18 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	if !strings.Contains(b, `next <a href="/scope/wc/wc-ab2c">wc-ab2c</a>`) {
 		t.Fatalf("kanban missing next control: %s", b)
 	}
-	if ai, ni := strings.Index(b, ">all tickets<"), strings.Index(b, `class="next"`); ai < 0 || ni < 0 || ai > ni {
-		t.Fatalf("all tickets should sit left of next: %s", b)
+	if !strings.Contains(b, "Backlog") || !strings.Contains(b, "Archived") ||
+		strings.Count(b, `data-board-switch`) != 2 {
+		t.Fatalf("default board missing layer switches: %s", b)
+	}
+	if strings.Contains(b, "All tickets") || strings.Contains(b, `all=1`) {
+		t.Fatalf("old all-tickets control still present: %s", b)
+	}
+	if !strings.Contains(b, `href="/scope/wc?backlog=1"`) || !strings.Contains(b, `href="/scope/wc?archived=1"`) {
+		t.Fatalf("layer switches should add one query each: %s", b)
+	}
+	if ai, ni := strings.Index(b, `data-board-switch`), strings.Index(b, `class="next"`); ai < 0 || ni < 0 || ai > ni {
+		t.Fatalf("layer switches should sit left of next: %s", b)
 	}
 	if !strings.Contains(b, `<span class="id">ab2c <span class="next-badge">next</span></span>`) {
 		t.Fatalf("next badge should sit on the id row: %s", b)
@@ -383,9 +407,13 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 		t.Fatalf("default board showed archived done: %s", b)
 	}
 
-	all := do(s, "/scope/wc?all=1")
-	if !strings.Contains(all.Body.String(), "Old work") {
-		t.Fatalf("--all missing done: %s", all.Body.String())
+	archived := do(s, "/scope/wc?archived=1")
+	ab := archived.Body.String()
+	if !strings.Contains(ab, "Old work") {
+		t.Fatalf("archived switch missing done: %s", ab)
+	}
+	if !strings.Contains(ab, "<h2>done ") || strings.Contains(ab, "<h2>backlog ") {
+		t.Fatalf("archived-only should add done, not backlog: %s", ab)
 	}
 
 	tagged := do(s, "/scope/wc?tag=frontend")
@@ -428,6 +456,85 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	db := dep.Body.String()
 	if !strings.Contains(db, "depends on") || !strings.Contains(db, "wc-ab2c") {
 		t.Fatalf("depends neighbourhood: %s", db)
+	}
+}
+
+func TestKanbanColumns(t *testing.T) {
+	custom := map[string]status.Category{
+		"triaged": status.CategoryActive,
+		"icebox":  status.CategoryBacklog,
+		"shipped": status.CategoryDone,
+	}
+	got := kanbanColumns(custom, false, false, []string{"weird"})
+	want := []string{"blocked", "draft", "todo", "in-progress", "review", "triaged"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("default = %v want %v", got, want)
+	}
+	got = kanbanColumns(custom, true, false, nil)
+	want = []string{"backlog", "icebox", "blocked", "draft", "todo", "in-progress", "review", "triaged"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("backlog = %v want %v", got, want)
+	}
+	got = kanbanColumns(custom, false, true, nil)
+	want = []string{"blocked", "draft", "todo", "in-progress", "review", "triaged", "done", "cancelled", "shipped"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("archived = %v want %v", got, want)
+	}
+	got = kanbanColumns(custom, true, true, []string{"weird", "todo"})
+	want = []string{"backlog", "icebox", "blocked", "draft", "todo", "in-progress", "review", "triaged", "done", "cancelled", "shipped", "weird"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("both = %v want %v", got, want)
+	}
+}
+
+func TestKanbanLayerSwitches(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+	addTicket(t, dir, "wc-de34", "later", "backlog", "a1", "# Later\n", false, "")
+	addTicket(t, dir, "wc-gh56", "old", "done", "a2", "# Old\n", true, "")
+	addTicket(t, dir, "wc-jk78", "nope", "cancelled", "a3", "# Nope\n", true, "")
+	s := mustServer(t, app)
+
+	home := do(s, "/scope/wc").Body.String()
+	if strings.Contains(home, "Later") || strings.Contains(home, "Old") || strings.Contains(home, "Nope") {
+		t.Fatalf("default showed hidden layers: %s", home)
+	}
+
+	backlog := do(s, "/scope/wc?backlog=1").Body.String()
+	if !strings.Contains(backlog, "Later") || strings.Contains(backlog, "Old") {
+		t.Fatalf("backlog layer = %s", backlog)
+	}
+	if strings.Index(backlog, "<h2>backlog ") > strings.Index(backlog, "<h2>blocked ") {
+		t.Fatalf("backlog column should lead: %s", backlog)
+	}
+	if !strings.Contains(backlog, `aria-checked="true"`) || !strings.Contains(backlog, `href="/scope/wc"`) {
+		t.Fatalf("backlog switch should be on and link off: %s", backlog)
+	}
+	if !strings.Contains(backlog, `href="/scope/wc?archived=1&amp;backlog=1"`) {
+		t.Fatalf("backlog page should offer archived+backlog: %s", backlog)
+	}
+
+	archived := do(s, "/scope/wc?archived=1").Body.String()
+	if !strings.Contains(archived, "Old") || !strings.Contains(archived, "Nope") || strings.Contains(archived, "Later") {
+		t.Fatalf("archived layer = %s", archived)
+	}
+	doneAt := strings.Index(archived, "<h2>done ")
+	cancelAt := strings.Index(archived, "<h2>cancelled ")
+	reviewAt := strings.Index(archived, "<h2>review ")
+	if doneAt < 0 || cancelAt < 0 || reviewAt < 0 || !(reviewAt < doneAt && doneAt < cancelAt) {
+		t.Fatalf("archived columns after review: %s", archived)
+	}
+	if !strings.Contains(archived, `href="/scope/wc?archived=1&amp;backlog=1"`) {
+		t.Fatalf("archived page should offer both layers: %s", archived)
+	}
+
+	both := do(s, "/scope/wc?archived=1&backlog=1").Body.String()
+	if !strings.Contains(both, "Later") || !strings.Contains(both, "Old") || !strings.Contains(both, "Nope") {
+		t.Fatalf("both layers = %s", both)
+	}
+	if strings.Contains(both, "All tickets") {
+		t.Fatalf("both still has all-tickets copy: %s", both)
 	}
 }
 
@@ -645,12 +752,19 @@ func TestStaticCSS(t *testing.T) {
 	if !strings.Contains(css, ".card[hidden]") || !strings.Contains(css, ".col[hidden]") {
 		t.Fatalf("hidden cards/columns must override display:block: %s", css)
 	}
+	if !strings.Contains(css, "--ticket: #fff;") ||
+		!strings.Contains(css, ".card {\n  display: block;") ||
+		!strings.Contains(css, "background: var(--ticket);") ||
+		!strings.Contains(css, ".body { background: var(--ticket);") {
+		t.Fatalf("inspect body and board cards must share --ticket white: %s", css)
+	}
 	js := do(s, "/static/board.js")
 	if js.Code != 200 {
 		t.Fatalf("board.js = %d", js.Code)
 	}
-	if !strings.Contains(js.Body.String(), "data-board-filter") {
-		t.Fatalf("board.js = %s", js.Body.String())
+	jsBody := js.Body.String()
+	if !strings.Contains(jsBody, "data-board-filter") || !strings.Contains(jsBody, "data-board-switch") {
+		t.Fatalf("board.js = %s", jsBody)
 	}
 
 	logo := do(s, "/static/tk-logo.svg")

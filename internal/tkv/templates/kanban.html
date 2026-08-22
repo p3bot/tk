@@ -9,7 +9,14 @@
 <main>
 <h1>{{.Name}}</h1>
 <p class="board-controls">
-  <a href="{{.AllHref}}">{{if .All}}default board{{else}}all tickets{{end}}</a>
+  <a class="switch{{if .Backlog}} on{{end}}" href="{{.BacklogHref}}" role="switch" aria-checked="{{if .Backlog}}true{{else}}false{{end}}" data-board-switch>
+    <span class="switch-ui" aria-hidden="true"></span>
+    Backlog
+  </a>
+  <a class="switch{{if .Archived}} on{{end}}" href="{{.ArchivedHref}}" role="switch" aria-checked="{{if .Archived}}true{{else}}false{{end}}" data-board-switch>
+    <span class="switch-ui" aria-hidden="true"></span>
+    Archived
+  </a>
   <span class="next">next {{if .NextHref}}<a href="{{.NextHref}}">{{.Next}}</a>{{else}}—{{end}}</span>
   {{range .Tags}}
     <a class="tag{{if $.TagOn .}} on{{end}}" href="{{$.TagHref .}}">{{.}}</a>

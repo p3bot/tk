@@ -26,8 +26,8 @@ var statusKeys = []string{
 	"note",
 	"total",
 	"todo",
-	"review",
 	"in-progress",
+	"review",
 	"blocked",
 	"draft",
 	"backlog",
@@ -75,7 +75,7 @@ func newStatusCmd(app *App) *cobra.Command {
 			"dashboard (same reconcile, next selection, counts, integrity, stderr tokens).\n" +
 			"\n" +
 			"Locked keys (order fixed): scope, dir, resolved, mode, lens, me, note, total,\n" +
-			"todo, review, in-progress, blocked, draft, backlog, done, cancelled, next,\n" +
+			"todo, in-progress, review, blocked, draft, backlog, done, cancelled, next,\n" +
 			"claimed, blocked_ids, dangling, integrity, uncommitted.\n" +
 			"\n" +
 			"resolved is how the scope was chosen: flag (--scope), env (TK_SCOPE), or cwd\n" +

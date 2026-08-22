@@ -1,6 +1,9 @@
 package status
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func customCategories() map[string]Category {
 	return map[string]Category{
@@ -13,7 +16,7 @@ func customCategories() map[string]Category {
 
 func TestBuiltins(t *testing.T) {
 	got := Builtins()
-	want := []string{Draft, Backlog, Todo, Review, InProgress, Blocked, Done, Cancelled}
+	want := []string{Draft, Backlog, Todo, InProgress, Review, Blocked, Done, Cancelled}
 	if len(got) != len(want) {
 		t.Fatalf("Builtins() len = %d, want %d", len(got), len(want))
 	}
@@ -38,7 +41,7 @@ func TestIsTerminal(t *testing.T) {
 			t.Errorf("IsTerminal(%q) = false, want true", s)
 		}
 	}
-	nonTerminal := []string{Draft, Backlog, Todo, Review, InProgress, Blocked, "triaged", "icebox", "unknown"}
+	nonTerminal := []string{Draft, Backlog, Todo, InProgress, Review, Blocked, "triaged", "icebox", "unknown"}
 	for _, s := range nonTerminal {
 		if IsTerminal(s, custom) {
 			t.Errorf("IsTerminal(%q) = true, want false", s)
@@ -53,7 +56,7 @@ func TestIsNextEligible(t *testing.T) {
 	if !IsNextEligible(Todo) {
 		t.Error("IsNextEligible(todo) = false, want true")
 	}
-	for _, s := range []string{Draft, Backlog, Review, InProgress, Blocked, Done, Cancelled, "triaged"} {
+	for _, s := range []string{Draft, Backlog, InProgress, Review, Blocked, Done, Cancelled, "triaged"} {
 		if IsNextEligible(s) {
 			t.Errorf("IsNextEligible(%q) = true, want false (only todo is eligible)", s)
 		}
@@ -62,7 +65,7 @@ func TestIsNextEligible(t *testing.T) {
 
 func TestInDefaultList(t *testing.T) {
 	custom := customCategories()
-	shown := []string{Draft, Todo, Review, InProgress, Blocked, "triaged"}
+	shown := []string{Draft, Todo, InProgress, Review, Blocked, "triaged"}
 	for _, s := range shown {
 		if !InDefaultList(s, custom) {
 			t.Errorf("InDefaultList(%q) = false, want true", s)
@@ -78,17 +81,9 @@ func TestInDefaultList(t *testing.T) {
 
 func TestDefaultListNames(t *testing.T) {
 	got := DefaultListNames(customCategories())
-	want := map[string]bool{Draft: true, Todo: true, Review: true, InProgress: true, Blocked: true, "triaged": true}
-	if len(got) != len(want) {
-		t.Fatalf("DefaultListNames = %v, want %d names", got, len(want))
-	}
-	for _, n := range got {
-		if !want[n] {
-			t.Errorf("DefaultListNames unexpected %q in %v", n, got)
-		}
-		if !InDefaultList(n, customCategories()) {
-			t.Errorf("DefaultListNames %q is not InDefaultList", n)
-		}
+	want := []string{Draft, Todo, InProgress, Review, Blocked, "triaged"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("DefaultListNames = %v, want %v", got, want)
 	}
 }
 

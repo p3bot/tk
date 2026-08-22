@@ -174,7 +174,8 @@ type kanbanPage struct {
 	Title    string
 	Chrome   chrome
 	Name     string
-	All      bool
+	Backlog  bool
+	Archived bool
 	Tags     []string
 	Active   []string
 	Next     string
@@ -215,12 +216,19 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	schema := res.Schema(name)
-	all := r.URL.Query().Get("all") == "1"
+	custom := schemaCustom(schema)
+	backlog := r.URL.Query().Get("backlog") == "1"
+	archived := r.URL.Query().Get("archived") == "1"
 	tags := r.URL.Query()["tag"]
 	lens := reg.Lens[name]
-	filter := index.BoardFilter{Scope: name, All: all, Tags: tags}
-	if !all {
-		filter.DefaultStatuses = status.DefaultListNames(schemaCustom(schema))
+	filter := index.BoardFilter{Scope: name, Tags: tags}
+	switch {
+	case backlog && archived:
+		filter.All = true
+	case backlog || archived:
+		filter.Statuses = boardStatusNames(custom, backlog, archived)
+	default:
+		filter.DefaultStatuses = status.DefaultListNames(custom)
 	}
 	if len(tags) == 0 && len(lens) > 0 {
 		filter.Lens = lens
@@ -251,7 +259,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		byStatus[p.Status] = append(byStatus[p.Status], p)
 		present = append(present, p.Status)
 	}
-	colNames := kanbanColumns(schemaCustom(schema), all, present)
+	colNames := kanbanColumns(custom, backlog, archived, present)
 	cols := make([]kanbanCol, 0, len(colNames))
 	for _, st := range colNames {
 		col := kanbanCol{Status: st}
@@ -284,7 +292,8 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		Title:    name,
 		Chrome:   ch,
 		Name:     name,
-		All:      all,
+		Backlog:  backlog,
+		Archived: archived,
 		Tags:     distinct,
 		Active:   tags,
 		Next:     nextID,
@@ -322,40 +331,86 @@ func waitLinks(ids []string) []idLink {
 	return out
 }
 
-func kanbanColumns(custom map[string]status.Category, all bool, present []string) []string {
-	cols := status.DefaultListNames(custom)
-	if !all {
-		return cols
-	}
+func kanbanColumns(custom map[string]status.Category, backlog, archived bool, present []string) []string {
 	seen := map[string]bool{}
-	for _, c := range cols {
-		seen[c] = true
+	var cols []string
+	add := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		cols = append(cols, name)
 	}
+	if backlog {
+		for _, name := range categoryNames(custom, status.CategoryBacklog) {
+			add(name)
+		}
+	}
+	add(status.Blocked)
+	add(status.Draft)
+	add(status.Todo)
+	add(status.InProgress)
+	add(status.Review)
+	var active []string
+	for name, cat := range custom {
+		if cat == status.CategoryActive {
+			active = append(active, name)
+		}
+	}
+	sort.Strings(active)
+	for _, name := range active {
+		add(name)
+	}
+	if archived {
+		for _, name := range status.TerminalNames(custom) {
+			add(name)
+		}
+	}
+	if backlog && archived {
+		var unknown []string
+		seenPresent := map[string]bool{}
+		for _, st := range present {
+			if st == "" || seen[st] || seenPresent[st] {
+				continue
+			}
+			seenPresent[st] = true
+			unknown = append(unknown, st)
+		}
+		sort.Strings(unknown)
+		for _, name := range unknown {
+			add(name)
+		}
+	}
+	return cols
+}
+
+func boardStatusNames(custom map[string]status.Category, backlog, archived bool) []string {
+	out := append([]string{}, status.DefaultListNames(custom)...)
+	if backlog {
+		out = append(out, categoryNames(custom, status.CategoryBacklog)...)
+	}
+	if archived {
+		out = append(out, status.TerminalNames(custom)...)
+	}
+	return out
+}
+
+func categoryNames(custom map[string]status.Category, cat status.Category) []string {
+	var out []string
 	for _, name := range status.Builtins() {
-		if !seen[name] {
-			cols = append(cols, name)
-			seen[name] = true
+		c, ok := status.CategoryOf(name, nil)
+		if ok && c == cat {
+			out = append(out, name)
 		}
 	}
 	var extra []string
-	for name := range custom {
-		if !seen[name] {
+	for name, c := range custom {
+		if c == cat {
 			extra = append(extra, name)
 		}
 	}
 	sort.Strings(extra)
-	cols = append(cols, extra...)
-	seenPresent := map[string]bool{}
-	var unknown []string
-	for _, st := range present {
-		if st == "" || seen[st] || seenPresent[st] {
-			continue
-		}
-		seenPresent[st] = true
-		unknown = append(unknown, st)
-	}
-	sort.Strings(unknown)
-	return append(cols, unknown...)
+	return append(out, extra...)
 }
 
 type inspectPage struct {
@@ -704,11 +759,13 @@ func (p searchPage) ScopeHref(name string) string { return searchQuery(p.Query, 
 
 func (p searchPage) ScopeOn(name string) bool { return p.Scope == name }
 
-// boardQuery is used from templates via a method on kanbanPage... kept as helper for tests.
-func boardQuery(all bool, tags []string) string {
+func boardQuery(backlog, archived bool, tags []string) string {
 	v := url.Values{}
-	if all {
-		v.Set("all", "1")
+	if backlog {
+		v.Set("backlog", "1")
+	}
+	if archived {
+		v.Set("archived", "1")
 	}
 	for _, t := range tags {
 		v.Add("tag", t)
@@ -729,11 +786,12 @@ func tagActive(tags []string, tag string) bool {
 	return false
 }
 
-func (p kanbanPage) AllHref() string {
-	if p.All {
-		return "/scope/" + p.Name + boardQuery(false, p.Active)
-	}
-	return "/scope/" + p.Name + boardQuery(true, p.Active)
+func (p kanbanPage) BacklogHref() string {
+	return "/scope/" + p.Name + boardQuery(!p.Backlog, p.Archived, p.Active)
+}
+
+func (p kanbanPage) ArchivedHref() string {
+	return "/scope/" + p.Name + boardQuery(p.Backlog, !p.Archived, p.Active)
 }
 
 func (p kanbanPage) TagHref(tag string) string {
@@ -747,7 +805,7 @@ func (p kanbanPage) TagHref(tag string) string {
 	} else {
 		next = append(append([]string{}, p.Active...), tag)
 	}
-	return "/scope/" + p.Name + boardQuery(p.All, next)
+	return "/scope/" + p.Name + boardQuery(p.Backlog, p.Archived, next)
 }
 
 func (p kanbanPage) TagOn(tag string) bool { return tagActive(p.Active, tag) }

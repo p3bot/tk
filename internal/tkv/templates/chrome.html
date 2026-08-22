@@ -1,7 +1,17 @@
+{{define "head"}}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — tkv</title>
+<link rel="icon" href="/static/tk-logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+{{end}}
+
 {{define "chrome"}}
 <header class="chrome">
   <div class="chrome-row chrome-primary">
-    <a class="brand" href="/">tkv</a>
+    <a class="brand" href="/" aria-label="tkv home">
+      <img src="/static/tk-logo.svg" alt="" width="28" height="28">
+    </a>
     <nav class="primary" aria-label="sections">
       <a href="{{.Chrome.BoardHref}}"{{if eq .Chrome.Section "board"}} class="current"{{end}}>Board</a>
       <a href="{{.Chrome.GraphsHref}}"{{if eq .Chrome.Section "graphs"}} class="current"{{end}}>Graphs</a>

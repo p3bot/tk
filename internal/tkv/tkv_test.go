@@ -652,6 +652,18 @@ func TestStaticCSS(t *testing.T) {
 	if !strings.Contains(js.Body.String(), "data-board-filter") {
 		t.Fatalf("board.js = %s", js.Body.String())
 	}
+
+	logo := do(s, "/static/tk-logo.svg")
+	if logo.Code != 200 {
+		t.Fatalf("logo = %d", logo.Code)
+	}
+	ct = logo.Header().Get("Content-Type")
+	if !strings.Contains(ct, "image/svg+xml") && !strings.Contains(ct, "text/xml") {
+		t.Fatalf("logo content-type = %q", ct)
+	}
+	if !strings.Contains(logo.Body.String(), `viewBox="0 0 512 512"`) {
+		t.Fatalf("logo body = %s", logo.Body.String())
+	}
 }
 
 func TestSchemaShapedReopenRetries(t *testing.T) {
@@ -740,6 +752,18 @@ func TestPrimaryNav(t *testing.T) {
 	}
 
 	home := do(s, "/").Body.String()
+	if !strings.Contains(home, `rel="icon" href="/static/tk-logo.svg"`) {
+		t.Errorf("missing favicon: %s", home)
+	}
+	if !strings.Contains(home, `class="brand" href="/" aria-label="tkv home"`) {
+		t.Errorf("brand should be the logo link, not text: %s", home)
+	}
+	if !strings.Contains(home, `src="/static/tk-logo.svg"`) {
+		t.Errorf("brand missing logo img: %s", home)
+	}
+	if strings.Contains(home, `class="brand" href="/">tkv</a>`) {
+		t.Errorf("brand still uses tkv text: %s", home)
+	}
 	if !strings.Contains(home, `href="/" class="current">Board</a>`) {
 		t.Errorf("board on summary should stay on /: %s", home)
 	}

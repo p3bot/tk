@@ -168,7 +168,6 @@ func errBadRequest(msg string) error {
 }
 
 const (
-	navOverview    = "overview"
 	navBoard       = "board"
 	navSearch      = "search"
 	navGraphs      = "graphs"
@@ -186,21 +185,8 @@ type chrome struct {
 	Query     string
 }
 
-// BoardHref is the kanban for the selected scope, or overview when none is selected.
-func (c chrome) BoardHref() string {
-	if c.Selected != "" {
-		return "/scope/" + c.Selected
-	}
-	if len(c.Scopes) == 1 {
-		return "/scope/" + c.Scopes[0]
-	}
-	return "/"
-}
-
-// SearchHref keeps a selected scope as a search bound when one is in chrome.
-func (c chrome) SearchHref() string {
-	return c.sectionHref("/search")
-}
+// BoardHref is always the scope summary. A selected scope is reached from the switcher.
+func (c chrome) BoardHref() string { return "/" }
 
 func (c chrome) GraphsHref() string { return c.sectionHref("/graphs") }
 
@@ -380,7 +366,7 @@ type errorPage struct {
 func sectionFromPath(p string) string {
 	switch {
 	case p == "/":
-		return navOverview
+		return navBoard
 	case strings.HasPrefix(p, "/search"):
 		return navSearch
 	case strings.HasPrefix(p, "/graphs"):

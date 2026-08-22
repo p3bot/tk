@@ -11,30 +11,21 @@
 {{template "chrome" .}}
 <main>
 <h1>{{.Name}}</h1>
-<section class="pulse" aria-label="pulse">
-  <span>todo {{.Pulse.Todo}}</span>
-  <span>in-progress {{.Pulse.InProgress}}</span>
-  <span>blocked {{.Pulse.Blocked}}</span>
-  <span>review {{.Pulse.Review}}</span>
-  <span>draft {{.Pulse.Draft}}</span>
-  <span>backlog {{.Pulse.Backlog}}</span>
-  <span>next {{if .Pulse.NextHref}}<a href="{{.Pulse.NextHref}}">{{.Pulse.Next}}</a>{{else}}—{{end}}</span>
-  <span>claimed {{range $i, $c := .Pulse.Claimed}}{{if $i}} {{end}}<a href="{{$c.Href}}">{{$c.ID}}</a>{{else}}—{{end}}</span>
-  <span>blocked {{range $i, $c := .Pulse.BlockedIDs}}{{if $i}} {{end}}<a href="{{$c.Href}}">{{$c.ID}}</a>{{else}}—{{end}}</span>
-</section>
 <p class="board-controls">
   <a href="{{.AllHref}}">{{if .All}}default board{{else}}all tickets{{end}}</a>
+  <span class="next">next {{if .NextHref}}<a href="{{.NextHref}}">{{.Next}}</a>{{else}}—{{end}}</span>
   {{range .Tags}}
     <a class="tag{{if $.TagOn .}} on{{end}}" href="{{$.TagHref .}}">{{.}}</a>
   {{end}}
+  <input type="search" class="board-filter" data-board-filter placeholder="filter board" aria-label="filter board">
 </p>
 <section class="kanban" aria-label="board">
 {{range .Cols}}
   <div class="col">
     <h2>{{.Status}} <span class="count">{{len .Cards}}</span></h2>
     {{range .Cards}}
-    <article class="card">
-      <a href="{{.Href}}"><span class="id">{{.ShortID}}</span><span class="title">{{.Title}}</span></a>
+    <article class="card" data-filter="{{.FilterText}}">
+      <a href="{{.Href}}"><span class="id">{{.ShortID}}{{if .Next}} <span class="next-badge">next</span>{{end}}</span><span class="title">{{.Title}}</span></a>
       {{if .Tags}}<span class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</span>{{end}}
       {{if .SchemaError}}<span class="waiting">schema_error: a depends/related entry is not a legal full ticket id</span>{{end}}
       {{if .WaitingOn}}<span class="waiting">waiting {{range .WaitingOn}}<a href="{{.Href}}">{{.ID}}</a> {{end}}</span>{{end}}
@@ -44,6 +35,7 @@
 {{end}}
 </section>
 </main>
+<script src="/static/board.js" defer></script>
 </body>
 </html>
 {{end}}

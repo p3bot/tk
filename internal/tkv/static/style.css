@@ -72,7 +72,7 @@ main { padding: 1.25rem 1.5rem 3rem; }
 }
 .hub-card p { margin: 0 0 0.5rem; }
 .hub-status { font-size: 0.875rem; color: var(--muted); }
-.search input, .search-page input {
+.search input, .search-page input, .board-filter {
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0.3rem 0.5rem;
@@ -86,8 +86,20 @@ table.overview th, table.overview td { text-align: left; padding: 0.4rem 0.55rem
 table.overview th { color: var(--muted); font-weight: 650; }
 table.overview tr.note td { color: var(--issues); background: var(--banner); font-size: 0.875rem; }
 .empty { color: var(--muted); }
-.pulse { display: flex; flex-wrap: wrap; gap: 0.45rem 1rem; margin-bottom: 0.8rem; color: var(--muted); }
-.board-controls { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.board-controls { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.8rem; }
+.board-controls .next { color: var(--muted); }
+.board-controls .board-filter { margin-left: auto; }
+.next-badge {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: #1e3a8a;
+  background: #e0e7ff;
+  vertical-align: middle;
+}
 .tag {
   display: inline-block;
   padding: 0.05rem 0.4rem;
@@ -106,6 +118,7 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
   padding: 0.6rem;
   min-height: 8rem;
 }
+.col[hidden] { display: none; }
 .col h2 { display: flex; justify-content: space-between; }
 .count { font-variant-numeric: tabular-nums; }
 .card {
@@ -117,6 +130,7 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
   background: #fff;
   color: inherit;
 }
+.card[hidden] { display: none; }
 .card a { color: inherit; }
 .card a:hover { text-decoration: none; }
 .card:hover { border-color: var(--accent); }

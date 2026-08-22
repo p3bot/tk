@@ -16,7 +16,12 @@
   <input type="search" name="q" value="{{.Query}}" placeholder="full-text query" aria-label="query">
   <button type="submit">search</button>
 </form>
-{{if .Scope}}<p class="bound">scope {{.Scope}}</p>{{end}}
+<p class="board-controls" aria-label="search scope">
+  <a class="tag{{if not .Scope}} on{{end}}" href="{{.AllHref}}">all</a>
+  {{range .Chrome.Scopes}}
+    <a class="tag{{if $.ScopeOn .}} on{{end}}" href="{{$.ScopeHref .}}">{{.}}</a>
+  {{end}}
+</p>
 {{if .Query}}
 <ul class="hits">
   {{range .Hits}}

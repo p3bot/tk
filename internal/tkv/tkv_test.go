@@ -361,6 +361,24 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	if !strings.Contains(b, "waiting") || !strings.Contains(b, "wc-ab2c") {
 		t.Fatalf("kanban missing waiting-on: %s", b)
 	}
+	if strings.Contains(b, `aria-label="pulse"`) || strings.Contains(b, "claimed") {
+		t.Fatalf("kanban still has pulse strip: %s", b)
+	}
+	if !strings.Contains(b, `data-board-filter`) || !strings.Contains(b, `/static/board.js`) {
+		t.Fatalf("kanban missing board filter: %s", b)
+	}
+	if !strings.Contains(b, `next <a href="/scope/wc/wc-ab2c">wc-ab2c</a>`) {
+		t.Fatalf("kanban missing next control: %s", b)
+	}
+	if ai, ni := strings.Index(b, ">all tickets<"), strings.Index(b, `class="next"`); ai < 0 || ni < 0 || ai > ni {
+		t.Fatalf("all tickets should sit left of next: %s", b)
+	}
+	if !strings.Contains(b, `<span class="id">ab2c <span class="next-badge">next</span></span>`) {
+		t.Fatalf("next badge should sit on the id row: %s", b)
+	}
+	if !strings.Contains(b, `data-filter="wc-ab2c ab2c Network redesign frontend"`) {
+		t.Fatalf("card filter text: %s", b)
+	}
 	if strings.Contains(b, "Old work") {
 		t.Fatalf("default board showed archived done: %s", b)
 	}
@@ -533,10 +551,63 @@ func TestSearchEmptyAndMalformed(t *testing.T) {
 	if !strings.Contains(hb, "wc-ab2c") || !strings.Contains(hb, "Network redesign") || !strings.Contains(hb, "/scope/wc/wc-ab2c") {
 		t.Fatalf("hit = %s", hb)
 	}
+	if strings.Contains(hb, ">Search</a>") {
+		t.Fatalf("search results should not have Search in primary nav: %s", hb)
+	}
+	if !strings.Contains(hb, `name="q" placeholder="search" value="network"`) {
+		t.Fatalf("chrome search box should keep the query: %s", hb)
+	}
 
 	bad := do(s, `/search?q=foo"`)
 	if bad.Code != 400 {
 		t.Fatalf("malformed FTS = %d %s", bad.Code, bad.Body.String())
+	}
+}
+
+func TestSearchDefaultsToAllScopes(t *testing.T) {
+	app := newTestApp(t)
+	wc := initScope(t, app, "wc")
+	fm := initScope(t, app, "fm")
+	addTicket(t, wc, "wc-ab2c", "network", "todo", "a0", "# Network redesign\n\nmux\n", false, "summary: net\n")
+	addTicket(t, fm, "fm-de34", "router", "todo", "a0", "# Router mux\n\nmux\n", false, "")
+	s := mustServer(t, app)
+
+	kanban := do(s, "/scope/fm").Body.String()
+	if strings.Contains(kanban, `name="scope"`) {
+		t.Fatalf("chrome search box must not bind the selected scope: %s", kanban)
+	}
+
+	all := do(s, "/search?q=mux")
+	if all.Code != 200 {
+		t.Fatalf("all-scopes search = %d %s", all.Code, all.Body.String())
+	}
+	ab := all.Body.String()
+	if !strings.Contains(ab, "wc-ab2c") || !strings.Contains(ab, "fm-de34") {
+		t.Fatalf("unbounded search should hit both scopes: %s", ab)
+	}
+	if !strings.Contains(ab, `class="tag on" href="/search?q=mux">all</a>`) {
+		t.Fatalf("all chip should be on: %s", ab)
+	}
+	if !strings.Contains(ab, `href="/search?q=mux&amp;scope=fm"`) || !strings.Contains(ab, `href="/search?q=mux&amp;scope=wc"`) {
+		t.Fatalf("scope chips should keep q: %s", ab)
+	}
+	if !strings.Contains(ab, `href="/search?q=mux"`) {
+		t.Fatalf("all chip should drop scope: %s", ab)
+	}
+
+	bound := do(s, "/search?q=mux&scope=fm")
+	if bound.Code != 200 {
+		t.Fatalf("bound search = %d %s", bound.Code, bound.Body.String())
+	}
+	bb := bound.Body.String()
+	if !strings.Contains(bb, "fm-de34") || strings.Contains(bb, "wc-ab2c") {
+		t.Fatalf("scope=fm should hide the other scope: %s", bb)
+	}
+	if !strings.Contains(bb, `class="tag on" href="/search?q=mux&amp;scope=fm">fm</a>`) {
+		t.Fatalf("fm chip should be on: %s", bb)
+	}
+	if !strings.Contains(bb, `name="scope" value="fm"`) {
+		t.Fatalf("results form should keep the chip bound: %s", bb)
 	}
 }
 
@@ -569,6 +640,17 @@ func TestStaticCSS(t *testing.T) {
 	ct := w.Header().Get("Content-Type")
 	if !strings.Contains(ct, "text/css") {
 		t.Fatalf("content-type = %q", ct)
+	}
+	css := w.Body.String()
+	if !strings.Contains(css, ".card[hidden]") || !strings.Contains(css, ".col[hidden]") {
+		t.Fatalf("hidden cards/columns must override display:block: %s", css)
+	}
+	js := do(s, "/static/board.js")
+	if js.Code != 200 {
+		t.Fatalf("board.js = %d", js.Code)
+	}
+	if !strings.Contains(js.Body.String(), "data-board-filter") {
+		t.Fatalf("board.js = %s", js.Body.String())
 	}
 }
 
@@ -622,9 +704,9 @@ func TestPrimaryNav(t *testing.T) {
 	cases := []struct {
 		path, current string
 	}{
-		{"/", "Overview"},
+		{"/", "Board"},
 		{"/scope/wc", "Board"},
-		{"/search", "Search"},
+		{"/search", ""},
 		{"/graphs", "Graphs"},
 		{"/maintenance", "Maintenance"},
 	}
@@ -634,12 +716,19 @@ func TestPrimaryNav(t *testing.T) {
 			t.Fatalf("%s = %d %s", c.path, w.Code, w.Body.String())
 		}
 		body := w.Body.String()
-		for _, label := range []string{"Overview", "Board", "Search", "Graphs", "Maintenance"} {
+		if strings.Contains(body, ">Overview</a>") || strings.Contains(body, ">Search</a>") {
+			t.Errorf("%s still has Overview or Search in primary nav", c.path)
+		}
+		for _, label := range []string{"Board", "Graphs", "Maintenance"} {
 			if !strings.Contains(body, ">"+label+"</a>") {
 				t.Errorf("%s missing primary nav %s", c.path, label)
 			}
 		}
-		if !strings.Contains(body, `class="current">`+c.current+"</a>") {
+		if c.current == "" {
+			if strings.Contains(body, `class="current"`) {
+				t.Errorf("%s should not mark a primary nav item current: %s", c.path, body)
+			}
+		} else if !strings.Contains(body, `class="current">`+c.current+"</a>") {
 			t.Errorf("%s current want %s", c.path, c.current)
 		}
 		if !strings.Contains(body, `href="/scope/wc"`) {
@@ -648,6 +737,18 @@ func TestPrimaryNav(t *testing.T) {
 		if !strings.Contains(body, `aria-label="sections"`) {
 			t.Errorf("%s missing sections nav", c.path)
 		}
+	}
+
+	home := do(s, "/").Body.String()
+	if !strings.Contains(home, `href="/" class="current">Board</a>`) {
+		t.Errorf("board on summary should stay on /: %s", home)
+	}
+	kanban := do(s, "/scope/wc").Body.String()
+	if !strings.Contains(kanban, `href="/" class="current">Board</a>`) {
+		t.Errorf("board on kanban should navigate back to the scope summary: %s", kanban)
+	}
+	if strings.Contains(kanban, `name="scope"`) {
+		t.Errorf("kanban chrome search must not send scope")
 	}
 
 	graphs := do(s, "/graphs").Body.String()
@@ -668,8 +769,8 @@ func TestPrimaryNav(t *testing.T) {
 		t.Fatalf("graphs?scope=wc = %d", kept.Code)
 	}
 	kb := kept.Body.String()
-	if !strings.Contains(kb, `href="/scope/wc"`) {
-		t.Errorf("graphs with scope should keep a board href")
+	if !strings.Contains(kb, `href="/">Board</a>`) {
+		t.Errorf("graphs with scope: board should still go to the scope summary")
 	}
 	if !strings.Contains(kb, `class="current">Graphs</a>`) {
 		t.Errorf("graphs?scope=wc should keep Graphs current")

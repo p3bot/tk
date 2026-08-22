@@ -62,7 +62,7 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ch, err := s.chromeFor(reg, "", "", navOverview)
+	ch, err := s.chromeFor(reg, "", "", navBoard)
 	if err != nil {
 		return err
 	}
@@ -171,27 +171,15 @@ func ticketLinks(rows []*index.Ticket) []idLink {
 }
 
 type kanbanPage struct {
-	Title  string
-	Chrome chrome
-	Name   string
-	All    bool
-	Tags   []string
-	Active []string
-	Pulse  kanbanPulse
-	Cols   []kanbanCol
-}
-
-type kanbanPulse struct {
-	Todo       int
-	InProgress int
-	Blocked    int
-	Review     int
-	Draft      int
-	Backlog    int
-	Next       string
-	NextHref   string
-	Claimed    []idLink
-	BlockedIDs []idLink
+	Title    string
+	Chrome   chrome
+	Name     string
+	All      bool
+	Tags     []string
+	Active   []string
+	Next     string
+	NextHref string
+	Cols     []kanbanCol
 }
 
 type kanbanCol struct {
@@ -200,12 +188,14 @@ type kanbanCol struct {
 }
 
 type kanbanCard struct {
+	ID          string
 	ShortID     string
 	Title       string
 	Href        string
 	Tags        []string
 	WaitingOn   []idLink
 	SchemaError bool
+	Next        bool
 }
 
 func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
@@ -243,28 +233,15 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	pulse, err := s.db.ScopePulse(name, lens)
-	if err != nil {
-		return err
-	}
-	kp := kanbanPulse{
-		Todo:       pulse.Todo,
-		InProgress: pulse.InProgress,
-		Blocked:    pulse.Blocked,
-		Review:     pulse.Review,
-		Draft:      pulse.Draft,
-		Backlog:    pulse.Backlog,
-		Claimed:    ticketLinks(pulse.Claimed),
-		BlockedIDs: ticketLinks(pulse.BlockedIDs),
-	}
+	var nextID, nextHref string
 	if !res.Unreachable[name] {
 		candidates, err := s.db.NextCandidates(name)
 		if err != nil {
 			return err
 		}
 		if next := gate.selectNext(candidates, lens); next != nil {
-			kp.Next = next.ID
-			kp.NextHref = inspectHref(next.ID)
+			nextID = next.ID
+			nextHref = inspectHref(next.ID)
 		}
 	}
 
@@ -281,12 +258,14 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		for _, p := range byStatus[st] {
 			waiting := gate.waitingOn(p)
 			card := kanbanCard{
+				ID:          p.ID,
 				ShortID:     p.ShortID,
 				Title:       p.Title,
 				Href:        "/scope/" + name + "/" + p.ShortID,
 				Tags:        p.Tags,
 				WaitingOn:   waitLinks(waiting),
 				SchemaError: p.SchemaError,
+				Next:        nextID != "" && p.ID == nextID,
 			}
 			col.Cards = append(col.Cards, card)
 		}
@@ -302,15 +281,34 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	return s.render(w, "kanban", kanbanPage{
-		Title:  name,
-		Chrome: ch,
-		Name:   name,
-		All:    all,
-		Tags:   distinct,
-		Active: tags,
-		Pulse:  kp,
-		Cols:   cols,
+		Title:    name,
+		Chrome:   ch,
+		Name:     name,
+		All:      all,
+		Tags:     distinct,
+		Active:   tags,
+		Next:     nextID,
+		NextHref: nextHref,
+		Cols:     cols,
 	})
+}
+
+func (c kanbanCard) FilterText() string {
+	var b strings.Builder
+	b.WriteString(c.ID)
+	b.WriteByte(' ')
+	b.WriteString(c.ShortID)
+	b.WriteByte(' ')
+	b.WriteString(c.Title)
+	for _, t := range c.Tags {
+		b.WriteByte(' ')
+		b.WriteString(t)
+	}
+	for _, w := range c.WaitingOn {
+		b.WriteByte(' ')
+		b.WriteString(w.ID)
+	}
+	return b.String()
 }
 
 func waitLinks(ids []string) []idLink {
@@ -684,6 +682,27 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	}
 	return s.render(w, "search", page)
 }
+
+func searchQuery(q, scope string) string {
+	v := url.Values{}
+	if q != "" {
+		v.Set("q", q)
+	}
+	if scope != "" {
+		v.Set("scope", scope)
+	}
+	enc := v.Encode()
+	if enc == "" {
+		return "/search"
+	}
+	return "/search?" + enc
+}
+
+func (p searchPage) AllHref() string { return searchQuery(p.Query, "") }
+
+func (p searchPage) ScopeHref(name string) string { return searchQuery(p.Query, name) }
+
+func (p searchPage) ScopeOn(name string) bool { return p.Scope == name }
 
 // boardQuery is used from templates via a method on kanbanPage... kept as helper for tests.
 func boardQuery(all bool, tags []string) string {

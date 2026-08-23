@@ -9,6 +9,7 @@ import (
 	"cuelang.org/go/cue/cuecontext"
 
 	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/registry"
 )
 
 func newReconciler(t *testing.T) (*Reconciler, *index.DB) {
@@ -75,6 +76,39 @@ func TestReconcileIndexesAndReflectsEdit(t *testing.T) {
 	rows, _ = db.ScopeTickets("wc")
 	if len(rows) != 1 || rows[0].Status != "done" {
 		t.Fatalf("edited row = %+v", rows)
+	}
+}
+
+func TestReconcileClosureWalksDependsTargets(t *testing.T) {
+	r, db := newReconciler(t)
+	up := mkScope(t, "up")
+	wc := mkScope(t, "wc")
+	writeFile(t, filepath.Join(up, "up-aa22-core.md"), projFile("up-aa22", "done", "a0", "# Core\n"))
+	writeFile(t, filepath.Join(wc, "wc-bb22-feat.md"), "---\nid: wc-bb22\nstatus: todo\norder: \"a0\"\ncreated: 2026-01-01T00:00:00Z\ndepends: [up-aa22]\n---\n# Feature\n")
+	reg := &registry.Registry{
+		Scopes: map[string]registry.Entry{
+			"wc": {Dir: wc},
+			"up": {Dir: up},
+		},
+	}
+
+	res, names, err := r.ReconcileClosure(reg, "wc", wc, time.Now().UnixNano())
+	if err != nil {
+		t.Fatalf("closure: %v", err)
+	}
+	got := map[string]bool{}
+	for _, n := range names {
+		got[n] = true
+	}
+	if !got["wc"] || !got["up"] {
+		t.Errorf("closure names = %v, want wc and up", names)
+	}
+	if res.Schema("up") == nil {
+		t.Error("want up schema after closure walk")
+	}
+	rows, err := db.TicketsByID("up", "up-aa22")
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("up ticket indexed: n=%d err=%v", len(rows), err)
 	}
 }
 

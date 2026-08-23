@@ -3,8 +3,6 @@ package cli
 import (
 	"fmt"
 
-	"github.com/p3bot/tk/internal/scopefile"
-
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/index"
@@ -87,27 +85,11 @@ func runReorder(app *App, c *cobra.Command, idArg string, dest reorderDest, scop
 	}
 	dir := entry.Dir
 
-	lock, err := scopefile.AcquireLock(dir)
+	sess, err := e.beginWrite(c, scope, dir)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = lock.Release() }()
-
-	ctx := c.Context()
-	res, err := e.reconcileResult(single(scope, dir))
-	if err != nil {
-		return err
-	}
-	if err := refuseUnusableScope(res, scope, dir); err != nil {
-		return err
-	}
-	schema := res.Schema(scope)
-	autoCommit := schemaAutoCommit(schema)
-	root, hasRoot := scopefile.GitRoot(dir)
-	if err := checkMidRebase(ctx, scope, autoCommit, root, hasRoot); err != nil {
-		return err
-	}
-	e.printWarnings(c, res.Warnings)
+	defer sess.Release()
 
 	subject, err := e.resolveWriteRow(scope, idArg, form)
 	if err != nil {
@@ -140,7 +122,7 @@ func runReorder(app *App, c *cobra.Command, idArg string, dest reorderDest, scop
 	}
 
 	message := fmt.Sprintf("tk: %s reorder", subject.ID)
-	if err := e.completeStateDurability(ctx, c, scope, dir, autoCommit, message, subject.Path, "", root, hasRoot); err != nil {
+	if err := e.completeStateDurability(c.Context(), c, sess.Scope, sess.Dir, sess.AutoCommit, message, subject.Path, "", sess.Root, sess.HasRoot); err != nil {
 		return err
 	}
 

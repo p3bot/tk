@@ -10,6 +10,7 @@ import (
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/token"
+	"github.com/p3bot/tk/internal/writeengine"
 )
 
 type resolution struct {
@@ -116,8 +117,7 @@ func duplicateRefusal(rows []*index.Ticket) error {
 	for i, r := range rows {
 		paths[i] = r.Path
 	}
-	return fmt.Errorf("%s", token.Line(token.DuplicateID,
-		fmt.Sprintf("%s is claimed by %d files: %s — resolve with tk doctor --repair", rows[0].ID, len(rows), joinComma(paths))))
+	return &writeengine.DuplicateError{ID: rows[0].ID, Paths: paths}
 }
 
 func joinComma(items []string) string {

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -74,7 +73,7 @@ func runNext(app *App, c *cobra.Command, scopeFlag string, noLens bool) error {
 		stdoutln(c, sel.Chosen.Path)
 		return nil
 	}
-	return emptyQueueError(sel.ApplyLens, sel.Lens, sel.Blocked, sel.ReadyOutsideLens)
+	return &ExitError{Code: exitFailure, Plain: true, Err: sel.EmptyQueueError()}
 }
 
 func writeNextDiagnostics(c *cobra.Command, s depgate.Selection) {
@@ -84,21 +83,6 @@ func writeNextDiagnostics(c *cobra.Command, s depgate.Selection) {
 	for _, line := range s.Tokens {
 		stderrln(c, line)
 	}
-}
-
-func emptyQueueError(applyLens bool, lens []string, blocked, readyOutsideLens int) error {
-	switch {
-	case applyLens && readyOutsideLens > 0:
-		return plainDiagnostic("nothing ready under lens %s; %d ready outside it", lensBracket(lens), readyOutsideLens)
-	case blocked > 0:
-		return plainDiagnostic("nothing ready; %d todo(s) waiting on unmet deps", blocked)
-	default:
-		return plainDiagnostic("nothing ready")
-	}
-}
-
-func plainDiagnostic(format string, a ...any) error {
-	return &ExitError{Code: exitFailure, Err: fmt.Errorf(format, a...), Plain: true}
 }
 
 func lensBracket(lens []string) string {
@@ -115,49 +99,7 @@ func (e *engine) reconcileClosure(c *cobra.Command, ambient, dir string) (*recon
 	return merged, names, nil
 }
 
-// reconcileClosureResult omits printing so claim can refuse without double-echoing.
+// reconcileClosureResult omits printing so callers can refuse without double-echoing.
 func (e *engine) reconcileClosureResult(ambient, dir string) (*reconcile.Result, []string, error) {
-	targets := map[string]string{ambient: dir}
-	done := map[string]bool{}
-	merged := reconcile.NewResult()
-	var reconciled []string
-	for {
-		pending := map[string]string{}
-		for name, d := range targets {
-			if !done[name] {
-				pending[name] = d
-			}
-		}
-		if len(pending) == 0 {
-			break
-		}
-		res, batch, err := e.rec.ReconcileRows(pending, e.registeredSet(), nowNS())
-		if err != nil {
-			return nil, nil, err
-		}
-		merged.Merge(res)
-		reconciled = append(reconciled, batch...)
-		for name := range pending {
-			done[name] = true
-		}
-		toScopes, err := e.db.DependsTargetScopes(batch)
-		if err != nil {
-			return nil, nil, err
-		}
-		for _, to := range toScopes {
-			if entry, ok := e.reg.Scopes[to]; ok && !done[to] {
-				targets[to] = entry.Dir
-			}
-		}
-	}
-
-	if err := e.rec.AppendAggregates(reconciled, merged); err != nil {
-		return nil, nil, err
-	}
-
-	names := make([]string, 0, len(targets))
-	for name := range targets {
-		names = append(names, name)
-	}
-	return merged, names, nil
+	return e.rec.ReconcileClosure(e.reg, ambient, dir, nowNS())
 }

@@ -314,3 +314,23 @@ func idOf(p *index.Ticket) string {
 	}
 	return p.ID
 }
+
+func TestEmptyQueueErrorWording(t *testing.T) {
+	cases := []struct {
+		sel  Selection
+		want string
+	}{
+		{Selection{}, "nothing ready"},
+		{Selection{Blocked: 2}, "nothing ready; 2 todo(s) waiting on unmet deps"},
+		{
+			sel:  Selection{ApplyLens: true, Lens: []string{"a", "b"}, ReadyOutsideLens: 3},
+			want: "nothing ready under lens [a, b]; 3 ready outside it",
+		},
+	}
+	for _, tc := range cases {
+		got := tc.sel.EmptyQueueError().Error()
+		if got != tc.want {
+			t.Errorf("%+v: %q want %q", tc.sel, got, tc.want)
+		}
+	}
+}

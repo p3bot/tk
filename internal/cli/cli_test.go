@@ -12,6 +12,7 @@ import (
 	"cuelang.org/go/cue/cuecontext"
 
 	"github.com/p3bot/tk/internal/token"
+	"github.com/p3bot/tk/internal/writeengine"
 )
 
 func newApp(t *testing.T) *App {
@@ -355,6 +356,20 @@ func TestFprintErrorTokenPurity(t *testing.T) {
 	}
 	if strings.TrimRight(buf.String(), "\n") != "nothing ready" {
 		t.Errorf("Plain diagnostic message altered: %q", buf.String())
+	}
+
+	buf.Reset()
+	nl := mapWriteErr(&writeengine.NoLongerTodoError{ID: "wc-ab2c", Status: "review"})
+	fprintError(&buf, nl, true)
+	want := "wc-ab2c is no longer todo (status is review) — not claimed"
+	if strings.Contains(buf.String(), "error:") || strings.Contains(buf.String(), "\x1b") {
+		t.Errorf("no-longer-todo must print as a Plain diagnostic, got %q", buf.String())
+	}
+	if strings.TrimRight(buf.String(), "\n") != want {
+		t.Errorf("no-longer-todo message = %q, want %q", buf.String(), want)
+	}
+	if got := ExitCodeFromError(nl); got != exitFailure {
+		t.Errorf("no-longer-todo exit = %d, want %d", got, exitFailure)
 	}
 }
 

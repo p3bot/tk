@@ -5,7 +5,9 @@
 package depgate
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
@@ -180,7 +182,8 @@ func (g *Gate) schema(scope string) *scopeconfig.Schema {
 }
 
 // Selection is the next walk result. Callers own empty-queue policy
-// (tk next refuses; tk status emits next\t; tkv shows no badge).
+// (tk next and claim refuse via EmptyQueueError; tk status emits next\t;
+// tkv shows no badge).
 type Selection struct {
 	Chosen           *index.Ticket
 	Tokens           []string
@@ -188,6 +191,36 @@ type Selection struct {
 	ReadyOutsideLens int
 	ApplyLens        bool
 	Lens             []string
+}
+
+// EmptyQueueError is the refuse wording when nothing is runnable.
+type EmptyQueueError struct {
+	ApplyLens        bool
+	Lens             []string
+	Blocked          int
+	ReadyOutsideLens int
+}
+
+func (e *EmptyQueueError) Error() string {
+	switch {
+	case e.ApplyLens && e.ReadyOutsideLens > 0:
+		return fmt.Sprintf("nothing ready under lens %s; %d ready outside it",
+			"["+strings.Join(e.Lens, ", ")+"]", e.ReadyOutsideLens)
+	case e.Blocked > 0:
+		return fmt.Sprintf("nothing ready; %d todo(s) waiting on unmet deps", e.Blocked)
+	default:
+		return "nothing ready"
+	}
+}
+
+// EmptyQueueError builds the refuse error from this selection.
+func (s Selection) EmptyQueueError() *EmptyQueueError {
+	return &EmptyQueueError{
+		ApplyLens:        s.ApplyLens,
+		Lens:             s.Lens,
+		Blocked:          s.Blocked,
+		ReadyOutsideLens: s.ReadyOutsideLens,
+	}
 }
 
 // SelectNext walks candidates in (order_key, id), applying the lens unless noLens.

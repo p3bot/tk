@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/p3bot/tk/internal/scopefile"
-
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/frontmatter"
@@ -318,27 +316,12 @@ func runMetaMutate(app *App, c *cobra.Command, op metaOp, idArg, key, valueArg, 
 	}
 	dir := entry.Dir
 
-	lock, err := scopefile.AcquireLock(dir)
+	sess, err := e.beginWrite(c, scope, dir)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = lock.Release() }()
-
-	ctx := c.Context()
-	res, err := e.reconcileResult(single(scope, dir))
-	if err != nil {
-		return err
-	}
-	if err := refuseUnusableScope(res, scope, dir); err != nil {
-		return err
-	}
-	schema := res.Schema(scope)
-	autoCommit := schemaAutoCommit(schema)
-	root, hasRoot := scopefile.GitRoot(dir)
-	if err := checkMidRebase(ctx, scope, autoCommit, root, hasRoot); err != nil {
-		return err
-	}
-	e.printWarnings(c, res.Warnings)
+	defer sess.Release()
+	schema := sess.Schema
 
 	class, field, err := classifyMetaKey(key, schema)
 	if err != nil {
@@ -406,7 +389,7 @@ func runMetaMutate(app *App, c *cobra.Command, op metaOp, idArg, key, valueArg, 
 	}
 
 	message := fmt.Sprintf("tk: %s meta %s %s", p.ID, op, key)
-	if err := e.completeStateDurability(ctx, c, scope, dir, autoCommit, message, p.Path, "", root, hasRoot); err != nil {
+	if err := e.completeStateDurability(c.Context(), c, sess.Scope, sess.Dir, sess.AutoCommit, message, p.Path, "", sess.Root, sess.HasRoot); err != nil {
 		return err
 	}
 

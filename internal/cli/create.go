@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/p3bot/tk/internal/scopefile"
-
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/frontmatter"
@@ -16,6 +14,7 @@ import (
 	"github.com/p3bot/tk/internal/order"
 	"github.com/p3bot/tk/internal/slug"
 	"github.com/p3bot/tk/internal/status"
+	"github.com/p3bot/tk/internal/writeengine"
 )
 
 func newCreateCmd(app *App) *cobra.Command {
@@ -74,21 +73,14 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 	scope := resolved.Name
 	dir := resolved.Entry.Dir
 
-	lock, err := scopefile.AcquireLock(dir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = lock.Release() }()
-
 	ctx := c.Context()
-	res, err := e.reconcileResult(single(scope, dir))
+	sess, err := writeengine.Begin(e.writeDeps(ctx), scope, dir)
 	if err != nil {
 		return err
 	}
-	if err := refuseUnusableScope(res, scope, dir); err != nil {
-		return err
-	}
-	schema := res.Schema(scope)
+	defer sess.Release()
+
+	schema := sess.Schema
 	custom := schema.CustomStatuses()
 
 	newStatus := status.Draft
@@ -98,13 +90,10 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 	if !status.IsKnown(newStatus, custom) {
 		return usageErrorf("%q is not a known status for scope %q", newStatus, scope)
 	}
-
-	autoCommit := schemaAutoCommit(schema)
-	root, hasRoot := scopefile.GitRoot(dir)
-	if err := checkMidRebase(ctx, scope, autoCommit, root, hasRoot); err != nil {
+	if err := sess.CheckMidRebase(); err != nil {
 		return err
 	}
-	e.printWarnings(c, res.Warnings)
+	e.printWarnings(c, sess.Warnings())
 
 	rows, err := e.db.ScopeTickets(scope)
 	if err != nil {
@@ -153,7 +142,7 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 		return err
 	}
 
-	e.createDurability(ctx, c, dir, autoCommit, terminal, fullID, root, hasRoot)
+	e.createDurability(ctx, c, dir, sess.AutoCommit, terminal, fullID, sess.Root, sess.HasRoot)
 
 	out, err := absPath(target)
 	if err != nil {

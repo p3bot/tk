@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/resolve"
 	"github.com/p3bot/tk/internal/syncengine"
+	"github.com/p3bot/tk/internal/writeengine"
 )
 
 type engine struct {
@@ -51,6 +53,25 @@ func (e *engine) syncDeps(c *cobra.Command) syncengine.Deps {
 		DB:       e.db,
 		Rec:      e.rec,
 	}
+}
+
+func (e *engine) writeDeps(ctx context.Context) writeengine.Deps {
+	return writeengine.Deps{
+		Ctx:      ctx,
+		Cue:      e.app.Ctx,
+		StateDir: e.app.StateDir,
+		Reg:      e.reg,
+		DB:       e.db,
+		Rec:      e.rec,
+	}
+}
+
+func (e *engine) writeLookup(scope, idArg string, form idForm) (writeengine.Lookup, error) {
+	q, f, err := e.expandReservedID(scope, idArg, form)
+	if err != nil {
+		return writeengine.Lookup{}, err
+	}
+	return writeengine.Lookup{Arg: idArg, Query: q, ByFull: f == idFull}, nil
 }
 
 func (e *engine) gateDeps() depgate.Deps {

@@ -6,7 +6,7 @@
 
 `tk` tracks feature work as plain markdown files, one ticket per file, edited in
 place. It indexes, queues, and locates tickets; the filesystem is the editor.
-Humans can run `tkv` for a local read-only dashboard.
+Humans can run `tkv` for a local dashboard (mark and claim; agents keep using `tk`).
 
 The implementation is the source of truth.
 

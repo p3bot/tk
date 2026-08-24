@@ -8,7 +8,7 @@ live authority and must not override the tree.
 
 ## Implementation status
 
-P1 through P7 have landed, plus `tkv`'s read-only first slice. `tk` runs as a Cobra CLI with the machine-local CUE
+P1 through P7 have landed, plus `tkv` (reads plus mark/claim). `tk` runs as a Cobra CLI with the machine-local CUE
 registry, scope `tk.cue` evaluation, ambient resolution, and the full `tk scope`
 verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `field`); the machine-wide
 SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
@@ -26,8 +26,9 @@ orchestration split into acquiring wrappers over locks-held cores); and P7's
 Commands, Ticket files, Identifiers, Workflows; structure and hot-path guidance
 tests; no design-doc dependency) plus agentdex-backed `skill install`/`list`/
 `uninstall` (paths from the agent catalog; no hardcoded product skills dirs);
-and `tkv` — a human-facing localhost dashboard (`cmd/tkv`) for read-only
-overview, kanban, inspect, search, depends graph, and maintenance (agents keep using `tk`).
+and `tkv` — a human-facing localhost dashboard (`cmd/tkv`) for overview, kanban,
+inspect, search, depends graph, and maintenance, with mark and claim writes
+through the same engine as `tk` (agents keep using `tk`).
 
 - Prefer packages, tests, and the embedded skill over prose when they disagree.
 - Short-ids are letter-first by construction (the `IsShortID` predicate and the
@@ -102,7 +103,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `syncengine` — per-root snapshot/integrate/integrity/push; `tk sync` and claim
   - `writeengine` — cobra-free ticket-file write session, mark, and claim orchestration
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
-  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph)
+  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, mark/claim)
   - `cli` — Cobra command tree, exit codes, signals, colour/TTY, path hand-off
 
 ## Build, test, lint, format

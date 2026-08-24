@@ -29,13 +29,26 @@ var assets embed.FS
 
 var pages = template.Must(template.New("").ParseFS(assets, "templates/*.html"))
 
+// indexHandle is one Open of the process index. n is 1 while it is installed
+// on Server plus one per write that copied it; Close runs at n==0 so a write
+// that dropped Server.mu cannot see a closed connection.
+type indexHandle struct {
+	db  *index.DB
+	rec *reconcile.Reconciler
+	n   int
+}
+
 // Server is the long-lived HTTP process: one index connection, templates, CSS.
 type Server struct {
 	app *App
 	mu  sync.Mutex
 	db  *index.DB
 	rec *reconcile.Reconciler
+	cur *indexHandle
 	tpl *template.Template
+	// afterIndexUnlock runs after a write handler drops Server.mu and before
+	// the engine call. Tests use it to prove claim's git work is not inside wrap.
+	afterIndexUnlock func()
 }
 
 // NewServer opens the same XDG index tk uses.
@@ -49,23 +62,57 @@ func (a *App) NewServer() (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	rec := reconcile.New(db, ctx)
 	return &Server{
-		app: a,
-		db:  db,
-		rec: reconcile.New(db, ctx),
-		tpl: pages,
+		app:              a,
+		db:               db,
+		rec:              rec,
+		cur:              &indexHandle{db: db, rec: rec, n: 1},
+		tpl:              pages,
+		afterIndexUnlock: a.afterIndexUnlock,
 	}, nil
 }
 
-// Close releases the index handle.
+// Close drops the installed pin. An in-flight write still holding the handle
+// closes the DB when it releases.
 func (s *Server) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.db == nil {
+	if s.cur == nil {
 		return nil
 	}
-	err := s.db.Close()
+	h := s.cur
+	s.cur = nil
 	s.db = nil
+	s.rec = nil
+	return s.dropLocked(h)
+}
+
+func (s *Server) retainLocked() *indexHandle {
+	if s.cur == nil {
+		return nil
+	}
+	s.cur.n++
+	return s.cur
+}
+
+func (s *Server) releaseHandle(h *indexHandle) {
+	if h == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.dropLocked(h)
+}
+
+func (s *Server) dropLocked(h *indexHandle) error {
+	h.n--
+	if h.n > 0 {
+		return nil
+	}
+	err := h.db.Close()
+	h.db = nil
+	h.rec = nil
 	return err
 }
 
@@ -81,10 +128,6 @@ func (s *Server) runRequest(fn func() error) error {
 }
 
 func (s *Server) reopen() error {
-	if s.db != nil {
-		_ = s.db.Close()
-		s.db = nil
-	}
 	stateDir, err := s.app.stateDir()
 	if err != nil {
 		return err
@@ -94,8 +137,14 @@ func (s *Server) reopen() error {
 		return err
 	}
 	ctx := s.app.cue()
+	rec := reconcile.New(db, ctx)
+	old := s.cur
 	s.db = db
-	s.rec = reconcile.New(db, ctx)
+	s.rec = rec
+	s.cur = &indexHandle{db: db, rec: rec, n: 1}
+	if old != nil {
+		_ = s.dropLocked(old)
+	}
 	return nil
 }
 
@@ -114,7 +163,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /maintenance", s.wrap(s.maintenance))
 	mux.HandleFunc("GET /scope/{name}", s.wrap(s.kanban))
 	mux.HandleFunc("GET /scope/{name}/{id}", s.wrap(s.inspect))
-	return mux
+	mux.HandleFunc("POST /scope/{name}/mark", s.wrapEngine(s.postMark))
+	mux.HandleFunc("POST /scope/{name}/claim", s.wrapEngine(s.postClaim))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		mux.ServeHTTP(w, r)
+	})
 }
 
 type requestFn func(http.ResponseWriter, *http.Request) error
@@ -131,17 +185,21 @@ func (s *Server) wrap(fn requestFn) http.HandlerFunc {
 		if err == nil {
 			return
 		}
-		if isBusy(err) {
-			s.errorPage(w, r, http.StatusServiceUnavailable, "index is busy; retry shortly", nil)
-			return
-		}
-		var he *httpError
-		if errors.As(err, &he) {
-			s.errorPage(w, r, he.status, he.message, he.paths)
-			return
-		}
-		s.errorPage(w, r, http.StatusInternalServerError, err.Error(), nil)
+		s.serveError(w, r, err)
 	}
+}
+
+func (s *Server) serveError(w http.ResponseWriter, r *http.Request, err error) {
+	if isBusy(err) {
+		s.errorPage(w, r, http.StatusServiceUnavailable, "index is busy; retry shortly", nil)
+		return
+	}
+	var he *httpError
+	if errors.As(err, &he) {
+		s.errorPage(w, r, he.status, he.message, he.paths)
+		return
+	}
+	s.errorPage(w, r, http.StatusInternalServerError, err.Error(), nil)
 }
 
 type httpError struct {

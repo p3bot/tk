@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -302,6 +303,106 @@ func TestRunPrintsURLAfterServing(t *testing.T) {
 	cancel()
 	if err := <-errCh; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunDrainsInFlightWrite(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+
+	started := make(chan struct{})
+	unblock := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(unblock) }) }
+	app.afterIndexUnlock = func() {
+		close(started)
+		<-unblock
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		release()
+		cancel()
+	})
+	app.ServeCtx = ctx
+	app.NoOpen = true
+	out := &concBuf{}
+	app.Stdout = out
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	_ = ln.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Run([]string{"--port", strconv.Itoa(port), "--no-open"})
+	}()
+
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.TrimSpace(out.String()) != "" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if strings.TrimSpace(out.String()) == "" {
+		t.Fatal("Run did not print URL")
+	}
+
+	claimCh := make(chan error, 1)
+	go func() {
+		client := &http.Client{
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+		resp, err := client.PostForm(base+"/scope/wc/claim", url.Values{"return": {"board"}})
+		if err != nil {
+			claimCh <- err
+			return
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			claimCh <- fmt.Errorf("claim = %d", resp.StatusCode)
+			return
+		}
+		claimCh <- nil
+	}()
+
+	select {
+	case <-started:
+	case err := <-claimCh:
+		t.Fatalf("claim finished before index unlock: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("claim did not drop the index mutex")
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		t.Fatalf("Run returned while write in flight: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	release()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after write finished")
+	}
+	if err := <-claimCh; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: in-progress") {
+		t.Fatalf("write must stand: %s", ticketBody(t, dir, "wc-ab2c"))
 	}
 }
 

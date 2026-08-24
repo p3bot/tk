@@ -8,7 +8,8 @@
 {{template "chrome" .}}
 <main>
 <h1>{{.Name}}</h1>
-<p class="board-controls">
+{{template "notices" .Notices}}
+<div class="board-controls">
   <a class="switch{{if .Backlog}} on{{end}}" href="{{.BacklogHref}}" role="switch" aria-checked="{{if .Backlog}}true{{else}}false{{end}}" data-board-switch>
     <span class="switch-ui" aria-hidden="true"></span>
     Backlog
@@ -18,11 +19,17 @@
     Archived
   </a>
   <span class="next">next {{if .NextHref}}<a href="{{.NextHref}}">{{.Next}}</a>{{else}}—{{end}}</span>
+  {{if and .Next .CanWrite}}
+  <form class="write" method="post" action="/scope/{{.Name}}/claim" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+    {{template "boardReturn" $}}
+    <button type="submit">Claim next</button>
+  </form>
+  {{end}}
   {{range .Tags}}
     <a class="tag{{if $.TagOn .}} on{{end}}" href="{{$.TagHref .}}">{{.}}</a>
   {{end}}
   <input type="search" class="board-filter" data-board-filter placeholder="filter board" aria-label="filter board">
-</p>
+</div>
 <section class="kanban" aria-label="board">
 {{range .Cols}}
   <div class="col">
@@ -33,6 +40,27 @@
       {{if .Tags}}<span class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</span>{{end}}
       {{if .SchemaError}}<span class="waiting">schema_error: a depends/related entry is not a legal full ticket id</span>{{end}}
       {{if .WaitingOn}}<span class="waiting">waiting {{range .WaitingOn}}<a href="{{.Href}}">{{.ID}}</a> {{end}}</span>{{end}}
+      {{if .CanClaim}}
+      <form class="write" method="post" action="/scope/{{$.Name}}/claim">
+        <input type="hidden" name="id" value="{{.ID}}">
+        {{template "boardReturn" $}}
+        <button type="submit" aria-label="Claim {{.ID}}">Claim</button>
+      </form>
+      {{end}}
+      {{if .MarkStatuses}}
+      <form class="write" method="post" action="/scope/{{$.Name}}/mark">
+        <input type="hidden" name="id" value="{{.ID}}">
+        {{template "boardReturn" $}}
+        <label>
+          <span class="sr-only">status {{.ID}}</span>
+          <select name="status" required>
+            <option value="" disabled selected>status</option>
+            {{range .MarkStatuses}}<option value="{{.}}">{{.}}</option>{{end}}
+          </select>
+        </label>
+        <button type="submit" aria-label="Mark {{.ID}}">Mark</button>
+      </form>
+      {{end}}
     </article>
     {{end}}
   </div>

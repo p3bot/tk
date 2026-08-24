@@ -1,6 +1,7 @@
 // Package tkv is the human-facing local web dashboard for browsing tickets
-// and scopes. It is read-only: metadata from the machine-wide index, bodies
-// from ticket files. Agents do not use it.
+// and scopes. Humans can mark and claim through the same write engine as tk.
+// Metadata comes from the machine-wide index; bodies from ticket files.
+// Agents do not use it.
 package tkv
 
 import (
@@ -28,9 +29,10 @@ import (
 // DefaultPort is the localhost listen port when --port is omitted.
 const DefaultPort = 8736
 
-const usageText = `tkv is a local read-only web dashboard for tk tickets.
+const usageText = `tkv is a local web dashboard for tk tickets.
 
-It listens on 127.0.0.1 (never 0.0.0.0). The default port is 8736.
+Humans can mark and claim from the board and inspect pages. Agents keep
+using tk. It listens on 127.0.0.1 (never 0.0.0.0). The default port is 8736.
 
 Usage: tkv [--port N] [--no-open] [--scope NAME]
 
@@ -58,6 +60,8 @@ type App struct {
 	LookupEnv   func(string) string
 	// ServeCtx, when set, replaces the process signal context (tests).
 	ServeCtx context.Context
+	// afterIndexUnlock is copied onto Server (tests).
+	afterIndexUnlock func()
 }
 
 // NewApp builds a production App (XDG dirs and cwd resolved at Run).
@@ -103,12 +107,6 @@ func (a *App) Run(args []string) error {
 	defer stop()
 
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = httpSrv.Shutdown(shutCtx)
-	}()
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -134,7 +132,15 @@ func (a *App) Run(args []string) error {
 		fmt.Fprintln(a.stderr(), err)
 	}
 
-	return <-serveErr
+	select {
+	case err := <-serveErr:
+		return err
+	case <-ctx.Done():
+		// Shutdown waits for handlers. Serve returning only means the listener
+		// closed; claim/mark git work must drain (see beginWrite).
+		_ = httpSrv.Shutdown(context.Background())
+		return <-serveErr
+	}
 }
 
 func (a *App) serveContext() (context.Context, context.CancelFunc) {

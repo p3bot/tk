@@ -8,6 +8,7 @@
 {{template "chrome" .}}
 <main class="inspect">
 <article class="body">
+  {{template "notices" .Notices}}
   {{if .ParseMsg}}<p class="banner">{{.ParseMsg}}</p>{{end}}
   {{if .SchemaErr}}<p class="banner">schema_error: a depends/related entry is not a legal full ticket id</p>{{end}}
   {{if .RawText}}<pre class="raw">{{.RawText}}</pre>{{else}}{{.Body}}{{end}}
@@ -29,6 +30,27 @@
     <div><dt>schema_error</dt><dd>{{if .SchemaErr}}yes{{else}}no{{end}}</dd></div>
     <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
   </dl>
+  {{if .CanClaim}}
+  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/claim">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <input type="hidden" name="return" value="inspect">
+    <button type="submit">Claim</button>
+  </form>
+  {{end}}
+  {{if .MarkStatuses}}
+  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/mark">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <input type="hidden" name="return" value="inspect">
+    <label>
+      Mark
+      <select name="status" required>
+        <option value="" disabled selected>status</option>
+        {{range .MarkStatuses}}<option value="{{.}}">{{.}}</option>{{end}}
+      </select>
+    </label>
+    <button type="submit">Mark</button>
+  </form>
+  {{end}}
   <h2>depends on</h2>
   {{template "neighbours" .Depends}}
   <h2>depended on by</h2>

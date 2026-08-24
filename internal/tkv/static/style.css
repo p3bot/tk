@@ -208,6 +208,38 @@ aside dd { margin: 0; overflow-wrap: anywhere; }
 .neighbours li { padding: 0.2rem 0; }
 .unresolved { color: var(--issues); }
 .banner { background: var(--banner); color: var(--issues); padding: 0.5rem 0.7rem; border-radius: 4px; }
+.banner.soft { background: #fffbeb; color: #92400e; }
+.write {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+.write select, .write button {
+  font: inherit;
+  font-size: 0.8125rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 0.15rem 0.4rem;
+}
+.write button { cursor: pointer; font-weight: 550; }
+.write button:hover { border-color: var(--accent); }
+.write button:disabled { cursor: default; opacity: 0.55; }
+.write button:disabled:hover { border-color: var(--line); }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .hits { list-style: none; padding: 0; }
 .hits li { padding: 0.7rem 0; border-bottom: 1px solid var(--line); }
 .hits .status, .hits .scope { color: var(--muted); font-size: 0.875rem; margin-left: 0.4rem; }

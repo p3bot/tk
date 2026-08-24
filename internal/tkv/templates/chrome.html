@@ -6,6 +6,17 @@
 <link rel="stylesheet" href="/static/style.css">
 {{end}}
 
+{{define "notices"}}
+{{range .}}<p class="banner soft">{{.}}</p>{{end}}
+{{end}}
+
+{{define "boardReturn"}}
+<input type="hidden" name="return" value="board">
+{{if .Backlog}}<input type="hidden" name="backlog" value="1">{{end}}
+{{if .Archived}}<input type="hidden" name="archived" value="1">{{end}}
+{{range .Active}}<input type="hidden" name="tag" value="{{.}}">{{end}}
+{{end}}
+
 {{define "chrome"}}
 <header class="chrome">
   <div class="chrome-row chrome-primary">

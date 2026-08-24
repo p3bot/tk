@@ -182,6 +182,8 @@ type kanbanPage struct {
 	Next     string
 	NextHref string
 	Cols     []kanbanCol
+	Notices  []string
+	CanWrite bool
 }
 
 type kanbanCol struct {
@@ -190,14 +192,16 @@ type kanbanCol struct {
 }
 
 type kanbanCard struct {
-	ID          string
-	ShortID     string
-	Title       string
-	Href        string
-	Tags        []string
-	WaitingOn   []idLink
-	SchemaError bool
-	Next        bool
+	ID           string
+	ShortID      string
+	Title        string
+	Href         string
+	Tags         []string
+	WaitingOn    []idLink
+	SchemaError  bool
+	Next         bool
+	CanClaim     bool
+	MarkStatuses []string
 }
 
 func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
@@ -276,6 +280,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 				SchemaError: p.SchemaError,
 				Next:        nextID != "" && p.ID == nextID,
 			}
+			card.CanClaim, card.MarkStatuses = ticketWriteControls(schema, p.Status, p.ParseError)
 			col.Cards = append(col.Cards, card)
 		}
 		cols = append(cols, col)
@@ -300,6 +305,8 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		Next:     nextID,
 		NextHref: nextHref,
 		Cols:     cols,
+		Notices:  noticesFromQuery(r.URL.Query()),
+		CanWrite: schema != nil,
 	})
 }
 
@@ -415,26 +422,29 @@ func categoryNames(custom map[string]status.Category, cat status.Category) []str
 }
 
 type inspectPage struct {
-	Title       string
-	Chrome      chrome
-	ID          string
-	Status      string
-	Order       string
-	TicketTitle string
-	Summary     string
-	Tags        []string
-	Created     string
-	Custom      []customField
-	Archived    bool
-	SchemaErr   bool
-	Path        string
-	ParseMsg    string
-	RawText     string
-	Body        template.HTML
-	Depends     []neighbour
-	Depended    []neighbour
-	Related     []neighbour
-	Links       []string
+	Title        string
+	Chrome       chrome
+	ID           string
+	Status       string
+	Order        string
+	TicketTitle  string
+	Summary      string
+	Tags         []string
+	Created      string
+	Custom       []customField
+	Archived     bool
+	SchemaErr    bool
+	Path         string
+	ParseMsg     string
+	RawText      string
+	Body         template.HTML
+	Depends      []neighbour
+	Depended     []neighbour
+	Related      []neighbour
+	Links        []string
+	CanClaim     bool
+	MarkStatuses []string
+	Notices      []string
 }
 
 type customField struct {
@@ -500,6 +510,7 @@ func (s *Server) inspect(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	page.Notices = noticesFromQuery(r.URL.Query())
 	return s.render(w, "inspect", page)
 }
 
@@ -507,6 +518,10 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 	ch, err := s.chromeFor(reg, p.Scope, "", navBoard)
 	if err != nil {
 		return inspectPage{}, err
+	}
+	var schema *scopeconfig.Schema
+	if entry, ok := reg.Scopes[p.Scope]; ok {
+		schema = s.rec.SchemaCached(p.Scope, entry.Dir)
 	}
 	out := inspectPage{
 		Title:       p.ID,
@@ -524,6 +539,7 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 		Path:        p.Path,
 		ParseMsg:    p.ParseMsg,
 	}
+	out.CanClaim, out.MarkStatuses = ticketWriteControls(schema, p.Status, p.ParseError)
 
 	raw, err := os.ReadFile(p.Path)
 	if err != nil {

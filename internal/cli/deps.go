@@ -53,7 +53,7 @@ func runDeps(app *App, c *cobra.Command, idArg, scope string, transitive, tree b
 	}
 	subject := r.rows[0].ID
 
-	g, err := e.buildDepsGraph()
+	g, err := e.buildDepsGraph(subject, transitive, tree)
 	if err != nil {
 		return err
 	}
@@ -85,35 +85,144 @@ type depsGraph struct {
 	byID   map[string]*index.Ticket
 }
 
-func (e *engine) buildDepsGraph() (*depsGraph, error) {
-	all, err := e.db.AllTickets()
-	if err != nil {
-		return nil, err
-	}
-	edges, err := e.db.AllEdges()
-	if err != nil {
-		return nil, err
-	}
+func (e *engine) buildDepsGraph(subject string, transitive, tree bool) (*depsGraph, error) {
 	g := &depsGraph{
 		outDep: map[string][]string{}, inDep: map[string][]string{},
 		outRel: map[string][]string{}, inRel: map[string][]string{},
 		byID: map[string]*index.Ticket{},
 	}
-	for _, p := range all {
+	from, err := e.db.EdgesFromID(subject)
+	if err != nil {
+		return nil, err
+	}
+	to, err := e.db.EdgesByTarget(subject)
+	if err != nil {
+		return nil, err
+	}
+	for _, ed := range from {
+		g.addEdge(ed)
+	}
+	for _, ed := range to {
+		g.addEdge(ed)
+	}
+	// Cycle and --tree walk outbound; a 3-cycle's close is hop-2, not inbound at hop 1.
+	if err := e.expandOutboundDepends(g, subject, g.outDep[subject]); err != nil {
+		return nil, err
+	}
+	if transitive && !tree {
+		if err := e.expandInboundDepends(g, subject, g.inDep[subject]); err != nil {
+			return nil, err
+		}
+	}
+	tickets, err := e.db.TicketsByFullIDs(g.idsToPrint(subject, transitive, tree))
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range tickets {
 		if _, ok := g.byID[p.ID]; !ok {
 			g.byID[p.ID] = p
 		}
 	}
-	for _, ed := range edges {
-		if ed.Kind == index.EdgeDepends {
-			g.outDep[ed.FromID] = appendUnique(g.outDep[ed.FromID], ed.ToID)
-			g.inDep[ed.ToID] = appendUnique(g.inDep[ed.ToID], ed.FromID)
+	return g, nil
+}
+
+func (g *depsGraph) addEdge(ed index.Edge) {
+	if ed.Kind == index.EdgeDepends {
+		g.outDep[ed.FromID] = appendUnique(g.outDep[ed.FromID], ed.ToID)
+		g.inDep[ed.ToID] = appendUnique(g.inDep[ed.ToID], ed.FromID)
+		return
+	}
+	g.outRel[ed.FromID] = appendUnique(g.outRel[ed.FromID], ed.ToID)
+	g.inRel[ed.ToID] = appendUnique(g.inRel[ed.ToID], ed.FromID)
+}
+
+func (e *engine) expandOutboundDepends(g *depsGraph, subject string, seeds []string) error {
+	return e.expandDepends(g, subject, seeds, true)
+}
+
+func (e *engine) expandInboundDepends(g *depsGraph, subject string, seeds []string) error {
+	return e.expandDepends(g, subject, seeds, false)
+}
+
+func (e *engine) expandDepends(g *depsGraph, subject string, seeds []string, outbound bool) error {
+	visited := map[string]bool{subject: true}
+	queue := make([]string, 0, len(seeds))
+	for _, id := range seeds {
+		if visited[id] {
+			continue
+		}
+		visited[id] = true
+		queue = append(queue, id)
+	}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		var (
+			edges []index.Edge
+			err   error
+		)
+		if outbound {
+			edges, err = e.db.EdgesFromID(id)
 		} else {
-			g.outRel[ed.FromID] = appendUnique(g.outRel[ed.FromID], ed.ToID)
-			g.inRel[ed.ToID] = appendUnique(g.inRel[ed.ToID], ed.FromID)
+			edges, err = e.db.EdgesByTarget(id)
+		}
+		if err != nil {
+			return err
+		}
+		for _, ed := range edges {
+			if ed.Kind != index.EdgeDepends {
+				continue
+			}
+			g.addEdge(ed)
+			next := ed.ToID
+			if !outbound {
+				next = ed.FromID
+			}
+			if visited[next] {
+				continue
+			}
+			visited[next] = true
+			queue = append(queue, next)
 		}
 	}
-	return g, nil
+	return nil
+}
+
+func (g *depsGraph) idsToPrint(subject string, transitive, tree bool) []string {
+	seen := map[string]bool{}
+	var ids []string
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	switch {
+	case tree:
+		add(subject)
+		for _, id := range g.transitiveDepends(subject) {
+			add(id)
+		}
+	case transitive:
+		for _, id := range g.transitiveDepends(subject) {
+			add(id)
+		}
+		for _, id := range g.transitiveDependedOnBy(subject) {
+			add(id)
+		}
+	default:
+		for _, id := range g.outDep[subject] {
+			add(id)
+		}
+		for _, id := range g.inDep[subject] {
+			add(id)
+		}
+	}
+	for _, id := range g.relatedBoth(subject) {
+		add(id)
+	}
+	return ids
 }
 
 // printSection always emits a title and (none) for empty sides so section structure is stable.

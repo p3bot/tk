@@ -20,7 +20,7 @@ func newQueryCmd(app *App) *cobra.Command {
 			"may reshape between releases with no migration. Do not script against it —\n" +
 			"agents use deps / list / search / next / get / meta. `tk query --schema`\n" +
 			"prints the current shape. No ambient --scope flag (filter in SQL).",
-		Args: usageArgs(cobra.ArbitraryArgs),
+		Args: anyArgs(),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runQuery(app, c, args, schema)
 		},

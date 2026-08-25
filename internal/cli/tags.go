@@ -16,7 +16,7 @@ func newTagsCmd(app *App) *cobra.Command {
 			"the active lens and list's default board-status filter. Empty set prints\n" +
 			"nothing and exits 0. Read-only inventory — not a mutator; tag a ticket with\n" +
 			"meta add|rm. Alias: tag.",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runTags(app, c, scope)
 		},

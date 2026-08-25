@@ -26,7 +26,7 @@ func newDepsCmd(app *App) *cobra.Command {
 			"a flat list; --tree pretty-prints the depends graph. Walks are cycle-safe and\n" +
 			"warn once (pointing at doctor) on a cycle. Pure read; never runs git.\n" +
 			"Aliases: depends, dep.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDeps(app, c, args[0], scope, transitive, tree)
 		},

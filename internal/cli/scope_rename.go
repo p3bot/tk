@@ -32,7 +32,7 @@ func newScopeRenameCmd(app *App) *cobra.Command {
 			"pointer is dropped (the stored id would go stale). Cross-scope inbound edges live\n" +
 			"in other repos and are reported as edge_verify, not rewritten. An interrupted\n" +
 			"rename re-runs idempotently.",
-		Args: usageArgs(cobra.ExactArgs(2)),
+		Args: exactArgs("<old>", "<new>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runScopeRename(app, c, args[0], args[1])
 		},

@@ -37,7 +37,7 @@ func newListCmd(app *App) *cobra.Command {
 			"--all expands the unfiltered board to every non-quarantined status, including\n" +
 			"archive/. Lens echo and integrity tokens ride stderr only, never the TSV.\n" +
 			"Pure read.",
-		Args: usageArgs(cobra.ArbitraryArgs),
+		Args: anyArgs(),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runList(app, c, listParams{statuses: args, scope: scope, tags: tags, all: all, noLens: noLens})
 		},

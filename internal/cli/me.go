@@ -24,7 +24,7 @@ func newMeCmd(app *App) *cobra.Command {
 			"accepts a ticket id. Unset show is empty stdout, exit 0. The pointer is XDG\n" +
 			"only: it never writes tk.cue, never self-commits, and is not touched by claim,\n" +
 			"mark, or create. --clear takes no id.",
-		Args: usageArgs(cobra.MaximumNArgs(1)),
+		Args: maxArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMe(app, c, args, scope, clearMe)
 		},

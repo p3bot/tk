@@ -11,7 +11,7 @@ func newScopeForgetCmd(app *App) *cobra.Command {
 			"re-registered with tk scope import. Dropping any index rows is out of\n" +
 			"scope for this verb; forget here removes registry, lens, me, and note only. A\n" +
 			"merely unreachable dir stays registered until forget.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<name>"),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return app.admin().Forget(args[0])
 		},

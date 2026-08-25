@@ -36,7 +36,7 @@ func newCreateCmd(app *App) *cobra.Command {
 			"Post-create tag edits remain meta add|rm. create reserves the id and never\n" +
 			"self-commits in any mode; git durability is the next tk sync (auto-commit) or\n" +
 			"host commit.",
-		Args: usageArgs(cobra.RangeArgs(1, 2)),
+		Args: rangeArgs(1, 2, "<title>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			st := ""
 			if len(args) == 2 {

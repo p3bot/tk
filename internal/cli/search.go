@@ -23,7 +23,7 @@ func newSearchCmd(app *App) *cobra.Command {
 			"A parse_error hit has an empty status but a filled path so repair stays\n" +
 			"discoverable. No lens, no status filter. Empty result exits 0. Pure read.\n" +
 			"Alias: find.",
-		Args: usageArgs(cobra.ArbitraryArgs),
+		Args: anyArgs(),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runSearch(app, c, args, scope)
 		},

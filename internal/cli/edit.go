@@ -18,7 +18,7 @@ func newEditCmd(app *App) *cobra.Command {
 			"nothing on success (not a path-hand-off verb), never rewrites frontmatter, and\n" +
 			"never self-commits — an editor save is an ordinary direct edit. It may open a\n" +
 			"parse_error path for repair.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runEdit(app, c, args[0], scope)
 		},

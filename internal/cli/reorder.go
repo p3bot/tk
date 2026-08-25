@@ -47,7 +47,7 @@ func newReorderCmd(app *App) *cobra.Command {
 			"and archive/); --before/--after name an in-scope neighbour that must exist and\n" +
 			"carry a valid order. Exactly one destination is required. An auto-commit scope\n" +
 			"self-commits the change when a git-root exists.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runReorder(app, c, args[0], dest, scope)
 		},

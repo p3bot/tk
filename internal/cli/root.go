@@ -80,16 +80,13 @@ func newRootCmd(app *App) *cobra.Command {
 		Version:       cliVersion,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Args:          usageArgs(cobra.NoArgs),
+		Args:          noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return c.Help()
 		},
 	}
 	root.SetVersionTemplate(versionTemplate)
-	// Flag-parse failures → exit 2.
-	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
-		return &ExitError{Code: exitUsage, Err: err}
-	})
+	root.SetFlagErrorFunc(flagUsageError)
 
 	// Locked within-group order (mini workflow), not pure alpha.
 	cobra.EnableCommandSorting = false
@@ -152,15 +149,6 @@ func newRootCmd(app *App) *cobra.Command {
 		scope, sync, doctor, reindex, skill,
 	)
 	return root
-}
-
-func usageArgs(v cobra.PositionalArgs) cobra.PositionalArgs {
-	return func(c *cobra.Command, args []string) error {
-		if err := v(c, args); err != nil {
-			return &ExitError{Code: exitUsage, Err: err}
-		}
-		return nil
-	}
 }
 
 func stdoutln(c *cobra.Command, s string) {

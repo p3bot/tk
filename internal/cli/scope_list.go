@@ -17,7 +17,7 @@ func newScopeListCmd(app *App) *cobra.Command {
 			"unknown — so one bad scope never fails the listing. Soft tokens\n" +
 			"(name_drift, unreachable_scope, config_unparseable) ride stderr. An empty\n" +
 			"registry exits 0 with empty stdout.",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runScopeList(app, c)
 		},

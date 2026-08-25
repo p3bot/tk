@@ -20,7 +20,7 @@ func newScopeImportCmd(app *App) *cobra.Command {
 			"collision, on a tk.cue that will not compile or fails schema validation,\n" +
 			"and on an autoCommit that disagrees with an existing sibling sharing its\n" +
 			"git-root.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<dir>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			dir, err := absPath(args[0])
 			if err != nil {

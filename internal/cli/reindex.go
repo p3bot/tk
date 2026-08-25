@@ -14,7 +14,7 @@ func newReindexCmd(app *App) *cobra.Command {
 			"Machine-wide always — there is no --scope or --all. Use when incremental\n" +
 			"reconcile may have missed a change (mtime-preserving copy, restore, clock skew)\n" +
 			"or the cache looks wrong relative to files.",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runReindex(app, c)
 		},

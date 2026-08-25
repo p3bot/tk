@@ -20,7 +20,7 @@ func newScopeRebindCmd(app *App) *cobra.Command {
 			"omitted. It preserves the lens, is idempotent, and refuses a wrong tree\n" +
 			"(the post-rebind tk.cue name must equal --name). It is not name repair —\n" +
 			"a drifted name still needs forget + import.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<dir>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			if name == "" {
 				return usageErrorf("--name is required")

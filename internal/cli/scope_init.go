@@ -25,7 +25,7 @@ func newScopeInitCmd(app *App) *cobra.Command {
 			"cwd match only — git durability always follows the scope dir). In a\n" +
 			"dedicated tk repo, pass --auto-commit (omitting it registers repo-driven).\n" +
 			"init never prompts and never runs git.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<dir>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			switch {
 			case name != "" && autoName:

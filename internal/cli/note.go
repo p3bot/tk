@@ -44,7 +44,7 @@ func newNoteCmd(app *App) *cobra.Command {
 			"tk-driven scope, or a host commit on a repo-driven scope. Notes are not\n" +
 			"tickets: they are not indexed, not listed by `tk list`, and not taught in\n" +
 			"`tk skill`. Alias: notes.",
-		Args: usageArgs(cobra.MaximumNArgs(1)),
+		Args: maxArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runNoteCat(app, c, args, scope, name, c.Flags().Changed("name"))
 		},
@@ -70,7 +70,7 @@ func newNoteListCmd(app *App) *cobra.Command {
 		Long: "Print addressable note slugs under notes/, one per line, alphabetical.\n" +
 			"Reserved verb names, invalid slugs, and nested paths are omitted (doctor owns\n" +
 			"that residue). A missing notes/ directory is empty stdout, exit 0.",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runNoteList(app, c, scope)
 		},
@@ -90,7 +90,7 @@ func newNoteAddCmd(app *App) *cobra.Command {
 			"and does not create the file. Prints the cleaned absolute path. Never\n" +
 			"self-commits; a tk-driven scope may ride sync_needed: dirty. Durability is\n" +
 			"tk sync (tk-driven) or a host commit (repo-driven).",
-		Args: usageArgs(cobra.MinimumNArgs(1)),
+		Args: minArgs("<text...>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runNoteAdd(app, c, args, scope, name, c.Flags().Changed("name"))
 		},
@@ -111,7 +111,7 @@ func newNoteSetCmd(app *App) *cobra.Command {
 			"cleaned absolute path. Never self-commits; a tk-driven scope may ride\n" +
 			"sync_needed: dirty. Durability is tk sync (tk-driven) or a host commit\n" +
 			"(repo-driven).",
-		Args: usageArgs(cobra.MinimumNArgs(1)),
+		Args: minArgs("<text...>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runNoteSet(app, c, args, scope, name, c.Flags().Changed("name"))
 		},
@@ -132,7 +132,7 @@ func newNoteEditCmd(app *App) *cobra.Command {
 			"empty notes/ is removed. Prints the cleaned absolute path even if the file is\n" +
 			"still missing. Never self-commits; durability is tk sync (tk-driven) or a\n" +
 			"host commit (repo-driven).",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runNoteEdit(app, c, scope, name, c.Flags().Changed("name"))
 		},
@@ -153,7 +153,7 @@ func newNoteDeleteCmd(app *App) *cobra.Command {
 			"directory is removed. Prints nothing. Never self-commits; a tk-driven scope\n" +
 			"may ride sync_needed: dirty. Durability is tk sync (tk-driven) or a host\n" +
 			"commit (repo-driven).",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runNoteDelete(app, c, scope, name, c.Flags().Changed("name"))
 		},
@@ -179,7 +179,7 @@ func newNoteUseCmd(app *App) *cobra.Command {
 			"one-shot override on the other note verbs and is not accepted here. Personal\n" +
 			"slugs (`grant`, `alice`) with `default` as the shared pad are a convention,\n" +
 			"not a CLI rule. --clear takes no slug.",
-		Args: usageArgs(cobra.MaximumNArgs(1)),
+		Args: maxArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runNoteUse(app, c, args, scope, clearUse)
 		},

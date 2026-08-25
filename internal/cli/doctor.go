@@ -35,7 +35,7 @@ func newDoctorCmd(app *App) *cobra.Command {
 			"order keys; both need a scope (ambient, TK_SCOPE, or --all) and refuse on a\n" +
 			"mid-rebase auto-commit git-root. There is no --scope flag on doctor. Rebuild the\n" +
 			"derived index with tk reindex.",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runDoctor(app, c, f)
 		},

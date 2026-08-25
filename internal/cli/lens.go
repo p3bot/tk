@@ -27,7 +27,7 @@ func newLensCmd(app *App) *cobra.Command {
 			"not yet used on any ticket in the scope still applies the lens and emits on\n" +
 			"stderr (soft; exit 0):\n" +
 			"  tag_unknown: \"<t>\" is not used on any ticket in this scope",
-		Args: usageArgs(cobra.ArbitraryArgs),
+		Args: anyArgs(),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runLens(app, c, args, scope, clearLens)
 		},

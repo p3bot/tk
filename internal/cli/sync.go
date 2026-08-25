@@ -27,7 +27,7 @@ func newSyncCmd(app *App) *cobra.Command {
 			"auto-commit git-root, each an independent unit whose failure never strands\n" +
 			"the others. A non-auto-commit scope is refused (ambient) or skipped (--all);\n" +
 			"an empty auto-commit set exits 0.",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runSync(app, c, scope, all)
 		},

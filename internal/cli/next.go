@@ -26,7 +26,7 @@ func newNextCmd(app *App) *cobra.Command {
 			"start-work write: on a tk-driven git-root with an upstream the board is refreshed\n" +
 			"first, then the first still-eligible candidate is set to in-progress, self-committed,\n" +
 			"and pushed. Without an upstream the claim stays a local write and self-commit.",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			if claim {
 				return runClaim(app, c, scope, noLens)

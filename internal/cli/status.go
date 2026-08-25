@@ -114,7 +114,7 @@ func newStatusCmd(app *App) *cobra.Command {
 			"depended-on scopes from the next closure.\n" +
 			"\n" +
 			"To change a ticket's status, use `tk mark <id> <status>`.",
-		Args: usageArgs(cobra.MaximumNArgs(1)),
+		Args: maxArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			key := ""
 			if len(args) == 1 {

@@ -117,7 +117,7 @@ func newMetaGetCmd(app *App) *cobra.Command {
 			"Immutable keys are readable. Unknown key is usage exit 2 listing known keys.\n" +
 			"Key aliases: tag → tags, link → links (wire keys stay plural).\n" +
 			"Pure read; never runs git.",
-		Args: usageArgs(cobra.RangeArgs(1, 2)),
+		Args: rangeArgs(1, 2, "<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			key := ""
 			if len(args) == 2 {
@@ -140,7 +140,7 @@ func newMetaSetCmd(app *App) *cobra.Command {
 			"(depends, related, tags/tag, links/link, custom strings) require meta add/rm.\n" +
 			"Value - reads stdin (optional final newline stripped). Embedded newlines are\n" +
 			"usage exit 2. Prints the absolute ticket path on success.",
-		Args: usageArgs(cobra.ExactArgs(3)),
+		Args: exactArgs("<id>", "<key>", "<value>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMetaMutate(app, c, metaOpSet, args[0], args[1], args[2], scope)
 		},
@@ -165,7 +165,7 @@ func newMetaAddCmd(app *App) *cobra.Command {
 			"  tag_new: \"<t>\" is new to this scope\n" +
 			"Re-add and already-used values stay quiet on that channel.\n" +
 			"Value - reads stdin. Prints the absolute ticket path on success.",
-		Args: usageArgs(cobra.ExactArgs(3)),
+		Args: exactArgs("<id>", "<key>", "<value>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMetaMutate(app, c, metaOpAdd, args[0], args[1], args[2], scope)
 		},
@@ -185,7 +185,7 @@ func newMetaRmCmd(app *App) *cobra.Command {
 			"and custom fields of type strings. Value is required — this removes one list\n" +
 			"entry, not the whole key. depends/related short ids normalise to full ids\n" +
 			"before compare. Value - reads stdin. Prints the absolute ticket path on success.",
-		Args: usageArgs(cobra.ExactArgs(3)),
+		Args: exactArgs("<id>", "<key>", "<value>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMetaMutate(app, c, metaOpRm, args[0], args[1], args[2], scope)
 		},

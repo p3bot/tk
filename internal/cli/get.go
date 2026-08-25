@@ -23,7 +23,7 @@ func newGetCmd(app *App) *cobra.Command {
 			"repair: a ticket in parse_error quarantine still succeeds (path or\n" +
 			"contents), riding parse_error on stderr. A duplicate id is refused.\n" +
 			"Pure read; never runs git.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runGet(app, c, args[0], scope, content)
 		},

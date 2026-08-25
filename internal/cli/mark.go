@@ -27,7 +27,7 @@ func newMarkCmd(app *App) *cobra.Command {
 			"claim: refresh that root, re-check the ticket is still todo, write, then push.\n" +
 			"A quarantined or duplicate-id ticket is refused with no write.\n" +
 			"For a scope pulse (counts, next, integrity), use `tk status`.",
-		Args: usageArgs(cobra.ExactArgs(2)),
+		Args: exactArgs("<id>", "<status>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMark(app, c, args[0], args[1], scope)
 		},

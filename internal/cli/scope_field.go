@@ -58,7 +58,7 @@ func newScopeFieldListCmd(app *App) *cobra.Command {
 			"required is true or false. values is a JSON array when the field has an enum\n" +
 			"(including empty []), or empty when no enum. Headerless. Empty fields: exits\n" +
 			"0 with empty stdout.",
-		Args: usageArgs(cobra.NoArgs),
+		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runScopeFieldList(app, c, scope)
 		},
@@ -85,7 +85,7 @@ func newScopeFieldSetCmd(app *App) *cobra.Command {
 			"types, and enum rules match schema validation. Prints the absolute tk.cue\n" +
 			"path on success. Auto-commit scopes self-commit the config change when a\n" +
 			"git-root exists.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<name>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runScopeFieldSet(app, c, args[0], typ, required, values, scope)
 		},
@@ -107,7 +107,7 @@ func newScopeFieldUnsetCmd(app *App) *cobra.Command {
 			"Does not open, rewrite, or strip keys from any ticket markdown — existing\n" +
 			"values stay on disk; meta no longer allowlists the key until re-declared.\n" +
 			"Prints the absolute tk.cue path on success.",
-		Args: usageArgs(cobra.ExactArgs(1)),
+		Args: exactArgs("<name>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runScopeFieldUnset(app, c, args[0], scope)
 		},

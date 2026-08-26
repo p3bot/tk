@@ -13,12 +13,12 @@ description: >-
 
 - A scope is a directory of tickets plus its tk.cue
 - tk create, get, next, and mark print a cleaned absolute path on stdout
-- Call create once only, work with the returned path
-- Use the path, do not create ticket files yourself
-- A ticket is one markdown file: YAML frontmatter fence, then a single ATX H1, then the body.
-- Edit the ticket document body under the H1
-- Preserve the YAML frontmatter, never overwrite the document
-- Do not hand-edit frontmatter keys and values
+- That path is live: call create once, work with it, do not create ticket files yourself
+- A ticket is one markdown file: YAML frontmatter fence, then a single ATX H1, then the body
+- Fence (opening `---` through closing `---`): sealed except via tk mutators; parse_error: in-place fence repair (see Recovery)
+- H1: live title
+- Body under the H1: edit in the file
+- Whole-file rewrite of a ticket path is corruption, not authoring
 - Paths and table data on stdout; tokens and warnings on stderr
 - tk writes take a per-scope flock; prefer `tk next --claim` so agents do not collide
 - todo → in-progress (`next --claim` or `mark`) on a tk-driven root with an upstream refreshes that root and pushes; never host-push
@@ -115,4 +115,4 @@ Integrity: `tk doctor` -> optional `--repair` | `--re-space-order` | `--all`
 
 Index: `tk reindex` when the index is wrong relative to files
 
-Recovery: `tk status` -> `tk doctor` -> fix residue -> `tk sync` if tk-driven
+Recovery: `tk status` -> `tk doctor` -> fix residue -> `tk sync` if tk-driven. parse_error: `tk get` path (exit 0); in-place fence repair; keep the path, id, and created; mutators refuse until parse succeeds; do not cancel+recreate unless a human asks.

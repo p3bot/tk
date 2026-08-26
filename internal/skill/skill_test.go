@@ -62,11 +62,29 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"scope field",
 		"mark does not enforce depends",
 		"tk reindex",
+		"sealed except via tk mutators",
+		"H1: live title",
+		"Body under the H1: edit in the file",
+		"Whole-file rewrite of a ticket path is corruption",
+		"parse_error:",
+		"mutators refuse until parse succeeds",
+		"do not cancel+recreate unless a human asks",
+		"never invent",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {
 			t.Errorf("skill missing required guidance %q", n)
 		}
+	}
+}
+
+func TestFileProtocolDoesNotTeachRejectedAuthoring(t *testing.T) {
+	text := skill.Text()
+	if strings.Contains(text, "tk body") {
+		t.Error("skill must not document a tk body verb")
+	}
+	if strings.Contains(text, "create --body") || strings.Contains(text, "[--body]") {
+		t.Error("skill must not document create --body")
 	}
 }
 

@@ -30,8 +30,9 @@ func newCreateCmd(app *App) *cobra.Command {
 			"the cleaned absolute path for the agent to fill the body. The default status is\n" +
 			"draft; an optional second positional sets any known status (a terminal status\n" +
 			"writes under archive/). Repeatable --tag T sets scaffold tags (deduped, first-seen\n" +
-			"order); omit --tag to leave tags absent. Each board-new tag emits on stderr after\n" +
-			"a successful write (soft; exit 0):\n" +
+			"order); omit --tag to leave tags absent. After a successful write, stderr includes:\n" +
+			"  <id> scaffolded with frontmatter\n" +
+			"Each board-new tag also emits (soft; exit 0):\n" +
 			"  tag_new: \"<t>\" is new to this scope\n" +
 			"Post-create tag edits remain meta add|rm. create reserves the id and never\n" +
 			"self-commits in any mode; git durability is the next tk sync (auto-commit) or\n" +
@@ -148,11 +149,16 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 	if err != nil {
 		return err
 	}
+	stderrln(c, scaffoldedWithFrontmatter(fullID))
 	stdoutln(c, out)
 	for _, tag := range tags {
 		noticeNewTag(c, tag, preWriteTags)
 	}
 	return nil
+}
+
+func scaffoldedWithFrontmatter(fullID string) string {
+	return fullID + " scaffolded with frontmatter"
 }
 
 // uniqueCreateTags rejects empty --tag values and dedupes preserving first-seen order.

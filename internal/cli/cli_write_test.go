@@ -65,14 +65,50 @@ func initGitScope(t *testing.T, app *App, name string, autoCommit bool) (string,
 
 func createID(t *testing.T, app *App, scope string, args ...string) (string, string) {
 	t.Helper()
-	out, _, err := run(t, app, append([]string{"create"}, append(args, "--scope", scope)...)...)
+	out, errOut, err := run(t, app, append([]string{"create"}, append(args, "--scope", scope)...)...)
 	if err != nil {
 		t.Fatalf("create %v: %v", args, err)
 	}
 	path := strings.TrimSpace(out)
-	base := filepath.Base(path)
-	fields := strings.SplitN(base, "-", 3)
-	return path, fields[0] + "-" + fields[1]
+	id := ticketIDFromCreatePath(path)
+	assertScaffoldedWithFrontmatter(t, id, out, errOut)
+	return path, id
+}
+
+func ticketIDFromCreatePath(path string) string {
+	fields := strings.SplitN(filepath.Base(path), "-", 3)
+	return fields[0] + "-" + fields[1]
+}
+
+func assertScaffoldedWithFrontmatter(t *testing.T, id, stdout, stderr string) {
+	t.Helper()
+	cue := scaffoldedWithFrontmatter(id)
+	if token.HasKnownPrefix(cue) {
+		t.Errorf("scaffold cue must stay token-less, HasKnownPrefix(%q)=true", cue)
+	}
+	if !strings.Contains(stderr, cue) {
+		t.Errorf("successful create stderr must contain %q, got %q", cue, stderr)
+	}
+	if strings.Contains(stderr, "note: "+cue) {
+		t.Errorf("scaffold cue must not have note: prefix, got %q", stderr)
+	}
+	path := strings.TrimSuffix(stdout, "\n")
+	if path == "" || strings.Contains(path, "\n") {
+		t.Errorf("create stdout must be a single path line, got %q", stdout)
+	}
+	if strings.Contains(stdout, cue) {
+		t.Errorf("scaffold cue must not ride stdout, got %q", stdout)
+	}
+}
+
+func assertNoScaffoldedWithFrontmatter(t *testing.T, stdout, stderr string) {
+	t.Helper()
+	if strings.Contains(stderr, "scaffolded with frontmatter") {
+		t.Errorf("failed create must not emit scaffold cue, got %q", stderr)
+	}
+	if strings.Contains(stdout, "scaffolded with frontmatter") {
+		t.Errorf("failed create must not emit scaffold cue on stdout, got %q", stdout)
+	}
 }
 
 func fmValue(t *testing.T, path, key string) string {
@@ -130,12 +166,16 @@ func TestCreateEmptyTitleAndUnknownStatus(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 
-	if _, _, err := run(t, app, "create", "   ", "--scope", "wc"); ExitCodeFromError(err) != exitUsage {
+	out, errOut, err := run(t, app, "create", "   ", "--scope", "wc")
+	if ExitCodeFromError(err) != exitUsage {
 		t.Errorf("empty title should exit 2, got %v", err)
 	}
-	if _, _, err := run(t, app, "create", "X", "nope", "--scope", "wc"); ExitCodeFromError(err) != exitUsage {
+	assertNoScaffoldedWithFrontmatter(t, out, errOut)
+	out, errOut, err = run(t, app, "create", "X", "nope", "--scope", "wc")
+	if ExitCodeFromError(err) != exitUsage {
 		t.Errorf("unknown status should exit 2, got %v", err)
 	}
+	assertNoScaffoldedWithFrontmatter(t, out, errOut)
 }
 
 func TestCreateTags(t *testing.T) {
@@ -160,9 +200,8 @@ func TestCreateTags(t *testing.T) {
 	if strings.Contains(errOut, token.TagNew) {
 		t.Errorf("no-tag create must not emit tag_new, got %q", errOut)
 	}
-	base := filepath.Base(path)
-	fields := strings.SplitN(base, "-", 3)
-	id := fields[0] + "-" + fields[1]
+	id := ticketIDFromCreatePath(path)
+	assertScaffoldedWithFrontmatter(t, id, out, errOut)
 	out, _, err = run(t, app, "meta", "get", id, "tags")
 	if err != nil {
 		t.Fatalf("meta get tags: %v", err)
@@ -204,6 +243,7 @@ func TestCreateTags(t *testing.T) {
 	if strings.Contains(errOut, token.TagUnknown) {
 		t.Errorf("create must use tag_new not tag_unknown, got %q", errOut)
 	}
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
 
 	// Dedupe preserves first-seen order; one notice per board-new string.
 	out, errOut, err = run(t, app, "create", "Dedupe",
@@ -222,18 +262,22 @@ func TestCreateTags(t *testing.T) {
 	if strings.Contains(errOut, token.FormatTagNew("alpha")) {
 		t.Errorf("alpha already on board from prior create; must stay quiet, got %q", errOut)
 	}
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
 
 	// Archive-present tag is in-use; quiet. Empty --tag is usage.
-	_, errOut, err = run(t, app, "create", "Archive tag", "--tag", "legacy", "--scope", "wc")
+	out, errOut, err = run(t, app, "create", "Archive tag", "--tag", "legacy", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("create with archive tag: %v", err)
 	}
 	if strings.Contains(errOut, token.TagNew) {
 		t.Errorf("archive-present tag must stay quiet, got %q", errOut)
 	}
-	if _, _, err := run(t, app, "create", "Empty tag", "--tag", "", "--scope", "wc"); ExitCodeFromError(err) != exitUsage {
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(strings.TrimSpace(out)), out, errOut)
+	out, errOut, err = run(t, app, "create", "Empty tag", "--tag", "", "--scope", "wc")
+	if ExitCodeFromError(err) != exitUsage {
 		t.Errorf("empty --tag should exit 2, got %v", err)
 	}
+	assertNoScaffoldedWithFrontmatter(t, out, errOut)
 
 	// Terminal status + --tag: scaffold under archive/ with tags on the model.
 	out, errOut, err = run(t, app, "create", "Already shipped", "done",
@@ -257,6 +301,7 @@ func TestCreateTags(t *testing.T) {
 	if !strings.Contains(errOut, "not git-durable") {
 		t.Errorf("terminal create should ride scaffold-durability note, got %q", errOut)
 	}
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
 }
 
 func TestCreateTagsNoSelfCommit(t *testing.T) {
@@ -285,6 +330,7 @@ func TestCreateTagsNoSelfCommit(t *testing.T) {
 	if !strings.Contains(errOut, token.FormatTagNew("backend")) {
 		t.Errorf("board-new tag missing notice, got %q", errOut)
 	}
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
 }
 
 func createTagsFromFile(t *testing.T, path string) []string {
@@ -336,6 +382,7 @@ func TestCreateTerminalUnderArchive(t *testing.T) {
 	if !strings.Contains(errOut, "not git-durable") {
 		t.Errorf("terminal create should ride a scaffold-durability note, got %q", errOut)
 	}
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
 }
 
 func TestMarkTerminalBoundaryMovePlainFiles(t *testing.T) {
@@ -731,12 +778,15 @@ func TestWriteVerbsRefuseUnparseableConfig(t *testing.T) {
 		{"next", "--claim", "--scope", "wc"},
 	}
 	for _, args := range checks {
-		_, errOut, err := run(t, app, args...)
+		out, errOut, err := run(t, app, args...)
 		if ExitCodeFromError(err) != exitFailure {
 			t.Errorf("%v under unparseable config should be non-zero, got %v", args, err)
 		}
 		if !strings.Contains(err.Error()+errOut, "config_unparseable:") {
 			t.Errorf("%v should ride config_unparseable, got err=%v stderr=%q", args, err, errOut)
+		}
+		if args[0] == "create" {
+			assertNoScaffoldedWithFrontmatter(t, out, errOut)
 		}
 	}
 
@@ -760,12 +810,15 @@ func TestWriteVerbsSurfaceIntegrityWarnings(t *testing.T) {
 		{"reorder", "wc-de34", "--first"},
 	}
 	for _, args := range cases {
-		_, errOut, err := run(t, app, args...)
+		out, errOut, err := run(t, app, args...)
 		if err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
 		if !strings.Contains(errOut, "parse_error:") {
 			t.Errorf("%v should ride the parse_error integrity warning, got stderr=%q", args, errOut)
+		}
+		if args[0] == "create" {
+			assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(strings.TrimSpace(out)), out, errOut)
 		}
 	}
 }
@@ -860,6 +913,7 @@ func TestAutoCommitTerminalCreateNeverCommits(t *testing.T) {
 	if !strings.Contains(errOut, "not git-durable") {
 		t.Errorf("terminal create should ride the scaffold-durability note, got %q", errOut)
 	}
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(strings.TrimSpace(out)), out, errOut)
 }
 
 func TestAutoCommitPlannedRidesSyncDisabled(t *testing.T) {
@@ -924,13 +978,14 @@ func TestTkDrivenCreateSyncNeededDirty(t *testing.T) {
 	app := newApp(t)
 	initGitScope(t, app, "wc", true)
 
-	_, errOut, err := run(t, app, "create", "Sync needed dirty", "--scope", "wc")
+	out, errOut, err := run(t, app, "create", "Sync needed dirty", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("tk-driven create: %v", err)
 	}
 	if !strings.Contains(errOut, "sync_needed: dirty") {
 		t.Errorf("tk-driven create should ride sync_needed: dirty, got %q", errOut)
 	}
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(strings.TrimSpace(out)), out, errOut)
 	if strings.Contains(errOut, "uncommitted:") {
 		t.Errorf("tk-driven must not overload uncommitted, got %q", errOut)
 	}
@@ -1009,9 +1064,11 @@ func TestMidRebaseRefusesWrites(t *testing.T) {
 	if _, _, err := run(t, app, "next", "--claim", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("mid-rebase next --claim should refuse non-zero, got %v", err)
 	}
-	if _, _, err := run(t, app, "create", "New", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
+	out, errOut, err := run(t, app, "create", "New", "--scope", "wc")
+	if ExitCodeFromError(err) != exitFailure {
 		t.Errorf("mid-rebase create should refuse non-zero, got %v", err)
 	}
+	assertNoScaffoldedWithFrontmatter(t, out, errOut)
 	if _, _, err := run(t, app, "meta", "set", id, "summary", "x"); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("mid-rebase meta set should refuse non-zero, got %v", err)
 	}

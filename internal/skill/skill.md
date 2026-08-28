@@ -30,7 +30,7 @@ description: >-
 ## Frontmatter
 
 - status → tk mark
-- order → tk reorder
+- order → tk order
 - id, created: never invent or "repair"
 - status_conflict: not via meta; see Recovery
 - summary / scalar customs → tk meta set
@@ -44,7 +44,7 @@ description: >-
 tk create <title> [status] [--scope S] [--tag T]...                 # Scaffold ticket (FM + H1); optional tags; print path
 tk get <id> [--content] [--scope S]                                 # Resolve id to path; --content prints full file
 tk mark <id> <status> [--scope S]                                   # Set status; done/cancelled move to archive/; soft depends_open: / required_missing: as applicable
-tk reorder <id> (--before <id> | --after <id> | --first | --last) [--scope S]  # Move board order key
+tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 
 tk list [status...] [--scope S] [--tag T]... [--all] [--no-lens]    # Board inventory (lens default; --tag hard filter, ignores lens)
@@ -95,9 +95,9 @@ Orient: `tk status` | `tk status [key]` (bare value) -> `tk list` -> `tk next` |
 
 Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk mark <id> <status>` -> Durability
 
-Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta/reorder/mark -> Durability
+Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk order / mark -> Durability
 
-Board: `tk list` -> `tk tags` | `tk reorder` | `tk lens` | `tk search`
+Board: `tk list` -> `tk tags` | `tk order` | `tk lens` | `tk search`
 
 Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:)
 
@@ -105,7 +105,7 @@ Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `ren
 
 Durability (`tk status mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
-  - Commands that self commit: mark, reorder, next --claim, meta set/add/rm, scope field set|unset, scope rename
+  - Commands that self commit: mark, order, next --claim, meta set/add/rm, scope field set|unset, scope rename
   - Create and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
 - repo-driven: host git commit/push (no `tk sync`)

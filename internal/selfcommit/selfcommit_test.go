@@ -157,7 +157,7 @@ func TestCommitNoOpOnIdenticalRewrite(t *testing.T) {
 
 	err := Commit(ctx, Request{
 		StateDir: state, GitRoot: repo,
-		Message: "tk: wc-ab2c reorder",
+		Message: "tk: wc-ab2c order",
 		NewPath: p,
 	})
 	if err != nil {

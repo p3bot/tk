@@ -13,7 +13,7 @@ registry, scope `tk.cue` evaluation, ambient resolution, and the full `tk scope`
 verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `field`); the machine-wide
 SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
 `status`, `get`, `meta`, `next`, `deps`, `search`, `query`, `lens`); the authoring
-hot path (`create`, `mark`, `reorder`, `edit`, `next --claim`) with local git
+hot path (`create`, `mark`, `order`, `edit`, `next --claim`) with local git
 self-commit, and claim-time refresh/push on a tk-driven root with an upstream;
 `tk doctor` with its integrity repairs and the closed token catalogue; P6a's
 frontmatter merge package (`internal/fmmerge`), the rebase driver

@@ -178,9 +178,9 @@ func (d *diagnoser) perRow(dir string, rows []*index.Ticket, schema *scopeconfig
 		switch {
 		case p.OrderKey == "":
 			// Missing vs explicit "" are indistinguishable after parse.
-			d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has a missing or empty order key (%s) — set a quoted order key, or run tk reorder", p.ID, p.Path)))
+			d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has a missing or empty order key (%s) — set a quoted order key, or run tk order", p.ID, p.Path)))
 		case !order.Valid(p.OrderKey):
-			d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has an invalid order key %q (%s) — outside the closed order grammar; set a quoted valid key, or run tk reorder", p.ID, p.OrderKey, p.Path)))
+			d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has an invalid order key %q (%s) — outside the closed order grammar; set a quoted valid key, or run tk order", p.ID, p.OrderKey, p.Path)))
 		case len(p.OrderKey) > repair.OrderLongThreshold:
 			d.add(token.Line(token.OrderLong, fmt.Sprintf("%s order key is %d chars (%s) — run tk doctor --re-space-order", p.ID, len(p.OrderKey), p.Path)))
 		}

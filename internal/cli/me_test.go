@@ -138,11 +138,11 @@ func TestMeAliasThroughVerbs(t *testing.T) {
 
 	dePath := filepath.Join(dir, "wc-de34-two.md")
 	abPath := filepath.Join(dir, "wc-ab2c-one.md")
-	if _, _, err := run(t, app, "reorder", "wc-de34", "--before", "me", "--scope", "wc"); err != nil {
-		t.Fatalf("reorder --before me: %v", err)
+	if _, _, err := run(t, app, "order", "wc-de34", "--before", "me", "--scope", "wc"); err != nil {
+		t.Fatalf("order --before me: %v", err)
 	}
 	if got, neighbour := fmValue(t, dePath, "order"), fmValue(t, abPath, "order"); got == "" || got >= neighbour {
-		t.Errorf("reorder --before me: subject order %q should sort before neighbour %q", got, neighbour)
+		t.Errorf("order --before me: subject order %q should sort before neighbour %q", got, neighbour)
 	}
 }
 

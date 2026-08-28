@@ -682,8 +682,8 @@ func TestMetaWrongClassAndImmutable(t *testing.T) {
 		t.Errorf("status immutable should point at tk mark: %v", err)
 	}
 	_, _, err = run(t, app, "meta", "set", "wc-ab2c", "order", "a1")
-	if !strings.Contains(err.Error(), "tk reorder") {
-		t.Errorf("order immutable should point at tk reorder: %v", err)
+	if !strings.Contains(err.Error(), "tk order") {
+		t.Errorf("order immutable should point at tk order: %v", err)
 	}
 }
 

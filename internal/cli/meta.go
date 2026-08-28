@@ -74,7 +74,7 @@ func newMetaCmd(app *App) *cobra.Command {
 			"the value (multi-value: one entry per line). A trailing value of - reads the\n" +
 			"value from stdin (one optional final newline stripped).\n\n" +
 			"meta set refuses multi-value keys; meta add/rm refuse scalars. id, status, order,\n" +
-			"created, and status_conflict are immutable via meta (use mark / reorder where\n" +
+			"created, and status_conflict are immutable via meta (use mark / order where\n" +
 			"they apply). depends add enforces write-time integrity: self → depends_self:;\n" +
 			"same-scope missing → depends_dangling:; cross-scope unregistered/absent →\n" +
 			"depends_unresolvable: (hard refuse, no write). related is soft (no existence\n" +
@@ -534,7 +534,7 @@ func immutableMetaKeyError(key string) error {
 	case frontmatter.KeyStatus:
 		return usageErrorf("key %q is immutable via meta; use tk mark", key)
 	case frontmatter.KeyOrder:
-		return usageErrorf("key %q is immutable via meta; use tk reorder", key)
+		return usageErrorf("key %q is immutable via meta; use tk order", key)
 	default:
 		return usageErrorf("key %q is immutable via meta", key)
 	}

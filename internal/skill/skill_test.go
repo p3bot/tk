@@ -53,6 +53,7 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"tk sync",
 		"status_conflict",
 		"next --claim",
+		"tk order",
 		"never host push",
 		"stdout",
 		"stderr",

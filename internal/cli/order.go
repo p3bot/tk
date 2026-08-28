@@ -9,14 +9,14 @@ import (
 	"github.com/p3bot/tk/internal/order"
 )
 
-type reorderDest struct {
+type orderDest struct {
 	before string
 	after  string
 	first  bool
 	last   bool
 }
 
-func (d reorderDest) count() int {
+func (d orderDest) count() int {
 	n := 0
 	if d.before != "" {
 		n++
@@ -33,13 +33,13 @@ func (d reorderDest) count() int {
 	return n
 }
 
-func newReorderCmd(app *App) *cobra.Command {
+func newOrderCmd(app *App) *cobra.Command {
 	var (
 		scope string
-		dest  reorderDest
+		dest  orderDest
 	)
 	cmd := &cobra.Command{
-		Use:   "reorder <id> (--before <id> | --after <id> | --first | --last) [--scope S]",
+		Use:   "order <id> (--before <id> | --after <id> | --first | --last) [--scope S]",
 		Short: "Rewrite a ticket's order key to move it in the board",
 		Long: "Move a ticket by writing a new order key strictly between its target\n" +
 			"neighbours — a single-file write that never renumbers a band. --first/--last\n" +
@@ -49,7 +49,7 @@ func newReorderCmd(app *App) *cobra.Command {
 			"self-commits the change when a git-root exists.",
 		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
-			return runReorder(app, c, args[0], dest, scope)
+			return runOrder(app, c, args[0], dest, scope)
 		},
 	}
 	cmd.Flags().StringVar(&dest.before, "before", "", "place immediately before this neighbour id")
@@ -60,9 +60,9 @@ func newReorderCmd(app *App) *cobra.Command {
 	return cmd
 }
 
-func runReorder(app *App, c *cobra.Command, idArg string, dest reorderDest, scopeFlag string) error {
+func runOrder(app *App, c *cobra.Command, idArg string, dest orderDest, scopeFlag string) error {
 	if dest.count() != 1 {
-		return usageErrorf("reorder needs exactly one of --before, --after, --first, --last")
+		return usageErrorf("order needs exactly one of --before, --after, --first, --last")
 	}
 	form, ok := parseIDArg(idArg)
 	if !ok {
@@ -100,7 +100,7 @@ func runReorder(app *App, c *cobra.Command, idArg string, dest reorderDest, scop
 	if err != nil {
 		return err
 	}
-	left, right, err := e.reorderBounds(scope, subject, rows, dest)
+	left, right, err := e.orderBounds(scope, subject, rows, dest)
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func runReorder(app *App, c *cobra.Command, idArg string, dest reorderDest, scop
 		return err
 	}
 
-	message := fmt.Sprintf("tk: %s reorder", subject.ID)
+	message := fmt.Sprintf("tk: %s order", subject.ID)
 	if err := e.completeStateDurability(c.Context(), c, sess.Scope, sess.Dir, sess.AutoCommit, message, subject.Path, "", sess.Root, sess.HasRoot); err != nil {
 		return err
 	}
@@ -134,8 +134,8 @@ func runReorder(app *App, c *cobra.Command, idArg string, dest reorderDest, scop
 	return nil
 }
 
-// reorderBounds: open bound is ""; subject is excluded from the ordered set.
-func (e *engine) reorderBounds(scope string, subject *index.Ticket, rows []*index.Ticket, dest reorderDest) (left, right string, err error) {
+// open bound is ""; subject is excluded from the ordered set.
+func (e *engine) orderBounds(scope string, subject *index.Ticket, rows []*index.Ticket, dest orderDest) (left, right string, err error) {
 	others := make([]*index.Ticket, 0, len(rows))
 	for _, p := range rows {
 		if p.Path == subject.Path || p.ParseError || !order.Valid(p.OrderKey) {
@@ -173,7 +173,7 @@ func (e *engine) neighbourBounds(scope string, subject *index.Ticket, others []*
 		return "", "", err
 	}
 	if neighbour.Path == subject.Path {
-		return "", "", usageErrorf("cannot reorder %q relative to itself", subject.ID)
+		return "", "", usageErrorf("cannot order %q relative to itself", subject.ID)
 	}
 	if neighbour.ParseError || !order.Valid(neighbour.OrderKey) {
 		return "", "", fmt.Errorf("neighbour %q has no valid order", neighbourArg)

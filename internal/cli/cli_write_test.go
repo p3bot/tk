@@ -646,7 +646,7 @@ func TestMarkOpenDependsDoesNotAffectNextGate(t *testing.T) {
 	}
 }
 
-func TestReorderPlacements(t *testing.T) {
+func TestOrderPlacements(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 	pA, idA := createID(t, app, "wc", "A")
@@ -654,36 +654,36 @@ func TestReorderPlacements(t *testing.T) {
 	pC, idC := createID(t, app, "wc", "C")
 
 	// --first: C sorts before everyone.
-	if _, _, err := run(t, app, "reorder", idC, "--first"); err != nil {
-		t.Fatalf("reorder --first: %v", err)
+	if _, _, err := run(t, app, "order", idC, "--first"); err != nil {
+		t.Fatalf("order --first: %v", err)
 	}
 	if fmValue(t, pC, "order") >= fmValue(t, pA, "order") {
 		t.Errorf("--first should place C before A")
 	}
 	// --last: A sorts after everyone.
-	if _, _, err := run(t, app, "reorder", idA, "--last"); err != nil {
-		t.Fatalf("reorder --last: %v", err)
+	if _, _, err := run(t, app, "order", idA, "--last"); err != nil {
+		t.Fatalf("order --last: %v", err)
 	}
 	if fmValue(t, pA, "order") <= fmValue(t, pB, "order") {
 		t.Errorf("--last should place A after B")
 	}
 	// --before C: B lands before C.
-	if _, _, err := run(t, app, "reorder", idB, "--before", idC); err != nil {
-		t.Fatalf("reorder --before: %v", err)
+	if _, _, err := run(t, app, "order", idB, "--before", idC); err != nil {
+		t.Fatalf("order --before: %v", err)
 	}
 	if fmValue(t, pB, "order") >= fmValue(t, pC, "order") {
 		t.Errorf("--before C should place B before C")
 	}
 	// --after C: B lands after C (and after A, the current back).
-	if _, _, err := run(t, app, "reorder", idB, "--after", idC); err != nil {
-		t.Fatalf("reorder --after: %v", err)
+	if _, _, err := run(t, app, "order", idB, "--after", idC); err != nil {
+		t.Fatalf("order --after: %v", err)
 	}
 	if fmValue(t, pB, "order") <= fmValue(t, pC, "order") {
 		t.Errorf("--after C should place B after C")
 	}
 }
 
-func TestReorderArgErrors(t *testing.T) {
+func TestOrderArgErrors(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 	_, id := createID(t, app, "wc", "A")
@@ -693,10 +693,10 @@ func TestReorderArgErrors(t *testing.T) {
 		args []string
 		want int
 	}{
-		{"no destination", []string{"reorder", id}, exitUsage},
-		{"two destinations", []string{"reorder", id, "--first", "--last"}, exitUsage},
-		{"malformed neighbour", []string{"reorder", id, "--before", "bad!"}, exitUsage},
-		{"unknown neighbour", []string{"reorder", id, "--before", "wc-zzzz"}, exitFailure},
+		{"no destination", []string{"order", id}, exitUsage},
+		{"two destinations", []string{"order", id, "--first", "--last"}, exitUsage},
+		{"malformed neighbour", []string{"order", id, "--before", "bad!"}, exitUsage},
+		{"unknown neighbour", []string{"order", id, "--before", "wc-zzzz"}, exitFailure},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -774,7 +774,7 @@ func TestWriteVerbsRefuseUnparseableConfig(t *testing.T) {
 	checks := [][]string{
 		{"create", "New", "--scope", "wc"},
 		{"mark", id, "done"},
-		{"reorder", id, "--first"},
+		{"order", id, "--first"},
 		{"next", "--claim", "--scope", "wc"},
 	}
 	for _, args := range checks {
@@ -807,7 +807,7 @@ func TestWriteVerbsSurfaceIntegrityWarnings(t *testing.T) {
 	cases := [][]string{
 		{"create", "New thing", "--scope", "wc"},
 		{"mark", "wc-de34", "review"},
-		{"reorder", "wc-de34", "--first"},
+		{"order", "wc-de34", "--first"},
 	}
 	for _, args := range cases {
 		out, errOut, err := run(t, app, args...)

@@ -87,6 +87,19 @@ func TestDefaultListNames(t *testing.T) {
 	}
 }
 
+func TestNonTerminalNames(t *testing.T) {
+	got := NonTerminalNames(customCategories())
+	want := []string{Draft, Backlog, Todo, InProgress, Review, Blocked, "icebox", "triaged"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("NonTerminalNames = %v, want %v", got, want)
+	}
+	for _, n := range got {
+		if IsTerminal(n, customCategories()) {
+			t.Errorf("NonTerminalNames %q is IsTerminal", n)
+		}
+	}
+}
+
 func TestTerminalNames(t *testing.T) {
 	got := TerminalNames(customCategories())
 	want := map[string]bool{Done: true, Cancelled: true, "shipped": true, "wontfix": true}

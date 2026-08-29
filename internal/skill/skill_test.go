@@ -71,6 +71,7 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"mutators refuse until parse succeeds",
 		"do not cancel+recreate unless a human asks",
 		"never invent",
+		"--open",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {

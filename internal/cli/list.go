@@ -17,10 +17,11 @@ func newListCmd(app *App) *cobra.Command {
 		scope  string
 		tags   []string
 		all    bool
+		open   bool
 		noLens bool
 	)
 	cmd := &cobra.Command{
-		Use:   "list [status...] [--scope S] [--tag T]... [--all] [--no-lens]",
+		Use:   "list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]",
 		Short: "Board / inventory for one scope as parse-stable TSV",
 		Long: "Print one scope's tickets, sorted (order, id), one TSV line each:\n" +
 			"  <full-id>\\t<status>\\t<title>\\t<waiting-on>\n" +
@@ -34,17 +35,20 @@ func newListCmd(app *App) *cobra.Command {
 			"--no-lens. A --tag value not used on any ticket still filters (possibly empty)\n" +
 			"and emits on stderr (soft; exit 0):\n" +
 			"  tag_unknown: \"<t>\" is not used on any ticket in this scope\n" +
-			"--all expands the unfiltered board to every non-quarantined status, including\n" +
-			"archive/. Lens echo and integrity tokens ride stderr only, never the TSV.\n" +
-			"Pure read.",
+			"--open expands the unfiltered board to every non-terminal status (active plus\n" +
+			"backlog), including a non-terminal file under archive/. --all expands further\n" +
+			"to every non-quarantined status, including terminal rows under archive/.\n" +
+			"--all and --open together are a usage error. Lens echo and integrity tokens\n" +
+			"ride stderr only, never the TSV. Pure read.",
 		Args: anyArgs(),
 		RunE: func(c *cobra.Command, args []string) error {
-			return runList(app, c, listParams{statuses: args, scope: scope, tags: tags, all: all, noLens: noLens})
+			return runList(app, c, listParams{statuses: args, scope: scope, tags: tags, all: all, open: open, noLens: noLens})
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope to list (defaults to ambient; wins over ambient)")
 	cmd.Flags().StringArrayVar(&tags, "tag", nil, "match any of these tags (repeatable; OR; hard filter; ignores lens)")
-	cmd.Flags().BoolVar(&all, "all", false, "with no status filter: include done/backlog and archive/")
+	cmd.Flags().BoolVar(&all, "all", false, "with no status filter: every non-quarantined status, including terminal and archive/")
+	cmd.Flags().BoolVar(&open, "open", false, "with no status filter: every non-terminal status (includes backlog)")
 	cmd.Flags().BoolVar(&noLens, "no-lens", false, "ignore the active lens for this invocation")
 	return cmd
 }
@@ -54,10 +58,15 @@ type listParams struct {
 	scope    string
 	tags     []string
 	all      bool
+	open     bool
 	noLens   bool
 }
 
 func runList(app *App, c *cobra.Command, p listParams) error {
+	if p.all && p.open {
+		return usageErrorf("--all and --open are mutually exclusive")
+	}
+
 	e, err := app.openEngine(c)
 	if err != nil {
 		return err
@@ -99,10 +108,15 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 	// --tag is a hard membership filter and supersedes the lens for this invocation.
 	applyLens := !p.noLens && len(lens) > 0 && len(p.tags) == 0
 
-	filter := index.BoardFilter{Scope: scope, All: p.all, Tags: p.tags}
-	if len(statusFilter) > 0 {
+	filter := index.BoardFilter{Scope: scope, Tags: p.tags}
+	switch {
+	case len(statusFilter) > 0:
 		filter.Statuses = statusNames(statusFilter)
-	} else if !p.all {
+	case p.all:
+		filter.All = true
+	case p.open:
+		filter.Statuses = status.NonTerminalNames(schema.CustomStatuses())
+	default:
 		filter.DefaultStatuses = status.DefaultListNames(schema.CustomStatuses())
 	}
 	if applyLens {

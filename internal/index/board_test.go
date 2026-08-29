@@ -169,6 +169,12 @@ func TestBoardTicketsVisibility(t *testing.T) {
 			return p
 		}(),
 		proj("wc", "ag28", "backlog", "a6"),
+		func() *Ticket {
+			p := proj("wc", "ah29", "todo", "a7")
+			p.Archived = true
+			p.Path = filepath.Join("/tmp", "wc", "archive", "ah29.md")
+			return p
+		}(),
 	}
 	seed[2].Path = filepath.Join("/tmp", "wc", "ac24.md") // done at root
 	for _, p := range seed {
@@ -201,8 +207,13 @@ func TestBoardTicketsVisibility(t *testing.T) {
 		t.Fatalf("zero-value DefaultStatuses = %v, want builtin default board %v", ids(zero), ids(got))
 	}
 
+	got, _ = db.BoardTickets(BoardFilter{Scope: "wc", Statuses: status.NonTerminalNames(nil)})
+	if !slices.Equal(ids(got), []string{"wc-aa22", "wc-ab23", "wc-ae26", "wc-ag28", "wc-ah29"}) {
+		t.Fatalf("--open board = %v", ids(got))
+	}
+
 	got, _ = db.BoardTickets(BoardFilter{Scope: "wc", All: true})
-	if !slices.Equal(ids(got), []string{"wc-aa22", "wc-ab23", "wc-ac24", "wc-ad25", "wc-ae26", "wc-ag28"}) {
+	if !slices.Equal(ids(got), []string{"wc-aa22", "wc-ab23", "wc-ac24", "wc-ad25", "wc-ae26", "wc-ag28", "wc-ah29"}) {
 		t.Fatalf("--all board = %v", ids(got))
 	}
 
@@ -267,6 +278,21 @@ func TestBoardTicketsCustomDefaultStatuses(t *testing.T) {
 	}
 	if !slices.Equal(ids, []string{"wc-aa22", "wc-ab23"}) {
 		t.Fatalf("custom default board = %v, want [wc-aa22 wc-ab23] (todo + active custom; not backlog/done custom)", ids)
+	}
+
+	got, err = db.BoardTickets(BoardFilter{
+		Scope:    "wc",
+		Statuses: status.NonTerminalNames(custom),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids = make([]string, len(got))
+	for i, p := range got {
+		ids[i] = p.ID
+	}
+	if !slices.Equal(ids, []string{"wc-aa22", "wc-ab23", "wc-ac24"}) {
+		t.Fatalf("custom --open board = %v, want [wc-aa22 wc-ab23 wc-ac24] (todo + active + backlog custom; not done custom)", ids)
 	}
 
 	got, err = db.BoardTickets(BoardFilter{Scope: "wc"})

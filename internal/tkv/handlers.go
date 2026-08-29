@@ -230,8 +230,10 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	switch {
 	case backlog && archived:
 		filter.All = true
-	case backlog || archived:
-		filter.Statuses = boardStatusNames(custom, backlog, archived)
+	case backlog:
+		filter.Statuses = status.NonTerminalNames(custom)
+	case archived:
+		filter.Statuses = append(status.DefaultListNames(custom), status.TerminalNames(custom)...)
 	default:
 		filter.DefaultStatuses = status.DefaultListNames(custom)
 	}
@@ -390,17 +392,6 @@ func kanbanColumns(custom map[string]status.Category, backlog, archived bool, pr
 		}
 	}
 	return cols
-}
-
-func boardStatusNames(custom map[string]status.Category, backlog, archived bool) []string {
-	out := append([]string{}, status.DefaultListNames(custom)...)
-	if backlog {
-		out = append(out, categoryNames(custom, status.CategoryBacklog)...)
-	}
-	if archived {
-		out = append(out, status.TerminalNames(custom)...)
-	}
-	return out
 }
 
 func categoryNames(custom map[string]status.Category, cat status.Category) []string {

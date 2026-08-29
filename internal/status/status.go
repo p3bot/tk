@@ -96,7 +96,7 @@ func IsNextEligible(name string) bool {
 	return ok && b.nextEligible
 }
 
-// InDefaultList reports whether a status appears in the default list (no --all).
+// InDefaultList reports whether a status appears in the default list (no --all/--open).
 // Customs: active shown, backlog and done hidden. Unknown is not shown.
 func InDefaultList(name string, custom map[string]Category) bool {
 	if b, ok := builtins[name]; ok {
@@ -111,33 +111,30 @@ func InDefaultList(name string, custom map[string]Category) bool {
 // DefaultListNames returns built-in then custom status names that appear in the
 // default list. Pass the set into SQL IN filters rather than denormalising category.
 func DefaultListNames(custom map[string]Category) []string {
-	out := make([]string, 0, 8+len(custom))
-	for _, name := range builtinOrder {
-		if builtins[name].inDefaultList {
-			out = append(out, name)
-		}
-	}
-	var extra []string
-	for name, cat := range custom {
-		if cat == CategoryActive {
-			extra = append(extra, name)
-		}
-	}
-	sort.Strings(extra)
-	return append(out, extra...)
+	return namesWhere(custom, func(c Category) bool { return c == CategoryActive })
+}
+
+// NonTerminalNames returns built-in then custom status names that are not
+// category done (the --open board: active plus backlog). Unknown is omitted.
+func NonTerminalNames(custom map[string]Category) []string {
+	return namesWhere(custom, func(c Category) bool { return c != CategoryDone })
 }
 
 // TerminalNames returns built-in then custom status names in category done.
 func TerminalNames(custom map[string]Category) []string {
-	out := make([]string, 0, 2+len(custom))
+	return namesWhere(custom, func(c Category) bool { return c == CategoryDone })
+}
+
+func namesWhere(custom map[string]Category, keep func(Category) bool) []string {
+	out := make([]string, 0, 8+len(custom))
 	for _, name := range builtinOrder {
-		if builtins[name].category == CategoryDone {
+		if keep(builtins[name].category) {
 			out = append(out, name)
 		}
 	}
 	var extra []string
 	for name, cat := range custom {
-		if cat == CategoryDone {
+		if keep(cat) {
 			extra = append(extra, name)
 		}
 	}

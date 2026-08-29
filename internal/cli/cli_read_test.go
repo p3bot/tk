@@ -49,6 +49,8 @@ func TestListBoardContract(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "network", "todo", "a0", "# Network redesign\n\nbody", false, "")
 	addTicket(t, dir, "wc-de34", "auth", "todo", "a1", "# Auth flow\n", false, "depends: [wc-ab2c]\n")
+	addTicket(t, dir, "wc-jk89", "later", "backlog", "a15", "# Later\n", false, "")
+	addTicket(t, dir, "wc-np23", "stray", "todo", "a16", "# Stray\n", true, "")
 	addTicket(t, dir, "wc-gh56", "old", "done", "a2", "# Old work\n", true, "")
 
 	out, _, err := run(t, app, "list", "--scope", "wc")
@@ -71,9 +73,46 @@ func TestListBoardContract(t *testing.T) {
 		}
 	}
 
+	out, _, err = run(t, app, "list", "--scope", "wc", "--open")
+	if err != nil {
+		t.Fatalf("list --open: %v", err)
+	}
+	openRows := lines(out)
+	if len(openRows) != 4 {
+		t.Errorf("--open should add backlog and archived non-terminal, exclude done, got %q", out)
+	}
+	var sawBacklog, sawStray, sawDone bool
+	for _, r := range openRows {
+		if strings.HasPrefix(r, "wc-jk89\t") {
+			sawBacklog = true
+		}
+		if strings.HasPrefix(r, "wc-np23\t") {
+			sawStray = true
+		}
+		if strings.HasPrefix(r, "wc-gh56\t") {
+			sawDone = true
+		}
+	}
+	if !sawBacklog || !sawStray || sawDone {
+		t.Errorf("--open rows missing backlog/archive residue or included done: %q", out)
+	}
+
 	out, _, _ = run(t, app, "list", "--scope", "wc", "--all")
-	if len(lines(out)) != 3 {
+	if len(lines(out)) != 5 {
 		t.Errorf("--all should include archived done, got %q", out)
+	}
+
+	_, _, err = run(t, app, "list", "--scope", "wc", "--all", "--open")
+	if got := ExitCodeFromError(err); got != exitUsage {
+		t.Errorf("--all --open exit = %d want %d err=%v", got, exitUsage, err)
+	}
+
+	out, _, err = run(t, app, "list", "--scope", "wc", "--open", "done")
+	if err != nil {
+		t.Fatalf("list done --open: %v", err)
+	}
+	if len(lines(out)) != 1 || !strings.HasPrefix(lines(out)[0], "wc-gh56\t") {
+		t.Errorf("status positionals must win over --open, got %q", out)
 	}
 
 	out, _, err = run(t, app, "list", "--scope", "wc", "done")

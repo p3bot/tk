@@ -82,7 +82,7 @@ func ticketIDFromCreatePath(path string) string {
 
 func assertScaffoldedWithFrontmatter(t *testing.T, id, stdout, stderr string) {
 	t.Helper()
-	cue := scaffoldedWithFrontmatter(id)
+	cue := id + " scaffolded with frontmatter"
 	if token.HasKnownPrefix(cue) {
 		t.Errorf("scaffold cue must stay token-less, HasKnownPrefix(%q)=true", cue)
 	}

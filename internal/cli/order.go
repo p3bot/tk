@@ -5,8 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/p3bot/tk/internal/index"
-	"github.com/p3bot/tk/internal/order"
+	"github.com/p3bot/tk/internal/writeengine"
 )
 
 type orderDest struct {
@@ -83,122 +82,40 @@ func runOrder(app *App, c *cobra.Command, idArg string, dest orderDest, scopeFla
 	if !registered {
 		return fmt.Errorf("unknown ticket id %q: scope %q is not registered here", idArg, scope)
 	}
-	dir := entry.Dir
-
-	sess, err := e.beginWrite(c, scope, dir)
-	if err != nil {
-		return err
-	}
-	defer sess.Release()
-
-	subject, err := e.resolveWriteRow(scope, idArg, form)
+	lu, err := e.writeLookup(scope, idArg, form)
 	if err != nil {
 		return err
 	}
 
-	rows, err := e.db.ScopeTickets(scope)
-	if err != nil {
-		return err
-	}
-	left, right, err := e.orderBounds(scope, subject, rows, dest)
-	if err != nil {
-		return err
-	}
-	newKey, err := order.KeyBetween(left, right)
-	if err != nil {
-		return fmt.Errorf("no legal order between neighbours for %s (%w) — re-space with tk doctor", subject.ID, err)
-	}
-
-	m, body, err := readTicketFile(subject.Path)
-	if err != nil {
-		return err
-	}
-	m.Order = newKey
-	if err := writeTicketFile(subject.Path, m, body); err != nil {
-		return err
-	}
-	if err := e.rec.SyncPaths(scope, writtenPaths(subject.Path, "")); err != nil {
-		return err
-	}
-
-	message := fmt.Sprintf("tk: %s order", subject.ID)
-	if err := e.completeStateDurability(c.Context(), c, sess.Scope, sess.Dir, sess.AutoCommit, message, subject.Path, "", sess.Root, sess.HasRoot); err != nil {
-		return err
-	}
-
-	out, err := absPath(subject.Path)
-	if err != nil {
-		return err
-	}
-	stdoutln(c, out)
-	return nil
-}
-
-// open bound is ""; subject is excluded from the ordered set.
-func (e *engine) orderBounds(scope string, subject *index.Ticket, rows []*index.Ticket, dest orderDest) (left, right string, err error) {
-	others := make([]*index.Ticket, 0, len(rows))
-	for _, p := range rows {
-		if p.Path == subject.Path || p.ParseError || !order.Valid(p.OrderKey) {
-			continue
+	wd := writeengine.Dest{First: dest.first, Last: dest.last}
+	if dest.before != "" {
+		nform, ok := parseIDArg(dest.before)
+		if !ok {
+			return usageErrorf("%q is not a valid ticket id", dest.before)
 		}
-		others = append(others, p)
-	}
-	index.SortTickets(others)
-
-	switch {
-	case dest.first:
-		if len(others) == 0 {
-			return "", "", nil
+		nlu, err := e.writeLookup(scope, dest.before, nform)
+		if err != nil {
+			return err
 		}
-		return "", others[0].OrderKey, nil
-	case dest.last:
-		if len(others) == 0 {
-			return "", "", nil
+		wd.Before = nlu
+	}
+	if dest.after != "" {
+		nform, ok := parseIDArg(dest.after)
+		if !ok {
+			return usageErrorf("%q is not a valid ticket id", dest.after)
 		}
-		return others[len(others)-1].OrderKey, "", nil
-	case dest.before != "":
-		return e.neighbourBounds(scope, subject, others, dest.before, true)
-	default:
-		return e.neighbourBounds(scope, subject, others, dest.after, false)
-	}
-}
-
-func (e *engine) neighbourBounds(scope string, subject *index.Ticket, others []*index.Ticket, neighbourArg string, before bool) (left, right string, err error) {
-	form, ok := parseIDArg(neighbourArg)
-	if !ok {
-		return "", "", usageErrorf("%q is not a valid ticket id", neighbourArg)
-	}
-	neighbour, err := e.resolveSingleRow(scope, neighbourArg, form, "neighbour")
-	if err != nil {
-		return "", "", err
-	}
-	if neighbour.Path == subject.Path {
-		return "", "", usageErrorf("cannot order %q relative to itself", subject.ID)
-	}
-	if neighbour.ParseError || !order.Valid(neighbour.OrderKey) {
-		return "", "", fmt.Errorf("neighbour %q has no valid order", neighbourArg)
+		nlu, err := e.writeLookup(scope, dest.after, nform)
+		if err != nil {
+			return err
+		}
+		wd.After = nlu
 	}
 
-	idx := -1
-	for i, p := range others {
-		if p.Path == neighbour.Path {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return "", "", fmt.Errorf("neighbour %q not found in scope order", neighbourArg)
-	}
-	if before {
-		l := ""
-		if idx > 0 {
-			l = others[idx-1].OrderKey
-		}
-		return l, neighbour.OrderKey, nil
-	}
-	r := ""
-	if idx < len(others)-1 {
-		r = others[idx+1].OrderKey
-	}
-	return neighbour.OrderKey, r, nil
+	res, err := writeengine.Order(e.writeDeps(c.Context()), writeengine.OrderInput{
+		Scope:  scope,
+		Dir:    entry.Dir,
+		Lookup: lu,
+		Dest:   wd,
+	})
+	return emitWriteResult(c, res, err)
 }

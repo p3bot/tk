@@ -100,7 +100,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `scopefile` — scope-dir allowlist classification, dirty counting, and per-scope flock acquire
   - `integrity` — doctor diagnose report and shared repair orchestration (acquiring + locks-held core)
   - `syncengine` — per-root snapshot/integrate/integrity/push; `tk sync` and claim
-  - `writeengine` — cobra-free ticket-file write session, mark, and claim orchestration
+  - `writeengine` — cobra-free ticket-file write session, create, meta, order, mark, and claim orchestration
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
   - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, mark/claim, chrome lens)
   - `cli` — Cobra command tree, exit codes, signals, colour/TTY, path hand-off

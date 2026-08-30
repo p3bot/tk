@@ -327,6 +327,10 @@ func mapWriteError(res writeengine.Result, err error) error {
 	if errors.As(err, &unk) {
 		return errBadRequest(unk.Error())
 	}
+	var use *writeengine.UsageError
+	if errors.As(err, &use) {
+		return errBadRequest(use.Error())
+	}
 	var empty *depgate.EmptyQueueError
 	if errors.As(err, &empty) {
 		return errConflict(empty.Error())
@@ -354,6 +358,26 @@ func mapWriteError(res writeengine.Result, err error) error {
 	var miss *writeengine.UnknownTicketError
 	if errors.As(err, &miss) {
 		return errNotFound(miss.Error())
+	}
+	var self *writeengine.DependsSelfError
+	if errors.As(err, &self) {
+		return errConflict(self.Error())
+	}
+	var dang *writeengine.DependsDanglingError
+	if errors.As(err, &dang) {
+		return errConflict(dang.Error())
+	}
+	var unres *writeengine.DependsUnresolvableError
+	if errors.As(err, &unres) {
+		return errConflict(unres.Error())
+	}
+	var neigh *writeengine.NeighbourOrderError
+	if errors.As(err, &neigh) {
+		return errConflict(neigh.Error())
+	}
+	var nlo *writeengine.NoLegalOrderError
+	if errors.As(err, &nlo) {
+		return errConflict(nlo.Error())
 	}
 	if errors.Is(err, writeengine.ErrRefreshFailed) {
 		return errUnavailable(writeengine.ErrRefreshFailed.Error())

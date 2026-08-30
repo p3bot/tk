@@ -10,19 +10,6 @@ import (
 	"github.com/p3bot/tk/internal/writeengine"
 )
 
-func (e *engine) beginWrite(c *cobra.Command, scope, dir string) (*writeengine.Session, error) {
-	sess, err := writeengine.Begin(e.writeDeps(c.Context()), scope, dir)
-	if err != nil {
-		return nil, err
-	}
-	if err := sess.CheckMidRebase(); err != nil {
-		sess.Release()
-		return nil, err
-	}
-	e.printWarnings(c, sess.Warnings())
-	return sess, nil
-}
-
 // emitWriteResult maps a writeengine outcome onto stdout path, stderr tokens, and exit classes.
 func emitWriteResult(c *cobra.Command, res writeengine.Result, err error) error {
 	for _, w := range res.Warnings {
@@ -51,12 +38,27 @@ func emitWriteResult(c *cobra.Command, res writeengine.Result, err error) error 
 	if printPath && len(res.RequiredMissing) > 0 {
 		stderrln(c, token.FormatRequiredMissing(res.ID, res.RequiredMissing))
 	}
+	if printPath && res.ArchiveNote != "" {
+		stderrln(c, res.ArchiveNote)
+	}
+	if printPath && res.ScaffoldCue != "" {
+		stderrln(c, res.ScaffoldCue)
+	}
+	if printPath {
+		for _, tag := range res.TagNew {
+			stderrln(c, token.FormatTagNew(tag))
+		}
+	}
 	return mapWriteErr(err)
 }
 
 func mapWriteErr(err error) error {
 	if err == nil {
 		return nil
+	}
+	var use *writeengine.UsageError
+	if errors.As(err, &use) {
+		return usageErrorf("%s", use.Msg)
 	}
 	var unk *writeengine.UnknownStatusError
 	if errors.As(err, &unk) {

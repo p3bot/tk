@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/xdg"
 )
@@ -69,7 +70,7 @@ func (e *engine) setMe(c *cobra.Command, scope, scopeFlag, idArg string) error {
 	if !ok {
 		return usageErrorf("%q is not a valid ticket id", idArg)
 	}
-	if form == idMe {
+	if form == id.FormMe {
 		return usageErrorf("cannot set me to %q", reservedMe)
 	}
 

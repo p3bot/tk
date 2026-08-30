@@ -82,6 +82,28 @@ func TestIsFullTicketID(t *testing.T) {
 	}
 }
 
+func TestParseArg(t *testing.T) {
+	cases := []struct {
+		tok      string
+		wantForm Form
+		wantOK   bool
+	}{
+		{"wc-ab2c", FormFull, true},
+		{"ab2c", FormShort, true},
+		{"me", FormMe, true},
+		{"wc-ABCD", FormFull, false},
+		{"wc-ab2c-x", FormFull, false},
+		{"2abc", FormShort, false},
+		{"ME", FormShort, false},
+	}
+	for _, c := range cases {
+		form, ok := ParseArg(c.tok)
+		if form != c.wantForm || ok != c.wantOK {
+			t.Errorf("ParseArg(%q) = (%v,%v) want (%v,%v)", c.tok, form, ok, c.wantForm, c.wantOK)
+		}
+	}
+}
+
 func TestScopeOfFullID(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"wc-ab2c", "wc"},

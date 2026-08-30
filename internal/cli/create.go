@@ -1,19 +1,10 @@
 package cli
 
 import (
-	"crypto/rand"
-	"fmt"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/p3bot/tk/internal/frontmatter"
-	"github.com/p3bot/tk/internal/id"
-	"github.com/p3bot/tk/internal/index"
-	"github.com/p3bot/tk/internal/order"
-	"github.com/p3bot/tk/internal/slug"
-	"github.com/p3bot/tk/internal/status"
 	"github.com/p3bot/tk/internal/writeengine"
 )
 
@@ -56,9 +47,9 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 	if title == "" {
 		return usageErrorf("create needs a non-empty title")
 	}
-	tags, err := uniqueCreateTags(tagArgs)
+	tags, err := writeengine.NormalizeCreateTags(tagArgs)
 	if err != nil {
-		return err
+		return mapWriteErr(err)
 	}
 
 	e, err := app.openEngine(c)
@@ -71,131 +62,12 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 	if err != nil {
 		return err
 	}
-	scope := resolved.Name
-	dir := resolved.Entry.Dir
-
-	ctx := c.Context()
-	sess, err := writeengine.Begin(e.writeDeps(ctx), scope, dir)
-	if err != nil {
-		return err
-	}
-	defer sess.Release()
-
-	schema := sess.Schema
-	custom := schema.CustomStatuses()
-
-	newStatus := status.Draft
-	if statusArg != "" {
-		newStatus = statusArg
-	}
-	if !status.IsKnown(newStatus, custom) {
-		return usageErrorf("%q is not a known status for scope %q", newStatus, scope)
-	}
-	if err := sess.CheckMidRebase(); err != nil {
-		return err
-	}
-	e.printWarnings(c, sess.Warnings())
-
-	rows, err := e.db.ScopeTickets(scope)
-	if err != nil {
-		return err
-	}
-	preWriteTags, err := e.db.ScopeTagMembership(scope)
-	if err != nil {
-		return err
-	}
-
-	shortID, err := mintUnusedID(rows)
-	if err != nil {
-		return err
-	}
-	fullID := scope + "-" + shortID
-
-	orderKey, err := order.KeyBetween(maxValidOrder(rows), "")
-	if err != nil {
-		return fmt.Errorf("compute append order for %s: %w", fullID, err)
-	}
-
-	model := &frontmatter.Model{
-		ID:      fullID,
-		Status:  newStatus,
-		Order:   orderKey,
-		Tags:    tags,
-		Created: time.Now().Format(time.RFC3339),
-	}
-	interior, err := frontmatter.Serialize(model)
-	if err != nil {
-		return err
-	}
-	file := frontmatter.Compose(interior, []byte("# "+title+"\n"))
-
-	terminal := status.IsTerminal(newStatus, custom)
-	base := fullID + "-" + slug.Slugify(title) + ".md"
-	target, err := terminalLocation(dir, base, terminal)
-	if err != nil {
-		return err
-	}
-
-	if err := atomicWrite(target, file); err != nil {
-		return err
-	}
-	if err := e.rec.SyncPaths(scope, writtenPaths(target, "")); err != nil {
-		return err
-	}
-
-	e.createDurability(ctx, c, dir, sess.AutoCommit, terminal, fullID, sess.Root, sess.HasRoot)
-
-	out, err := absPath(target)
-	if err != nil {
-		return err
-	}
-	stderrln(c, scaffoldedWithFrontmatter(fullID))
-	stdoutln(c, out)
-	for _, tag := range tags {
-		noticeNewTag(c, tag, preWriteTags)
-	}
-	return nil
-}
-
-func scaffoldedWithFrontmatter(fullID string) string {
-	return fullID + " scaffolded with frontmatter"
-}
-
-// uniqueCreateTags rejects empty --tag values and dedupes preserving first-seen order.
-func uniqueCreateTags(tagArgs []string) ([]string, error) {
-	if len(tagArgs) == 0 {
-		return nil, nil
-	}
-	seen := make(map[string]struct{}, len(tagArgs))
-	out := make([]string, 0, len(tagArgs))
-	for _, tag := range tagArgs {
-		if tag == "" {
-			return nil, usageErrorf("create --tag must be non-empty")
-		}
-		if _, dup := seen[tag]; dup {
-			continue
-		}
-		seen[tag] = struct{}{}
-		out = append(out, tag)
-	}
-	return out, nil
-}
-
-// mintUnusedID redraws until unused, including parse_error rows (id from filename).
-func mintUnusedID(rows []*index.Ticket) (string, error) {
-	taken := make(map[string]struct{}, len(rows))
-	for _, p := range rows {
-		if p.ShortID != "" {
-			taken[p.ShortID] = struct{}{}
-		}
-	}
-	for {
-		s, err := id.Mint(rand.Reader)
-		if err != nil {
-			return "", fmt.Errorf("mint id: %w", err)
-		}
-		if _, used := taken[s]; !used {
-			return s, nil
-		}
-	}
+	res, err := writeengine.Create(e.writeDeps(c.Context()), writeengine.CreateInput{
+		Scope:  resolved.Name,
+		Dir:    resolved.Entry.Dir,
+		Title:  title,
+		Status: statusArg,
+		Tags:   tags,
+	})
+	return emitWriteResult(c, res, err)
 }

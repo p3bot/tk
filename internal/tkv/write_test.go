@@ -2,6 +2,7 @@ package tkv
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,11 +13,13 @@ import (
 	"time"
 
 	"github.com/p3bot/tk/internal/git"
+	"github.com/p3bot/tk/internal/order"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
 	"github.com/p3bot/tk/internal/testgit"
 	"github.com/p3bot/tk/internal/token"
+	"github.com/p3bot/tk/internal/writeengine"
 )
 
 func doPost(s *Server, path string, form url.Values) *httptest.ResponseRecorder {
@@ -323,6 +326,36 @@ func TestPOSTClaimNoLongerTodo(t *testing.T) {
 	}
 	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: review") {
 		t.Fatalf("must not write: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+}
+
+func TestMapWriteErrorCreateMetaOrderClasses(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"usage", &writeengine.UsageError{Msg: "create tag must be non-empty"}, http.StatusBadRequest},
+		{"depends self", &writeengine.DependsSelfError{ID: "wc-ab2c"}, http.StatusConflict},
+		{"depends dangling", &writeengine.DependsDanglingError{ID: "wc-ab2c", Target: "wc-zz99"}, http.StatusConflict},
+		{"depends unresolvable", &writeengine.DependsUnresolvableError{ID: "wc-ab2c", Target: "zz-aa22"}, http.StatusConflict},
+		{"neighbour order", &writeengine.NeighbourOrderError{Arg: "wc-de34"}, http.StatusConflict},
+		{"no legal order", &writeengine.NoLegalOrderError{ID: "wc-ab2c", Err: order.ErrEqualKeys}, http.StatusConflict},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := mapWriteError(writeengine.Result{}, c.err)
+			var he *httpError
+			if !errors.As(got, &he) {
+				t.Fatalf("want httpError, got %T %v", got, got)
+			}
+			if he.status != c.want {
+				t.Errorf("status = %d, want %d", he.status, c.want)
+			}
+			if he.message == "" {
+				t.Error("empty message")
+			}
+		})
 	}
 }
 

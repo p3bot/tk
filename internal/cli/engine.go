@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/depgate"
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
@@ -66,12 +67,12 @@ func (e *engine) writeDeps(ctx context.Context) writeengine.Deps {
 	}
 }
 
-func (e *engine) writeLookup(scope, idArg string, form idForm) (writeengine.Lookup, error) {
+func (e *engine) writeLookup(scope, idArg string, form id.Form) (writeengine.Lookup, error) {
 	q, f, err := e.expandReservedID(scope, idArg, form)
 	if err != nil {
 		return writeengine.Lookup{}, err
 	}
-	return writeengine.Lookup{Arg: idArg, Query: q, ByFull: f == idFull}, nil
+	return writeengine.Lookup{Arg: idArg, Query: q, ByFull: f == id.FormFull}, nil
 }
 
 func (e *engine) gateDeps() depgate.Deps {

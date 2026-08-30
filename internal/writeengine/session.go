@@ -24,8 +24,8 @@ import (
 const ticketFileMode = 0o644
 
 // Session is a held scope flock after post-lock reconcile and unusable refuse.
-// Callers run verb policy (status known-set, row resolve, rewrite) then
-// CompleteState. Release is idempotent.
+// Verb functions run policy then CompleteState (except create, which never
+// self-commits). Release is idempotent.
 type Session struct {
 	deps       Deps
 	lock       *flock.Lock
@@ -87,12 +87,7 @@ func (s *Session) CheckMidRebase() error {
 // CompleteState self-commits on tk-driven roots or records sync_disabled.
 // Repo-driven stays quiet.
 func (s *Session) CompleteState(message, newPath, oldPath string) (syncDisabled, syncNeeded string, err error) {
-	return CompleteState(s.deps, s.Scope, s.Dir, s.AutoCommit, message, newPath, oldPath, s.Root, s.HasRoot)
-}
-
-// CompleteState is the session durability step without a held Session (remaining CLI verbs).
-func CompleteState(deps Deps, scope, dir string, autoCommit bool, message, newPath, oldPath, root string, hasRoot bool) (syncDisabled, syncNeeded string, err error) {
-	return completeState(deps, scope, dir, autoCommit, message, newPath, oldPath, root, hasRoot)
+	return completeState(s.deps, s.Scope, s.Dir, s.AutoCommit, message, newPath, oldPath, s.Root, s.HasRoot)
 }
 
 // RefuseUnusable refuses writes when the dir is unreachable or tk.cue is unusable.

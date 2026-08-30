@@ -53,7 +53,7 @@ func (e *engine) resolveTicket(c *cobra.Command, idArg, scopeFlag string) (*reso
 
 	var rows []*index.Ticket
 	switch lookupForm {
-	case idFull:
+	case id.FormFull:
 		rows, err = e.db.TicketsByID(scope, lookupArg)
 	default:
 		rows, err = e.db.TicketsByShortID(scope, lookupArg)
@@ -88,8 +88,8 @@ func suppressDuplicateID(warnings []string, id string) []string {
 	return out
 }
 
-func (e *engine) scopeForID(idArg string, form idForm, scopeFlag string) (string, error) {
-	if form == idFull {
+func (e *engine) scopeForID(idArg string, form id.Form, scopeFlag string) (string, error) {
+	if form == id.FormFull {
 		return id.ScopeOfFullID(idArg), nil
 	}
 	resolved, err := e.resolveAmbient(scopeFlag)
@@ -101,15 +101,15 @@ func (e *engine) scopeForID(idArg string, form idForm, scopeFlag string) (string
 
 // expandReservedID turns reserved "me" into the stored full id for scope.
 // Unset is an unknown ticket id (generic non-zero), not usage.
-func (e *engine) expandReservedID(scope, idArg string, form idForm) (string, idForm, error) {
-	if form != idMe {
+func (e *engine) expandReservedID(scope, idArg string, form id.Form) (string, id.Form, error) {
+	if form != id.FormMe {
 		return idArg, form, nil
 	}
 	stored := e.reg.Me[scope]
 	if stored == "" {
 		return "", 0, fmt.Errorf("unknown ticket id %q", reservedMe)
 	}
-	return stored, idFull, nil
+	return stored, id.FormFull, nil
 }
 
 func duplicateRefusal(rows []*index.Ticket) error {

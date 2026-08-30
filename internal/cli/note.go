@@ -16,6 +16,7 @@ import (
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/slug"
 	"github.com/p3bot/tk/internal/token"
+	"github.com/p3bot/tk/internal/writeengine"
 	"github.com/p3bot/tk/internal/xdg"
 )
 
@@ -451,7 +452,7 @@ func (n *noteScope) refuseMidRebase(ctx context.Context) error {
 	if cfgErr != nil {
 		return nil
 	}
-	return checkMidRebase(ctx, n.scope, schemaAutoCommit(schema), root, hasRoot)
+	return checkMidRebase(ctx, n.scope, writeengine.SchemaAutoCommit(schema), root, hasRoot)
 }
 
 // maybeSyncNeeded: create-class hint after add/set/delete. Quiet when the schema
@@ -462,7 +463,7 @@ func (n *noteScope) maybeSyncNeeded(c *cobra.Command) {
 		return
 	}
 	schema, cfgErr := n.e.rec.SchemaOrError(n.scope, n.dir)
-	if cfgErr != nil || !schemaAutoCommit(schema) {
+	if cfgErr != nil || !writeengine.SchemaAutoCommit(schema) {
 		return
 	}
 	n.e.tkDrivenSyncNeeded(c.Context(), c, n.dir, root)

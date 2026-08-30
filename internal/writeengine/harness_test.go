@@ -4,10 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"cuelang.org/go/cue/cuecontext"
 
+	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
@@ -81,7 +83,22 @@ func fullLookup(id string) Lookup {
 
 func requireGit(t *testing.T) {
 	t.Helper()
+	if !git.Available() {
+		t.Skip("git not on PATH")
+	}
 	testgit.Hermetic(t)
+}
+
+func gitLog(t *testing.T, repo string) []string {
+	t.Helper()
+	out, err := testgit.CombinedAllowFailure(t, repo, "log", "--format=%s")
+	if err != nil {
+		return nil
+	}
+	if strings.TrimSpace(out) == "" {
+		return nil
+	}
+	return strings.Split(strings.TrimSpace(out), "\n")
 }
 
 func initAutoCommitRepo(t *testing.T, name string) (e *env, repo string) {

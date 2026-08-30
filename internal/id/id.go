@@ -1,6 +1,7 @@
-// Package id implements the ticket-id wire contract: predicates, crypto/rand
-// short-id mint, and deterministic collision-repair extension. No I/O; the mint
-// takes its randomness source as an argument for testability.
+// Package id implements the ticket-id wire contract: predicates, argv-form
+// classification (full / short / reserved me), crypto/rand short-id mint, and
+// deterministic collision-repair extension. No I/O; the mint takes its
+// randomness source as an argument for testability.
 //
 // A ticket id is <scope>-<short-id>. Create always mints length 4; collision
 // repair may lengthen append-only up to ShortIDMax.
@@ -28,7 +29,36 @@ const (
 	// ShortIDAlphabet is the fixed 31-character alphabet; order is load-bearing
 	// so two machines repairing the same collision enumerate identically.
 	ShortIDAlphabet = LetterAlphabet + DigitAlphabet
+
+	// ReservedMe is the well-formed resolver token; expansion is the caller's job.
+	ReservedMe = "me"
 )
+
+// Form is the argv shape of a ticket-id token. Malformed tokens still carry a
+// form (hyphen → full, otherwise short) so usage wording can name the class.
+type Form int
+
+const (
+	// FormFull is <scope>-<short> (one hyphen).
+	FormFull Form = iota
+	// FormShort is a bare short-id.
+	FormShort
+	// FormMe is ReservedMe.
+	FormMe
+)
+
+// ParseArg classifies a ticket-id token. ok is false when the token is the
+// right shape but fails the grammar. ReservedMe is always ok; lookup of the
+// stored id happens at the call site.
+func ParseArg(tok string) (Form, bool) {
+	if tok == ReservedMe {
+		return FormMe, true
+	}
+	if strings.ContainsRune(tok, '-') {
+		return FormFull, IsFullTicketID(tok)
+	}
+	return FormShort, IsShortID(tok)
+}
 
 // IsScopeName reports whether s is a legal scope name: ^[a-z0-9]{1,12}$.
 // Ambiguous characters that short-ids drop (i/l/o/0/1) are permitted here.

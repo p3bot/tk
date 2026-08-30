@@ -1,6 +1,6 @@
-// Package writeengine is the cobra-free ticket-file write session, mark, and
-// claim orchestration. Callers map structured results to process edges; this
-// package does not import cobra or internal/cli.
+// Package writeengine is the cobra-free ticket-file write session: create, meta
+// mutate, order, mark, and claim. Callers map structured results to process
+// edges; this package does not import cobra or internal/cli.
 package writeengine
 
 import (
@@ -64,9 +64,9 @@ func (l Lookup) query() string {
 	return l.Arg
 }
 
-// Result is the structured outcome of mark or claim. Path is empty when no
-// write landed. Adapters map fields to stdout/stderr; they do not parse tokens
-// out of Error() text except for typed failures.
+// Result is the structured outcome of a write. Path is empty when no write
+// landed. Adapters map fields to stdout/stderr; they do not parse tokens out
+// of Error() text except for typed failures.
 type Result struct {
 	Path             string
 	ID               string
@@ -83,6 +83,9 @@ type Result struct {
 	Lens             []string
 	ReadyOutsideLens int
 	Blocked          int
+	ScaffoldCue      string
+	ArchiveNote      string
+	TagNew           []string
 }
 
 // SchemaAutoCommit reports whether the schema enables tk-driven self-commit.

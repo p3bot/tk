@@ -3,6 +3,7 @@ package tkv
 import (
 	"context"
 	"errors"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -182,18 +183,21 @@ func TestGETDoesNotWrite(t *testing.T) {
 	before := ticketBody(t, dir, "wc-ab2c")
 	setLens(t, app, "wc", []string{"frontend"})
 	beforeLens := lensFile(t, app)
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/lens", "/scope/wc/lens/clear"} {
+	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/lens", "/scope/wc/lens/clear"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))
 		}
 	}
-	// GET /scope/{name}/mark and /claim collide with inspect {id}; they must 404, not hit POST.
+	// GET /scope/{name}/mark, /claim, and /create collide with inspect {id}; they must 404, not hit POST.
 	if code := do(s, "/scope/wc/mark").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/mark = %d, want inspect 404", code)
 	}
 	if code := do(s, "/scope/wc/claim").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/claim = %d, want inspect 404", code)
+	}
+	if code := do(s, "/scope/wc/create").Code; code != http.StatusNotFound {
+		t.Fatalf("GET /scope/wc/create = %d, want inspect 404", code)
 	}
 	head := httptest.NewRequest(http.MethodHead, "/scope/wc/ab2c", nil)
 	hw := httptest.NewRecorder()
@@ -305,6 +309,310 @@ func TestPOSTMarkInProgressClaims(t *testing.T) {
 	}
 	if strings.Contains(page.Body.String(), ">Claim</button>") {
 		t.Fatalf("claimed ticket still offers claim: %s", page.Body.String())
+	}
+}
+
+func locationTicketID(t *testing.T, loc string) string {
+	t.Helper()
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) != 3 || parts[0] != "scope" || parts[2] == "" {
+		t.Fatalf("location path = %s", u.Path)
+	}
+	return parts[2]
+}
+
+func mdTicketCount(t *testing.T, dir string) int {
+	t.Helper()
+	root, err := filepath.Glob(filepath.Join(dir, "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	arch, err := filepath.Glob(filepath.Join(dir, "archive", "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(root) + len(arch)
+}
+
+func TestPOSTCreateDraftInspectsAndIndexes(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	s := mustServer(t, app)
+
+	w := doPost(s, "/scope/wc/create", url.Values{"title": {"Network redesign"}})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	id := locationTicketID(t, loc)
+	if !strings.HasPrefix(loc, inspectHref(id)) {
+		t.Fatalf("location = %s, want inspect of %s", loc, id)
+	}
+	page := mustFollow(t, s, w)
+	body := page.Body.String()
+	if !strings.Contains(body, "<h1>Network redesign</h1>") {
+		t.Fatalf("inspect missing H1: %s", body)
+	}
+	if !strings.Contains(body, "<dd>draft</dd>") {
+		t.Fatalf("inspect status: %s", body)
+	}
+	raw := ticketBody(t, dir, id)
+	if !strings.Contains(raw, "status: draft") {
+		t.Fatalf("file status: %s", raw)
+	}
+	if !strings.HasSuffix(raw, "# Network redesign\n") {
+		t.Fatalf("scaffold body: %q", raw)
+	}
+	if strings.Contains(raw, "tags:") {
+		t.Fatalf("no-tag create must omit tags: %s", raw)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, id+"-network-redesign.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("frozen slug path = %v", matches)
+	}
+
+	board := do(s, "/scope/wc").Body.String()
+	if !strings.Contains(colSection(board, status.Draft), "Network redesign") {
+		t.Fatalf("draft not on board: %s", board)
+	}
+}
+
+func TestPOSTCreateDoneArchivesAndInspects(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	s := mustServer(t, app)
+
+	w := doPost(s, "/scope/wc/create", url.Values{
+		"title":  {"Already done"},
+		"status": {status.Done},
+	})
+	page := mustFollow(t, s, w)
+	id := locationTicketID(t, w.Header().Get("Location"))
+	arch := filepath.Join(dir, "archive", id+"-already-done.md")
+	if _, err := os.Stat(arch); err != nil {
+		t.Fatalf("archive file: %v", err)
+	}
+	if !strings.Contains(ticketBody(t, dir, id), "status: done") {
+		t.Fatalf("file: %s", ticketBody(t, dir, id))
+	}
+	if !strings.Contains(page.Body.String(), "<h1>Already done</h1>") {
+		t.Fatalf("inspect: %s", page.Body.String())
+	}
+	if !strings.Contains(page.Body.String(), "<dd>yes</dd>") {
+		t.Fatalf("inspect archived: %s", page.Body.String())
+	}
+
+	board := do(s, "/scope/wc").Body.String()
+	if strings.Contains(board, "Already done") {
+		t.Fatalf("default board shows terminal create: %s", board)
+	}
+	archived := do(s, "/scope/wc?archived=1").Body.String()
+	if !strings.Contains(colSection(archived, status.Done), "Already done") {
+		t.Fatalf("archived board missing card: %s", archived)
+	}
+}
+
+func TestPOSTCreateEmptyTitleIs400(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	s := mustServer(t, app)
+	before := mdTicketCount(t, dir)
+
+	for _, title := range []string{"", "   "} {
+		w := doPost(s, "/scope/wc/create", url.Values{"title": {title}})
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("title %q: want 400, got %d %s", title, w.Code, w.Body.String())
+		}
+	}
+	w := doPost(s, "/scope/wc/create", url.Values{})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("missing title: want 400, got %d %s", w.Code, w.Body.String())
+	}
+	if mdTicketCount(t, dir) != before {
+		t.Fatal("empty title minted a file")
+	}
+}
+
+func TestPOSTCreateToolbarFormEmptyTagSucceeds(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	s := mustServer(t, app)
+
+	w := doPost(s, "/scope/wc/create", url.Values{
+		"title":  {"From toolbar"},
+		"status": {status.Draft},
+		"tag":    {""},
+	})
+	page := mustFollow(t, s, w)
+	id := locationTicketID(t, w.Header().Get("Location"))
+	raw := ticketBody(t, dir, id)
+	if !strings.Contains(raw, "status: draft") {
+		t.Fatalf("file status: %s", raw)
+	}
+	if strings.Contains(raw, "tags:") {
+		t.Fatalf("empty tag field must omit tags: %s", raw)
+	}
+	if !strings.Contains(page.Body.String(), "<h1>From toolbar</h1>") {
+		t.Fatalf("inspect: %s", page.Body.String())
+	}
+
+	w = doPost(s, "/scope/wc/create", url.Values{
+		"title":  {"Whitespace tag"},
+		"status": {status.Draft},
+		"tag":    {"   "},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("whitespace tag: want 303, got %d %s", w.Code, w.Body.String())
+	}
+	id = locationTicketID(t, w.Header().Get("Location"))
+	if strings.Contains(ticketBody(t, dir, id), "tags:") {
+		t.Fatalf("whitespace tag field must omit tags: %s", ticketBody(t, dir, id))
+	}
+}
+
+func TestPOSTCreateTagsAndTagNew(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "old", "todo", "a0", "# Old\n", false, "tags: [legacy]\n")
+	s := mustServer(t, app)
+
+	w := doPost(s, "/scope/wc/create", url.Values{
+		"title": {"Tagged"},
+		"tag":   {"alpha, legacy", "beta", "alpha"},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if !strings.Contains(loc, "tag_new=") {
+		t.Fatalf("location missing tag_new: %s", loc)
+	}
+	id := locationTicketID(t, loc)
+	raw := ticketBody(t, dir, id)
+	if !strings.Contains(raw, "tags: [alpha, legacy, beta]") && !strings.Contains(raw, "tags: [alpha,legacy,beta]") {
+		t.Fatalf("tags: %s", raw)
+	}
+	page := do(s, loc)
+	if page.Code != 200 {
+		t.Fatalf("GET loc = %d", page.Code)
+	}
+	banners := page.Body.String()
+	if !strings.Contains(banners, html.EscapeString(token.FormatTagNew("alpha"))) {
+		t.Fatalf("missing alpha tag_new: %s", banners)
+	}
+	if !strings.Contains(banners, html.EscapeString(token.FormatTagNew("beta"))) {
+		t.Fatalf("missing beta tag_new: %s", banners)
+	}
+	if strings.Contains(banners, html.EscapeString(token.FormatTagNew("legacy"))) {
+		t.Fatalf("board-existing tag must not be tag_new: %s", banners)
+	}
+}
+
+func TestPOSTCreateNeverSelfCommits(t *testing.T) {
+	app := newTestApp(t)
+	dir, repo := initDrivenScope(t, app, "wc")
+	pushOrigin(t, repo)
+	before := testgit.Combined(t, repo, "rev-parse", "HEAD")
+	s := mustServer(t, app)
+
+	w := doPost(s, "/scope/wc/create", url.Values{"title": {"Work"}})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if !strings.Contains(loc, "sync_needed=") {
+		t.Fatalf("location missing sync_needed: %s", loc)
+	}
+	after := testgit.Combined(t, repo, "rev-parse", "HEAD")
+	if after != before {
+		t.Fatalf("create self-committed: %s -> %s", before, after)
+	}
+	page := do(s, loc)
+	if page.Code != 200 {
+		t.Fatalf("GET loc = %d", page.Code)
+	}
+	if !strings.Contains(page.Body.String(), "sync_needed:") {
+		t.Fatalf("banner: %s", page.Body.String())
+	}
+	id := locationTicketID(t, loc)
+	if _, err := os.Stat(filepath.Join(dir, id+"-work.md")); err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+}
+
+func TestPOSTCreateEngineRefuses(t *testing.T) {
+	t.Run("unknown status", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		s := mustServer(t, app)
+		w := doPost(s, "/scope/wc/create", url.Values{"title": {"X"}, "status": {"nope"}})
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("want 400, got %d %s", w.Code, w.Body.String())
+		}
+		if mdTicketCount(t, dir) != 0 {
+			t.Fatal("unknown status minted a file")
+		}
+	})
+	t.Run("unusable", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"wc\"\nthis is not cue {\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s := mustServer(t, app)
+		w := doPost(s, "/scope/wc/create", url.Values{"title": {"X"}})
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("want 503, got %d %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), token.ConfigUnparseable) {
+			t.Fatalf("message: %s", w.Body.String())
+		}
+		if mdTicketCount(t, dir) != 0 {
+			t.Fatal("unusable minted a file")
+		}
+	})
+	t.Run("mid-rebase", func(t *testing.T) {
+		app := newTestApp(t)
+		dir, repo := initDrivenScope(t, app, "wc")
+		if err := os.MkdirAll(filepath.Join(repo, ".git", "rebase-merge"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		s := mustServer(t, app)
+		w := doPost(s, "/scope/wc/create", url.Values{"title": {"X"}})
+		if w.Code != http.StatusConflict {
+			t.Fatalf("want 409, got %d %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "mid-sync-conflict") {
+			t.Fatalf("message: %s", w.Body.String())
+		}
+		if mdTicketCount(t, dir) != 0 {
+			t.Fatal("mid-rebase minted a file")
+		}
+	})
+}
+
+func TestPOSTCreateFormListsKnownStatuses(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(
+		"name: \"wc\"\nautoCommit: false\nstatuses: { parked: { category: \"backlog\" } }\n",
+	), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := mustServer(t, app)
+	board := do(s, "/scope/wc").Body.String()
+	if !strings.Contains(board, `<option value="draft" selected>draft</option>`) {
+		t.Fatalf("draft not default: %s", board)
+	}
+	if !strings.Contains(board, `<option value="parked">parked</option>`) {
+		t.Fatalf("custom status missing: %s", board)
 	}
 }
 
@@ -558,14 +866,26 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if !strings.Contains(board, `method="post" action="/scope/wc/mark"`) {
 		t.Fatalf("kanban missing mark form: %s", board)
 	}
+	if !strings.Contains(board, `method="post" action="/scope/wc/create"`) {
+		t.Fatalf("kanban missing create form: %s", board)
+	}
+	if !strings.Contains(board, `name="title" required`) {
+		t.Fatalf("create form missing required title: %s", board)
+	}
+	if !strings.Contains(board, `placeholder="tags, comma-separated"`) {
+		t.Fatalf("create tags field must disclose comma-splitting: %s", board)
+	}
+	if strings.Contains(board, `action="/scope/wc/create"`) && strings.Contains(board, "<textarea") {
+		t.Fatalf("create form must not have a body textarea: %s", board)
+	}
 	if !strings.Contains(board, "Claim next") {
 		t.Fatalf("kanban missing claim next: %s", board)
 	}
 	if !strings.Contains(board, `onsubmit="if(this.dataset.submitted)return false;`) {
 		t.Fatalf("claim next form missing double-submit guard: %s", board)
 	}
-	if strings.Contains(board, `option value="in-progress"`) {
-		t.Fatalf("todo card must not mark in-progress: %s", board)
+	if strings.Contains(colSection(board, status.Todo), `option value="in-progress"`) {
+		t.Fatalf("todo card must not mark in-progress: %s", colSection(board, status.Todo))
 	}
 	if !strings.Contains(board, `aria-label="Claim wc-ab2c"`) {
 		t.Fatalf("kanban claim missing named control: %s", board)
@@ -602,7 +922,7 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 		}
 		s := mustServer(t, app)
 		board := do(s, "/scope/wc").Body.String()
-		if strings.Contains(board, `action="/scope/wc/claim"`) || strings.Contains(board, `action="/scope/wc/mark"`) {
+		if strings.Contains(board, `action="/scope/wc/claim"`) || strings.Contains(board, `action="/scope/wc/mark"`) || strings.Contains(board, `action="/scope/wc/create"`) {
 			t.Fatalf("unusable schema still offers ticket writes: %s", board)
 		}
 		if strings.Contains(board, "Claim next") {
@@ -629,6 +949,9 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 		board := do(s, "/scope/wc").Body.String()
 		if strings.Contains(board, `action="/scope/wc/claim"`) || strings.Contains(board, `action="/scope/wc/mark"`) {
 			t.Fatalf("parse-quarantined card still offers writes: %s", board)
+		}
+		if !strings.Contains(board, `action="/scope/wc/create"`) {
+			t.Fatalf("parse-quarantined board must still offer create: %s", board)
 		}
 		ins := do(s, "/scope/wc/abcd").Body.String()
 		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) {
@@ -957,6 +1280,7 @@ func TestStripNoticeQueryMatchesReader(t *testing.T) {
 	q.Set(noticeRequiredMissing, "jira")
 	q.Set(noticeSyncNeeded, "unpushed")
 	q.Set(noticeSyncDisabled, "plain-files")
+	q.Add(noticeTagNew, "orphan")
 	q.Add(noticeWarning, token.FormatTagUnknown("ghost"))
 	q.Set("backlog", "1")
 	q.Set("archived", "1")

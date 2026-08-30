@@ -172,17 +172,18 @@ func ticketLinks(rows []*index.Ticket) []idLink {
 }
 
 type kanbanPage struct {
-	Title    string
-	Chrome   chrome
-	Name     string
-	Backlog  bool
-	Archived bool
-	Tags     []string
-	Active   []string
-	Next     string
-	NextHref string
-	Cols     []kanbanCol
-	CanWrite bool
+	Title          string
+	Chrome         chrome
+	Name           string
+	Backlog        bool
+	Archived       bool
+	Tags           []string
+	Active         []string
+	Next           string
+	NextHref       string
+	Cols           []kanbanCol
+	CanWrite       bool
+	CreateStatuses []string
 }
 
 type kanbanCol struct {
@@ -295,18 +296,23 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	var createStatuses []string
+	if schema != nil {
+		createStatuses = knownStatusNames(schema)
+	}
 	return s.render(w, "kanban", kanbanPage{
-		Title:    name,
-		Chrome:   ch,
-		Name:     name,
-		Backlog:  backlog,
-		Archived: archived,
-		Tags:     distinct,
-		Active:   tags,
-		Next:     nextID,
-		NextHref: nextHref,
-		Cols:     cols,
-		CanWrite: schema != nil,
+		Title:          name,
+		Chrome:         ch,
+		Name:           name,
+		Backlog:        backlog,
+		Archived:       archived,
+		Tags:           distinct,
+		Active:         tags,
+		Next:           nextID,
+		NextHref:       nextHref,
+		Cols:           cols,
+		CanWrite:       schema != nil,
+		CreateStatuses: createStatuses,
 	})
 }
 

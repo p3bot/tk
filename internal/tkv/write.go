@@ -17,6 +17,7 @@ import (
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
+	"github.com/p3bot/tk/internal/token"
 	"github.com/p3bot/tk/internal/writeengine"
 )
 
@@ -188,6 +189,55 @@ func (s *Server) postClaim(w http.ResponseWriter, r *http.Request) error {
 	return s.finishWrite(w, r, res, err)
 }
 
+func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) error {
+	if err := r.ParseForm(); err != nil {
+		return errBadRequest("malformed form")
+	}
+	name := r.PathValue("name")
+	if !id.IsScopeName(name) {
+		return errNotFound("unknown scope")
+	}
+	title := strings.TrimSpace(r.FormValue("title"))
+	if title == "" {
+		return errBadRequest("create needs a non-empty title")
+	}
+
+	sess, release, err := s.beginWrite(r.Context(), name)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	res, err := writeengine.Create(sess.deps, writeengine.CreateInput{
+		Scope:  name,
+		Dir:    sess.dir,
+		Title:  title,
+		Status: strings.TrimSpace(r.FormValue("status")),
+		Tags:   formCreateTags(r.Form["tag"]),
+	})
+	if err != nil {
+		return mapWriteError(res, err)
+	}
+	http.Redirect(w, r, appendNotices(inspectHref(res.ID), res), http.StatusSeeOther)
+	return nil
+}
+
+// formCreateTags is the HTML dual of repeatable --tag: comma-separated, blanks skipped.
+func formCreateTags(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	var out []string
+	for _, raw := range values {
+		for _, part := range strings.Split(raw, ",") {
+			if t := strings.TrimSpace(part); t != "" {
+				out = append(out, t)
+			}
+		}
+	}
+	return out
+}
+
 func (s *Server) scopeForWrite(name string) (*registry.Registry, string, error) {
 	reg, err := s.loadRegistry()
 	if err != nil {
@@ -229,6 +279,7 @@ const (
 	noticeRequiredMissing = "required_missing"
 	noticeSyncNeeded      = "sync_needed"
 	noticeSyncDisabled    = "sync_disabled"
+	noticeTagNew          = "tag_new"
 	noticeWarning         = "warning"
 )
 
@@ -237,6 +288,7 @@ var noticeQueryKeys = []string{
 	noticeRequiredMissing,
 	noticeSyncNeeded,
 	noticeSyncDisabled,
+	noticeTagNew,
 	noticeWarning,
 }
 
@@ -257,6 +309,11 @@ func appendNotices(loc string, res writeengine.Result) string {
 	}
 	if res.SyncDisabled != "" {
 		q.Set(noticeSyncDisabled, res.SyncDisabled)
+	}
+	for _, tag := range res.TagNew {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			q.Add(noticeTagNew, tag)
+		}
 	}
 	for _, w := range res.Warnings {
 		if w = strings.TrimSpace(w); w != "" {
@@ -280,6 +337,12 @@ func noticesFromQuery(q url.Values) []string {
 		case noticeDependsOpen:
 			if v := strings.TrimSpace(q.Get(k)); v != "" {
 				out = append(out, noticeDependsOpen+": waiting on "+v)
+			}
+		case noticeTagNew:
+			for _, tag := range q[k] {
+				if tag = strings.TrimSpace(tag); tag != "" {
+					out = append(out, token.FormatTagNew(tag))
+				}
 			}
 		default:
 			if v := strings.TrimSpace(q.Get(k)); v != "" {

@@ -166,6 +166,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /scope/{name}/{id}", s.wrap(s.inspect))
 	mux.HandleFunc("POST /scope/{name}/mark", s.wrapEngine(s.postMark))
 	mux.HandleFunc("POST /scope/{name}/claim", s.wrapEngine(s.postClaim))
+	mux.HandleFunc("POST /scope/{name}/create", s.wrapEngine(s.postCreate))
 	mux.HandleFunc("POST /scope/{name}/lens", s.wrapEngine(s.postLensSet))
 	mux.HandleFunc("POST /scope/{name}/lens/clear", s.wrapEngine(s.postLensClear))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

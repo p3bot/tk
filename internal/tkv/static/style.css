@@ -239,7 +239,7 @@ aside dd { margin: 0; overflow-wrap: anywhere; }
   align-items: center;
   margin-top: 0.4rem;
 }
-.write select, .write button {
+.write select, .write button, .write input[type="text"] {
   font: inherit;
   font-size: 0.8125rem;
   border: 1px solid var(--line);
@@ -248,6 +248,8 @@ aside dd { margin: 0; overflow-wrap: anywhere; }
   color: var(--fg);
   padding: 0.15rem 0.4rem;
 }
+.board-controls .write { margin-top: 0; }
+.board-controls .create input[name="title"] { min-width: 10rem; }
 .write button { cursor: pointer; font-weight: 550; }
 .write button:hover { border-color: var(--accent); }
 .write button:disabled { cursor: default; opacity: 0.55; }

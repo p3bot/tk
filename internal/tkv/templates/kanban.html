@@ -24,6 +24,25 @@
     <button type="submit">Claim next</button>
   </form>
   {{end}}
+  {{if .CanWrite}}
+  <form class="write create" method="post" action="/scope/{{.Name}}/create" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+    <label>
+      <span class="sr-only">title</span>
+      <input type="text" name="title" required placeholder="new ticket" aria-label="new ticket title">
+    </label>
+    <label>
+      <span class="sr-only">status</span>
+      <select name="status" aria-label="status">
+        {{range .CreateStatuses}}<option value="{{.}}"{{if eq . "draft"}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </label>
+    <label>
+      <span class="sr-only">tags, comma-separated</span>
+      <input type="text" name="tag" value="" placeholder="tags, comma-separated" aria-label="tags, comma-separated">
+    </label>
+    <button type="submit">Create</button>
+  </form>
+  {{end}}
   {{range .Tags}}
     <a class="tag{{if $.TagOn .}} on{{end}}" href="{{$.TagHref .}}">{{.}}</a>
   {{end}}

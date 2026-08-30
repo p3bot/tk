@@ -54,7 +54,7 @@ type idLink struct {
 	Href string
 }
 
-func (s *Server) overview(w http.ResponseWriter, _ *http.Request) error {
+func (s *Server) overview(w http.ResponseWriter, r *http.Request) error {
 	reg, err := s.loadRegistry()
 	if err != nil {
 		return err
@@ -63,7 +63,7 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ch, err := s.chromeFor(reg, "", "", navBoard)
+	ch, err := s.pageChrome(reg, "", "", navBoard, r)
 	if err != nil {
 		return err
 	}
@@ -182,7 +182,6 @@ type kanbanPage struct {
 	Next     string
 	NextHref string
 	Cols     []kanbanCol
-	Notices  []string
 	CanWrite bool
 }
 
@@ -292,7 +291,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ch, err := s.chromeFor(reg, name, "", navBoard)
+	ch, err := s.pageChrome(reg, name, "", navBoard, r)
 	if err != nil {
 		return err
 	}
@@ -307,7 +306,6 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		Next:     nextID,
 		NextHref: nextHref,
 		Cols:     cols,
-		Notices:  noticesFromQuery(r.URL.Query()),
 		CanWrite: schema != nil,
 	})
 }
@@ -435,7 +433,6 @@ type inspectPage struct {
 	Links        []string
 	CanClaim     bool
 	MarkStatuses []string
-	Notices      []string
 }
 
 type customField struct {
@@ -501,7 +498,7 @@ func (s *Server) inspect(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	page.Notices = noticesFromQuery(r.URL.Query())
+	page.Chrome.bind(r)
 	return s.render(w, "inspect", page)
 }
 
@@ -716,7 +713,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	if _, err := s.rec.Reconcile(targets, registeredSet(reg), nowNS()); err != nil {
 		return err
 	}
-	ch, err := s.chromeFor(reg, scope, q, navSearch)
+	ch, err := s.pageChrome(reg, scope, q, navSearch, r)
 	if err != nil {
 		return err
 	}

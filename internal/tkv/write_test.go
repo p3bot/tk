@@ -93,9 +93,31 @@ func colSection(body, status string) string {
 func setLens(t *testing.T, app *App, scope string, tags []string) {
 	t.Helper()
 	store := registry.NewStore(app.Ctx, app.ConfigDir)
-	if err := store.WriteLens(map[string][]string{scope: tags}); err != nil {
+	if err := store.SetLens(scope, tags); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func lensFile(t *testing.T, app *App) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(app.ConfigDir, "lens.cue"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ""
+		}
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func loadLens(t *testing.T, app *App) map[string][]string {
+	t.Helper()
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	reg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reg.Lens
 }
 
 func initDrivenScope(t *testing.T, app *App, name string) (dir, repo string) {
@@ -155,7 +177,9 @@ func TestGETDoesNotWrite(t *testing.T) {
 	s := mustServer(t, app)
 
 	before := ticketBody(t, dir, "wc-ab2c")
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim"} {
+	setLens(t, app, "wc", []string{"frontend"})
+	beforeLens := lensFile(t, app)
+	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/lens", "/scope/wc/lens/clear"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))
@@ -177,6 +201,9 @@ func TestGETDoesNotWrite(t *testing.T) {
 	after := ticketBody(t, dir, "wc-ab2c")
 	if after != before {
 		t.Fatalf("GET/HEAD mutated ticket:\n%s\n---\n%s", before, after)
+	}
+	if lensFile(t, app) != beforeLens {
+		t.Fatal("GET/HEAD mutated lens.cue")
 	}
 }
 
@@ -521,6 +548,15 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if !strings.Contains(ins, `method="post" action="/scope/wc/mark"`) {
 		t.Fatalf("inspect missing mark form: %s", ins)
 	}
+	if !strings.Contains(board, `method="post" action="/scope/wc/lens"`) {
+		t.Fatalf("kanban missing chrome lens form: %s", board)
+	}
+	if !strings.Contains(board, `method="post" action="/scope/wc/lens/clear"`) {
+		t.Fatalf("kanban missing chrome lens clear: %s", board)
+	}
+	if !strings.Contains(ins, `method="post" action="/scope/wc/lens"`) {
+		t.Fatalf("inspect missing chrome lens form: %s", ins)
+	}
 }
 
 func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
@@ -533,15 +569,21 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 		}
 		s := mustServer(t, app)
 		board := do(s, "/scope/wc").Body.String()
-		if strings.Contains(board, `method="post"`) {
-			t.Fatalf("unusable schema still offers writes: %s", board)
+		if strings.Contains(board, `action="/scope/wc/claim"`) || strings.Contains(board, `action="/scope/wc/mark"`) {
+			t.Fatalf("unusable schema still offers ticket writes: %s", board)
 		}
 		if strings.Contains(board, "Claim next") {
 			t.Fatalf("unusable schema still offers claim next: %s", board)
 		}
+		if !strings.Contains(board, `action="/scope/wc/lens"`) {
+			t.Fatalf("unusable schema must still offer chrome lens: %s", board)
+		}
 		ins := do(s, "/scope/wc/ab2c").Body.String()
-		if strings.Contains(ins, `method="post"`) {
-			t.Fatalf("inspect still offers writes: %s", ins)
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) {
+			t.Fatalf("inspect still offers ticket writes: %s", ins)
+		}
+		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
+			t.Fatalf("inspect must still offer chrome lens: %s", ins)
 		}
 	})
 	t.Run("parse", func(t *testing.T) {
@@ -556,8 +598,11 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 			t.Fatalf("parse-quarantined card still offers writes: %s", board)
 		}
 		ins := do(s, "/scope/wc/abcd").Body.String()
-		if strings.Contains(ins, `method="post"`) {
-			t.Fatalf("inspect still offers writes: %s", ins)
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) {
+			t.Fatalf("inspect still offers ticket writes: %s", ins)
+		}
+		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
+			t.Fatalf("parse-error inspect must still offer chrome lens: %s", ins)
 		}
 	})
 }
@@ -870,5 +915,430 @@ func TestClaimPushFailedLeavesInProgress(t *testing.T) {
 	}
 	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: in-progress") {
 		t.Fatalf("write must stand: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+}
+
+func TestStripNoticeQueryMatchesReader(t *testing.T) {
+	q := url.Values{}
+	q.Set(noticeDependsOpen, "wc-ab2c")
+	q.Set(noticeRequiredMissing, "jira")
+	q.Set(noticeSyncNeeded, "unpushed")
+	q.Set(noticeSyncDisabled, "plain-files")
+	q.Add(noticeWarning, token.FormatTagUnknown("ghost"))
+	q.Set("backlog", "1")
+	q.Set("archived", "1")
+	q.Add("tag", "frontend")
+	dirty := "/scope/wc?" + q.Encode()
+	if noticesFromQuery(q) == nil {
+		t.Fatal("reader must see notice keys")
+	}
+	cleaned := stripNoticeQuery(dirty)
+	u, err := url.Parse(cleaned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if noticesFromQuery(u.Query()) != nil {
+		t.Fatalf("strip left displayable notices: %s", cleaned)
+	}
+	if u.Path != "/scope/wc" || u.Query().Get("backlog") != "1" || u.Query().Get("archived") != "1" {
+		t.Fatalf("board query lost: %s", cleaned)
+	}
+	if got := u.Query()["tag"]; len(got) != 1 || got[0] != "frontend" {
+		t.Fatalf("tag chip lost: %s", cleaned)
+	}
+}
+
+func TestPOSTLensSetClearHonoursBoardAndOtherScope(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	initScope(t, app, "bb")
+	addTicket(t, dir, "wc-ab2c", "earlier", "todo", "a0", "# Earlier\n", false, "tags: [backend]\n")
+	addTicket(t, dir, "wc-de34", "tagged", "todo", "a1", "# Tagged\n", false, "tags: [frontend]\n")
+	setLens(t, app, "bb", []string{"keep"})
+	s := mustServer(t, app)
+
+	home := do(s, "/").Body.String()
+	if strings.Contains(home, `/lens"`) {
+		t.Fatalf("overview must not offer lens write: %s", home)
+	}
+
+	w := doPost(s, "/scope/wc/lens", url.Values{
+		"tag":    {"frontend"},
+		"return": {"/scope/wc"},
+	})
+	page := mustFollow(t, s, w)
+	body := page.Body.String()
+	if !strings.Contains(colSection(body, status.Todo), "Tagged") {
+		t.Fatalf("lensed board missing matching card: %s", body)
+	}
+	if strings.Contains(colSection(body, status.Todo), "Earlier") {
+		t.Fatalf("lensed board still shows outside-lens tagged card: %s", body)
+	}
+	got := loadLens(t, app)
+	if len(got["wc"]) != 1 || got["wc"][0] != "frontend" {
+		t.Fatalf("wc lens = %v", got["wc"])
+	}
+	if len(got["bb"]) != 1 || got["bb"][0] != "keep" {
+		t.Fatalf("bb lens dropped: %v", got["bb"])
+	}
+
+	claim := doPost(s, "/scope/wc/claim", url.Values{"return": {"board"}})
+	mustFollow(t, s, claim)
+	if !strings.Contains(ticketBody(t, dir, "wc-de34"), "status: in-progress") {
+		t.Fatalf("claim-next must honour new lens: %s", ticketBody(t, dir, "wc-de34"))
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") {
+		t.Fatalf("outside-lens todo was claimed: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+
+	wClear := doPost(s, "/scope/wc/lens/clear", url.Values{"return": {"/scope/wc"}})
+	cleared := mustFollow(t, s, wClear)
+	if !strings.Contains(colSection(cleared.Body.String(), status.Todo), "Earlier") {
+		t.Fatalf("cleared board missing outside-lens card: %s", cleared.Body.String())
+	}
+	got = loadLens(t, app)
+	if _, ok := got["wc"]; ok {
+		t.Fatalf("wc lens still set: %v", got["wc"])
+	}
+	if len(got["bb"]) != 1 || got["bb"][0] != "keep" {
+		t.Fatalf("clear wc dropped bb: %v", got["bb"])
+	}
+}
+
+func TestPOSTLensEmptySetDoesNotWrite(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [frontend]\n")
+	setLens(t, app, "wc", []string{"frontend"})
+	s := mustServer(t, app)
+	before := lensFile(t, app)
+
+	w := doPost(s, "/scope/wc/lens", url.Values{
+		"tag":    {""},
+		"return": {"/scope/wc"},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("empty set want 303, got %d %s", w.Code, w.Body.String())
+	}
+	if lensFile(t, app) != before {
+		t.Fatalf("empty set wrote lens.cue:\n%s", lensFile(t, app))
+	}
+	got := loadLens(t, app)
+	if len(got["wc"]) != 1 || got["wc"][0] != "frontend" {
+		t.Fatalf("empty set must not clear: %v", got["wc"])
+	}
+
+	w = doPost(s, "/scope/wc/lens", url.Values{"return": {"/scope/wc"}})
+	mustFollow(t, s, w)
+	if lensFile(t, app) != before {
+		t.Fatal("no-tag POST wrote lens.cue")
+	}
+}
+
+func TestPOSTLensFromInspectReturnsThereAndListsScopeTags(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "tags: [alpha]\n")
+	addTicket(t, dir, "wc-de34", "two", "todo", "a1", "# Two\n", false, "tags: [beta]\n")
+	s := mustServer(t, app)
+
+	ins := do(s, "/scope/wc/ab2c").Body.String()
+	if !strings.Contains(ins, `value="beta"`) {
+		t.Fatalf("inspect chrome picker missing other ticket tag: %s", ins)
+	}
+	if !strings.Contains(ins, `value="alpha"`) {
+		t.Fatalf("inspect chrome picker missing own tag: %s", ins)
+	}
+
+	w := doPost(s, "/scope/wc/lens", url.Values{
+		"tag":    {"beta"},
+		"return": {"/scope/wc/ab2c"},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if !strings.HasPrefix(loc, "/scope/wc/ab2c") {
+		t.Fatalf("inspect POST must 303 to inspect, got %s", loc)
+	}
+	page := mustFollow(t, s, w)
+	if !strings.Contains(page.Body.String(), "<dd>wc-ab2c</dd>") {
+		t.Fatalf("follow is not inspect: %s", page.Body.String())
+	}
+
+	wClear := doPost(s, "/scope/wc/lens/clear", url.Values{"return": {"/scope/wc/ab2c"}})
+	if wClear.Code != http.StatusSeeOther {
+		t.Fatalf("clear want 303, got %d %s", wClear.Code, wClear.Body.String())
+	}
+	clearLoc := wClear.Header().Get("Location")
+	if !strings.HasPrefix(clearLoc, "/scope/wc/ab2c") {
+		t.Fatalf("inspect clear must 303 to inspect, got %s", clearLoc)
+	}
+	if strings.HasPrefix(clearLoc, "/scope/wc?") || clearLoc == "/scope/wc" {
+		t.Fatalf("inspect clear 303d to board: %s", clearLoc)
+	}
+	cleared := mustFollow(t, s, wClear)
+	if !strings.Contains(cleared.Body.String(), "<dd>wc-ab2c</dd>") {
+		t.Fatalf("clear follow is not inspect: %s", cleared.Body.String())
+	}
+	if _, ok := loadLens(t, app)["wc"]; ok {
+		t.Fatal("inspect clear left wc lens set")
+	}
+}
+
+func TestPOSTLensPreservesBoardQuery(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [frontend]\n")
+	addTicket(t, dir, "wc-de34", "drafty", "draft", "a1", "# Drafty\n", false, "tags: [frontend]\n")
+	s := mustServer(t, app)
+
+	ret := "/scope/wc?archived=1&backlog=1&tag=frontend"
+	w := doPost(s, "/scope/wc/lens", url.Values{
+		"tag":    {"frontend"},
+		"return": {ret},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Path != "/scope/wc" {
+		t.Fatalf("path = %s", loc)
+	}
+	q := u.Query()
+	if q.Get("backlog") != "1" || q.Get("archived") != "1" {
+		t.Fatalf("board switches dropped: %s", loc)
+	}
+	if got := q["tag"]; len(got) != 1 || got[0] != "frontend" {
+		t.Fatalf("tag chips dropped: %s", loc)
+	}
+	page := mustFollow(t, s, w)
+	body := page.Body.String()
+	if !strings.Contains(body, `class="switch on"`) {
+		t.Fatalf("followed board missing on switches: %s", body)
+	}
+	if !strings.Contains(body, `class="tag on"`) {
+		t.Fatalf("followed board missing active tag chip: %s", body)
+	}
+}
+
+func TestValidLensReturn(t *testing.T) {
+	tests := []struct {
+		loc  string
+		name string
+		ok   bool
+	}{
+		{"/scope/wc?archived=1&tag=rel..notes", "wc", true},
+		{"/search?scope=wc&q=..", "wc", true},
+		{"/graphs?scope=wc", "wc", true},
+		{"/graphs/depends?scope=wc", "wc", true},
+		{"/maintenance?scope=wc", "wc", true},
+		{"/scope/wc/ab2c", "wc", true},
+		{"/scope/wc/../bb", "wc", false},
+		{"/scope/wc/%2e%2e/bb", "wc", false},
+		{"/scope/bb", "wc", false},
+		{"//evil.example", "wc", false},
+		{"https://evil.example/search", "wc", false},
+		{"/scope/wc/foo/bar", "wc", false},
+		{"", "wc", false},
+	}
+	for _, tc := range tests {
+		if got := validLensReturn(tc.loc, tc.name); got != tc.ok {
+			t.Errorf("validLensReturn(%q, %q) = %v, want %v", tc.loc, tc.name, got, tc.ok)
+		}
+	}
+}
+
+func TestPOSTLensReturnAllowsDotDotInQuery(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [rel..notes]\n")
+	s := mustServer(t, app)
+
+	w := doPost(s, "/scope/wc/lens", url.Values{
+		"tag":    {"rel..notes"},
+		"return": {"/scope/wc?archived=1&tag=rel..notes"},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("board: want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Path != "/scope/wc" {
+		t.Fatalf("board path = %s", loc)
+	}
+	if u.Query().Get("archived") != "1" || u.Query().Get("tag") != "rel..notes" {
+		t.Fatalf("board query dropped: %s", loc)
+	}
+
+	w = doPost(s, "/scope/wc/lens", url.Values{
+		"tag":    {"rel..notes"},
+		"return": {"/search?scope=wc&q=.."},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("search: want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc = w.Header().Get("Location")
+	u, err = url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Path != "/search" {
+		t.Fatalf("search dumped to board: %s", loc)
+	}
+	if u.Query().Get("scope") != "wc" || u.Query().Get("q") != ".." {
+		t.Fatalf("search query dropped: %s", loc)
+	}
+}
+
+func TestPOSTLensUnknownTagBannerOnNonBoard(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [frontend]\n")
+	s := mustServer(t, app)
+
+	for _, ret := range []string{"/search?scope=wc", "/graphs?scope=wc", "/maintenance?scope=wc"} {
+		w := doPost(s, "/scope/wc/lens", url.Values{
+			"tag":    {"ghost"},
+			"return": {ret},
+		})
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("%s: unknown tag must still 303, got %d %s", ret, w.Code, w.Body.String())
+		}
+		loc := w.Header().Get("Location")
+		if !strings.HasPrefix(loc, strings.Split(ret, "?")[0]) || !strings.Contains(loc, "warning=") {
+			t.Fatalf("%s location: %s", ret, loc)
+		}
+		page := do(s, loc)
+		if page.Code != 200 {
+			t.Fatalf("GET %s = %d", loc, page.Code)
+		}
+		body := page.Body.String()
+		if !strings.Contains(body, "tag_unknown:") || !strings.Contains(body, "ghost") {
+			t.Fatalf("banner missing on %s: %s", ret, body)
+		}
+		if strings.Count(body, "tag_unknown:") != 1 {
+			t.Fatalf("notice printed twice on %s: %s", ret, body)
+		}
+	}
+	got := loadLens(t, app)
+	if len(got["wc"]) != 1 || got["wc"][0] != "ghost" {
+		t.Fatalf("unknown tag must still write: %v", got["wc"])
+	}
+
+	board := doPost(s, "/scope/wc/lens", url.Values{
+		"tag":    {"ghost"},
+		"return": {"/scope/wc"},
+	})
+	boardPage := mustFollow(t, s, board)
+	if strings.Count(boardPage.Body.String(), "tag_unknown:") != 1 {
+		t.Fatalf("board notice not once: %s", boardPage.Body.String())
+	}
+	if strings.Contains(boardPage.Body.String(), `name="return" value="/scope/wc?`) {
+		t.Fatalf("lens return must not keep notice query: %s", boardPage.Body.String())
+	}
+
+	wClear := doPost(s, "/scope/wc/lens/clear", url.Values{
+		"return": {board.Header().Get("Location")},
+	})
+	if wClear.Code != http.StatusSeeOther {
+		t.Fatalf("clear want 303, got %d %s", wClear.Code, wClear.Body.String())
+	}
+	clearLoc := wClear.Header().Get("Location")
+	if strings.Contains(clearLoc, "warning=") || strings.Contains(clearLoc, "tag_unknown") {
+		t.Fatalf("clear must not replay banner query: %s", clearLoc)
+	}
+	cleared := mustFollow(t, s, wClear)
+	if strings.Contains(cleared.Body.String(), "tag_unknown:") {
+		t.Fatalf("stale banner after clear: %s", cleared.Body.String())
+	}
+}
+
+func TestPOSTLensNameDriftRefuses(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [frontend]\n")
+	if err := scopeconfig.WriteMinimal(dir, "other", false); err != nil {
+		t.Fatal(err)
+	}
+	s := mustServer(t, app)
+	board := do(s, "/scope/wc").Body.String()
+	if strings.Contains(board, `action="/scope/wc/lens"`) {
+		t.Fatalf("name-drift still offers lens write: %s", board)
+	}
+	before := lensFile(t, app)
+	w := doPost(s, "/scope/wc/lens", url.Values{"tag": {"frontend"}, "return": {"/scope/wc"}})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("drift POST want 409, got %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), token.NameDrift) && !strings.Contains(w.Body.String(), "name_drift") {
+		t.Fatalf("message: %s", w.Body.String())
+	}
+	if lensFile(t, app) != before {
+		t.Fatal("drift POST wrote lens.cue")
+	}
+}
+
+func TestPOSTLensUnparseableConfigStillWrites(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "earlier", "todo", "a0", "# Earlier\n", false, "tags: [backend]\n")
+	addTicket(t, dir, "wc-de34", "tagged", "todo", "a1", "# Tagged\n", false, "tags: [frontend]\n")
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"wc\"\nthis is not cue {\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := mustServer(t, app)
+	board := do(s, "/scope/wc").Body.String()
+	if !strings.Contains(board, `action="/scope/wc/lens"`) {
+		t.Fatalf("unparseable must offer lens: %s", board)
+	}
+	w := doPost(s, "/scope/wc/lens", url.Values{"tag": {"frontend"}, "return": {"/scope/wc"}})
+	page := mustFollow(t, s, w)
+	body := page.Body.String()
+	if strings.Contains(colSection(body, status.Todo), "Earlier") {
+		t.Fatalf("unparseable board must honour lens: %s", body)
+	}
+	if !strings.Contains(colSection(body, status.Todo), "Tagged") {
+		t.Fatalf("unparseable lens hid matching card: %s", body)
+	}
+
+	wClear := doPost(s, "/scope/wc/lens/clear", url.Values{"return": {"/scope/wc"}})
+	cleared := mustFollow(t, s, wClear)
+	if !strings.Contains(colSection(cleared.Body.String(), status.Todo), "Earlier") {
+		t.Fatalf("unparseable clear must restore outside-lens card: %s", cleared.Body.String())
+	}
+	if _, ok := loadLens(t, app)["wc"]; ok {
+		t.Fatal("unparseable clear left wc lens set")
+	}
+}
+
+func TestPOSTLensUnknownScope(t *testing.T) {
+	app := newTestApp(t)
+	s := mustServer(t, app)
+	w := doPost(s, "/scope/ghost/lens", url.Values{"tag": {"x"}})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPOSTLensRefusesForeignOrigin(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+	s := mustServer(t, app)
+	before := lensFile(t, app)
+	w := doPostHeader(s, "/scope/wc/lens", url.Values{"tag": {"frontend"}}, http.Header{"Origin": {"https://evil.example"}})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("foreign origin: want 403, got %d %s", w.Code, w.Body.String())
+	}
+	if lensFile(t, app) != before {
+		t.Fatal("foreign origin wrote lens.cue")
 	}
 }

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -57,11 +56,12 @@ func runLens(app *App, c *cobra.Command, args []string, scopeFlag string, clearL
 	switch {
 	case clearLens:
 		return e.writeLens(scope, nil)
-	case len(args) == 0:
-		stdoutln(c, strings.Join(e.reg.Lens[scope], " "))
-		return nil
 	default:
-		tags := dedupeSorted(args)
+		tags := registry.CompactTags(args)
+		if len(tags) == 0 {
+			stdoutln(c, strings.Join(e.reg.Lens[scope], " "))
+			return nil
+		}
 		// Refresh index without printing integrity tokens — lens set's soft
 		// stderr surface is tag_unknown: only (not board-verb noise).
 		if _, err := e.reconcileResult(map[string]string{scope: resolved.Entry.Dir}); err != nil {
@@ -89,35 +89,10 @@ func (e *engine) writeLens(scope string, tags []string) error {
 	defer func() { _ = lock.Release() }()
 
 	store := registry.NewStore(e.app.Ctx, e.app.ConfigDir)
-	reg, err := store.Load()
-	if err != nil {
-		return err
-	}
-	if reg.Lens == nil {
-		reg.Lens = map[string][]string{}
-	}
-	if len(tags) == 0 {
-		delete(reg.Lens, scope)
-	} else {
-		reg.Lens[scope] = tags
-	}
-	return store.WriteLens(reg.Lens)
+	return store.SetLens(scope, tags)
 }
 
 // lensEcho rides stderr only — never a TSV stdout field.
 func lensEcho(lens []string) string {
 	return "lens: " + lensBracket(lens)
-}
-
-func dedupeSorted(items []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, s := range items {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
-	}
-	sort.Strings(out)
-	return out
 }

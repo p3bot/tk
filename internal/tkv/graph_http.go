@@ -45,7 +45,7 @@ func (s *Server) dependsGraph(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ch, err := s.chromeFor(reg, selected, "", navGraphs)
+	ch, err := s.pageChrome(reg, selected, "", navGraphs, r)
 	if err != nil {
 		return err
 	}

@@ -46,5 +46,28 @@
       <div><dt>integrity</dt><dd class="integrity-{{.Chrome.Integrity}}">{{.Chrome.Integrity}}</dd></div>
     </dl>
   </div>
+  {{if and .Chrome.Selected .Chrome.CanLens}}
+  <div class="chrome-row chrome-lens">
+    <form class="write lens-set" method="post" action="/scope/{{.Chrome.Selected}}/lens">
+      <input type="hidden" name="return" value="{{.Chrome.Return}}">
+      <span class="lens-picker" aria-label="lens tags">
+        {{range .Chrome.Tags}}
+        <label><input type="checkbox" name="tag" value="{{.}}"{{if $.Chrome.LensOn .}} checked{{end}}> {{.}}</label>
+        {{end}}
+      </span>
+      <input type="text" name="tag" value="" placeholder="tag" aria-label="additional lens tag">
+      <button type="submit">Set lens</button>
+    </form>
+    <form class="write lens-clear" method="post" action="/scope/{{.Chrome.Selected}}/lens/clear">
+      <input type="hidden" name="return" value="{{.Chrome.Return}}">
+      <button type="submit">Clear lens</button>
+    </form>
+  </div>
+  {{end}}
 </header>
+{{if .Chrome.Notices}}
+<div class="chrome-notices">
+{{template "notices" .Chrome.Notices}}
+</div>
+{{end}}
 {{end}}

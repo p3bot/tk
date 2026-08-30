@@ -224,6 +224,22 @@ func writeReturnURL(r *http.Request, res writeengine.Result) string {
 	return appendNotices(loc, res)
 }
 
+const (
+	noticeDependsOpen     = "depends_open"
+	noticeRequiredMissing = "required_missing"
+	noticeSyncNeeded      = "sync_needed"
+	noticeSyncDisabled    = "sync_disabled"
+	noticeWarning         = "warning"
+)
+
+var noticeQueryKeys = []string{
+	noticeDependsOpen,
+	noticeRequiredMissing,
+	noticeSyncNeeded,
+	noticeSyncDisabled,
+	noticeWarning,
+}
+
 func appendNotices(loc string, res writeengine.Result) string {
 	u, err := url.Parse(loc)
 	if err != nil {
@@ -231,20 +247,20 @@ func appendNotices(loc string, res writeengine.Result) string {
 	}
 	q := u.Query()
 	if len(res.DependsOpen) > 0 {
-		q.Set("depends_open", strings.Join(res.DependsOpen, " "))
+		q.Set(noticeDependsOpen, strings.Join(res.DependsOpen, " "))
 	}
 	if len(res.RequiredMissing) > 0 {
-		q.Set("required_missing", strings.Join(res.RequiredMissing, " "))
+		q.Set(noticeRequiredMissing, strings.Join(res.RequiredMissing, " "))
 	}
 	if res.SyncNeeded != "" {
-		q.Set("sync_needed", res.SyncNeeded)
+		q.Set(noticeSyncNeeded, res.SyncNeeded)
 	}
 	if res.SyncDisabled != "" {
-		q.Set("sync_disabled", res.SyncDisabled)
+		q.Set(noticeSyncDisabled, res.SyncDisabled)
 	}
 	for _, w := range res.Warnings {
 		if w = strings.TrimSpace(w); w != "" {
-			q.Add("warning", w)
+			q.Add(noticeWarning, w)
 		}
 	}
 	u.RawQuery = q.Encode()
@@ -253,24 +269,38 @@ func appendNotices(loc string, res writeengine.Result) string {
 
 func noticesFromQuery(q url.Values) []string {
 	var out []string
-	if v := strings.TrimSpace(q.Get("depends_open")); v != "" {
-		out = append(out, "depends_open: waiting on "+v)
-	}
-	if v := strings.TrimSpace(q.Get("required_missing")); v != "" {
-		out = append(out, "required_missing: "+v)
-	}
-	if v := strings.TrimSpace(q.Get("sync_needed")); v != "" {
-		out = append(out, "sync_needed: "+v)
-	}
-	if v := strings.TrimSpace(q.Get("sync_disabled")); v != "" {
-		out = append(out, "sync_disabled: "+v)
-	}
-	for _, w := range q["warning"] {
-		if w = strings.TrimSpace(w); w != "" {
-			out = append(out, w)
+	for _, k := range noticeQueryKeys {
+		switch k {
+		case noticeWarning:
+			for _, w := range q[k] {
+				if w = strings.TrimSpace(w); w != "" {
+					out = append(out, w)
+				}
+			}
+		case noticeDependsOpen:
+			if v := strings.TrimSpace(q.Get(k)); v != "" {
+				out = append(out, noticeDependsOpen+": waiting on "+v)
+			}
+		default:
+			if v := strings.TrimSpace(q.Get(k)); v != "" {
+				out = append(out, k+": "+v)
+			}
 		}
 	}
 	return out
+}
+
+func stripNoticeQuery(loc string) string {
+	u, err := url.Parse(loc)
+	if err != nil {
+		return loc
+	}
+	q := u.Query()
+	for _, k := range noticeQueryKeys {
+		q.Del(k)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func lookupFromArg(arg string) (writeengine.Lookup, error) {

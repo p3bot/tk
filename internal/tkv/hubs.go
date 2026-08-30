@@ -27,7 +27,7 @@ func (s *Server) graphs(w http.ResponseWriter, r *http.Request) error {
 	if _, err := s.rec.Reconcile(allTargets(reg), registeredSet(reg), nowNS()); err != nil {
 		return err
 	}
-	ch, err := s.chromeFor(reg, registeredScope(reg, r.URL.Query().Get("scope")), "", navGraphs)
+	ch, err := s.pageChrome(reg, registeredScope(reg, r.URL.Query().Get("scope")), "", navGraphs, r)
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ch, err := s.chromeFor(reg, registeredScope(reg, r.URL.Query().Get("scope")), "", navMaintenance)
+	ch, err := s.pageChrome(reg, registeredScope(reg, r.URL.Query().Get("scope")), "", navMaintenance, r)
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 			},
 			{
 				Title: "More",
-				Blurb: "Doctor, sync, lens/me, and scope registration will get surfaces here later. They will call the same Go functions tk uses — never a tk subprocess.",
+				Blurb: "Doctor, sync, me, and scope registration will get surfaces here later. They will call the same Go functions tk uses — never a tk subprocess.",
 			},
 		},
 		Rows: rows,

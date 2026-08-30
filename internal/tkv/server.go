@@ -18,6 +18,7 @@ import (
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
+	"github.com/p3bot/tk/internal/resolve"
 	"github.com/p3bot/tk/internal/scopeadmin"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/scopefile"
@@ -165,6 +166,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /scope/{name}/{id}", s.wrap(s.inspect))
 	mux.HandleFunc("POST /scope/{name}/mark", s.wrapEngine(s.postMark))
 	mux.HandleFunc("POST /scope/{name}/claim", s.wrapEngine(s.postClaim))
+	mux.HandleFunc("POST /scope/{name}/lens", s.wrapEngine(s.postLensSet))
+	mux.HandleFunc("POST /scope/{name}/lens/clear", s.wrapEngine(s.postLensClear))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Frame-Options", "DENY")
 		mux.ServeHTTP(w, r)
@@ -239,9 +242,38 @@ type chrome struct {
 	Selected  string
 	Mode      string
 	Lens      string
+	LensTags  []string
+	Tags      []string
+	CanLens   bool
+	Return    string
+	Notices   []string
 	Me        string
 	Integrity string
 	Query     string
+}
+
+func (c chrome) LensOn(tag string) bool {
+	for _, t := range c.LensTags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *chrome) bind(r *http.Request) {
+	if c == nil || r == nil {
+		return
+	}
+	c.Notices = noticesFromQuery(r.URL.Query())
+	c.Return = stripNoticeQuery(requestPath(r))
+}
+
+func requestPath(r *http.Request) string {
+	if r.URL.RawQuery == "" {
+		return r.URL.Path
+	}
+	return r.URL.Path + "?" + r.URL.RawQuery
 }
 
 // BoardHref is always the scope summary. A selected scope is reached from the switcher.
@@ -343,12 +375,28 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 	_, hasRoot := scopefile.GitRoot(entry.Dir)
 	c.Mode = statusMode(schema, schema == nil, hasRoot)
 	c.Lens = strings.Join(reg.Lens[selected], " ")
+	c.LensTags = append([]string(nil), reg.Lens[selected]...)
 	c.Me = reg.Me[selected]
+	c.CanLens = resolve.CheckName(s.app.Ctx, selected, entry) == nil
+	tags, err := s.db.ScopeDistinctTags(selected)
+	if err != nil {
+		return c, err
+	}
+	c.Tags = tags
 	st, err := scopeIntegrity(s.db, selected, schema)
 	if err != nil {
 		return c, err
 	}
 	c.Integrity = st
+	return c, nil
+}
+
+func (s *Server) pageChrome(reg *registry.Registry, selected, query, section string, r *http.Request) (chrome, error) {
+	c, err := s.chromeFor(reg, selected, query, section)
+	if err != nil {
+		return c, err
+	}
+	c.bind(r)
 	return c, nil
 }
 

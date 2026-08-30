@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/ast"
@@ -164,6 +165,58 @@ func (s *Store) WriteLens(lens map[string][]string) error {
 		lens = map[string][]string{}
 	}
 	return s.writeOwned(lensFile, map[string]any{"lens": lens})
+}
+
+// SetLens load-modify-writes one scope's lens. A nil or empty slice deletes the
+// key. Empty strings are dropped, deduped, and sorted; a slice that is only
+// empty strings is a no-op — not a clear, and never stored as [""].
+// Callers hold the machine-global config flock; the store does not lock or merge.
+// Passing a one-scope map to WriteLens is a valid call and a wrong product write:
+// it replaces the file and drops every other scope's lens.
+func (s *Store) SetLens(scope string, tags []string) error {
+	if len(tags) > 0 {
+		tags = CompactTags(tags)
+		if len(tags) == 0 {
+			return nil
+		}
+	}
+	reg, err := s.Load()
+	if err != nil {
+		return err
+	}
+	if reg.Lens == nil {
+		reg.Lens = map[string][]string{}
+	}
+	if len(tags) == 0 {
+		delete(reg.Lens, scope)
+	} else {
+		reg.Lens[scope] = tags
+	}
+	return s.WriteLens(reg.Lens)
+}
+
+// CompactTags drops empty strings, dedupes, and sorts. Never stores "".
+func CompactTags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	for _, t := range tags {
+		if t == "" {
+			continue
+		}
+		if _, ok := seen[t]; ok {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // WriteMe regenerates me.cue from me and installs it atomically.

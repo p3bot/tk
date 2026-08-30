@@ -103,6 +103,13 @@ func longestPrefix(reg *registry.Registry, cwd string) (string, registry.Entry, 
 	return bestName, bestEntry, true
 }
 
+// CheckName reports name-drift when the registry key disagrees with on-disk
+// tk.cue name. Unreadable tk.cue is not drift (reads stay available).
+func CheckName(ctx *cue.Context, name string, entry registry.Entry) error {
+	_, err := resolvedOrDrift(ctx, name, entry, SourceFlag)
+	return err
+}
+
 // resolvedOrDrift returns the scope unless on-disk name disagrees with the registry key.
 // Unreadable tk.cue still resolves (reads stay available; write path gates config).
 func resolvedOrDrift(ctx *cue.Context, name string, entry registry.Entry, source string) (*Resolved, error) {

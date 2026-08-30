@@ -1,7 +1,7 @@
 // Package tkv is the human-facing local web dashboard for browsing tickets
-// and scopes. Humans can mark and claim through the same write engine as tk.
-// Metadata comes from the machine-wide index; bodies from ticket files.
-// Agents do not use it.
+// and scopes. Humans can mark and claim through the same write engine as tk,
+// and set or clear the machine-local tag lens from chrome. Metadata comes from
+// the machine-wide index; bodies from ticket files. Agents do not use it.
 package tkv
 
 import (
@@ -31,8 +31,8 @@ const DefaultPort = 8736
 
 const usageText = `tkv is a local web dashboard for tk tickets.
 
-Humans can mark and claim from the board and inspect pages. Agents keep
-using tk. It listens on 127.0.0.1 (never 0.0.0.0). The default port is 8736.
+Humans can mark, claim, and set or clear the tag lens. Agents keep using
+tk. It listens on 127.0.0.1 (never 0.0.0.0). The default port is 8736.
 
 Usage: tkv [--port N] [--no-open] [--scope NAME]
 

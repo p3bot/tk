@@ -8,7 +8,6 @@
 {{template "chrome" .}}
 <main class="inspect">
 <article class="body">
-  {{template "notices" .Notices}}
   {{if .ParseMsg}}<p class="banner">{{.ParseMsg}}</p>{{end}}
   {{if .SchemaErr}}<p class="banner">schema_error: a depends/related entry is not a legal full ticket id</p>{{end}}
   {{if .RawText}}<pre class="raw">{{.RawText}}</pre>{{else}}{{.Body}}{{end}}

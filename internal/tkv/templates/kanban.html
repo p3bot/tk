@@ -8,7 +8,6 @@
 {{template "chrome" .}}
 <main>
 <h1>{{.Name}}</h1>
-{{template "notices" .Notices}}
 <div class="board-controls">
   <a class="switch{{if .Backlog}} on{{end}}" href="{{.BacklogHref}}" role="switch" aria-checked="{{if .Backlog}}true{{else}}false{{end}}" data-board-switch>
     <span class="switch-ui" aria-hidden="true"></span>

@@ -50,6 +50,8 @@ type Server struct {
 	// afterIndexUnlock runs after a write handler drops Server.mu and before
 	// the engine call. Tests use it to prove claim's git work is not inside wrap.
 	afterIndexUnlock func()
+	flashMu          sync.Mutex
+	flash            map[string]syncFlash
 }
 
 // NewServer opens the same XDG index tk uses.
@@ -169,6 +171,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /scope/{name}/create", s.wrapEngine(s.postCreate))
 	mux.HandleFunc("POST /scope/{name}/lens", s.wrapEngine(s.postLensSet))
 	mux.HandleFunc("POST /scope/{name}/lens/clear", s.wrapEngine(s.postLensClear))
+	mux.HandleFunc("POST /scope/{name}/sync", s.wrapEngine(s.postChromeSync))
+	mux.HandleFunc("POST /sync", s.wrapEngine(s.postUnscopedSync))
+	mux.HandleFunc("POST /maintenance/sync", s.wrapEngine(s.postMaintenanceSync))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Frame-Options", "DENY")
 		mux.ServeHTTP(w, r)
@@ -246,8 +251,10 @@ type chrome struct {
 	LensTags  []string
 	Tags      []string
 	CanLens   bool
+	CanSync   bool
 	Return    string
 	Notices   []string
+	Alerts    []string
 	Me        string
 	Integrity string
 	Query     string
@@ -389,6 +396,7 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 		return c, err
 	}
 	c.Integrity = st
+	c.CanSync = c.Mode == scopeadmin.ModeTkDriven
 	return c, nil
 }
 
@@ -397,8 +405,22 @@ func (s *Server) pageChrome(reg *registry.Registry, selected, query, section str
 	if err != nil {
 		return c, err
 	}
-	c.bind(r)
+	s.bindChrome(&c, r)
 	return c, nil
+}
+
+func (s *Server) bindChrome(c *chrome, r *http.Request) {
+	if c == nil || r == nil {
+		return
+	}
+	c.bind(r)
+	if extra, ok := s.takeSyncNotices(requestPath(r)); ok {
+		if extra.attention {
+			c.Alerts = extra.lines
+		} else {
+			c.Notices = append(c.Notices, extra.lines...)
+		}
+	}
 }
 
 func statusMode(schema *scopeconfig.Schema, configUnusable bool, hasRoot bool) string {

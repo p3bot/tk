@@ -60,6 +60,7 @@ main { padding: 1.25rem 1.5rem 3rem; }
 .meta dt { font-weight: 650; }
 .meta dd { margin: 0; color: var(--fg); }
 .search { margin-left: auto; }
+.chrome-primary .write { margin-top: 0; }
 .chrome-lens {
   border-top: 1px solid var(--line);
   gap: 0.55rem 1rem;
@@ -82,7 +83,7 @@ main { padding: 1.25rem 1.5rem 3rem; }
   font-size: 0.8125rem;
 }
 .chrome-notices { padding: 0.45rem 1.5rem 0.65rem; }
-.chrome-notices .banner { margin: 0.2rem 0; }
+.chrome-notices .banner { margin: 0.2rem 0; white-space: pre-wrap; }
 .lead { max-width: 46rem; color: var(--muted); margin: 0 0 1.1rem; }
 .hub {
   display: grid;

@@ -14,7 +14,11 @@
   <article class="hub-card">
     <h2>{{.Title}}</h2>
     <p>{{.Blurb}}</p>
-    {{if .Href}}<p><a href="{{.Href}}">Open</a></p>{{else if .Ready}}<p class="hub-status">on this page</p>{{else}}<p class="hub-status">planned</p>{{end}}
+    {{if .PostAction}}
+    <form class="write" method="post" action="{{.PostAction}}" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+      <button type="submit">{{.PostLabel}}</button>
+    </form>
+    {{else if .Href}}<p><a href="{{.Href}}">Open</a></p>{{else if .Ready}}<p class="hub-status">on this page</p>{{else}}<p class="hub-status">planned</p>{{end}}
   </article>
 {{end}}
 </section>

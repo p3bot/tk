@@ -8,7 +8,7 @@ live authority and must not override the tree.
 
 ## Implementation status
 
-P1 through P7 have landed, plus `tkv` (reads plus mark/claim/create/lens). `tk` runs as a Cobra CLI with the machine-local CUE
+P1 through P7 have landed, plus `tkv` (reads plus mark/claim/create/lens/sync). `tk` runs as a Cobra CLI with the machine-local CUE
 registry, scope `tk.cue` evaluation, ambient resolution, and the full `tk scope`
 verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `field`); the machine-wide
 SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
@@ -28,8 +28,8 @@ tests; no design-doc dependency) plus agentdex-backed `skill install`/`list`/
 `uninstall` (paths from the agent catalog; no hardcoded product skills dirs);
 and `tkv` — a human-facing localhost dashboard (`cmd/tkv`) for overview, kanban,
 inspect, search, depends graph, and maintenance, with mark, claim, and create writes
-through the same engine as `tk`, and chrome set/clear of the machine-local tag
-lens (agents keep using `tk`).
+through the same engine as `tk`, chrome set/clear of the machine-local tag
+lens, and chrome/maintenance `tk sync` (agents keep using `tk`).
 
 - Prefer packages, tests, and the embedded skill over prose when they disagree.
 - Valid full ids match `^[a-z0-9]{1,12}-[a-hj-km-np-z][a-hj-km-np-z2-9]{3,7}$`
@@ -102,7 +102,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `syncengine` — per-root snapshot/integrate/integrity/push; `tk sync` and claim
   - `writeengine` — cobra-free ticket-file write session, create, meta, order, mark, and claim orchestration
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
-  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, mark/claim/create, chrome lens)
+  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, mark/claim/create, chrome lens, sync)
   - `cli` — Cobra command tree, exit codes, signals, colour/TTY, path hand-off
 
 ## Build, test, lint, format

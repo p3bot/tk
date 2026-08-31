@@ -13,10 +13,12 @@ type hubPage struct {
 }
 
 type hubItem struct {
-	Title string
-	Blurb string
-	Href  string
-	Ready bool
+	Title      string
+	Blurb      string
+	Href       string
+	Ready      bool
+	PostAction string
+	PostLabel  string
 }
 
 func (s *Server) graphs(w http.ResponseWriter, r *http.Request) error {
@@ -75,7 +77,7 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 	return s.render(w, "hub", hubPage{
 		Title:  "maintenance",
 		Chrome: ch,
-		Lead:   "Read-only health for every registered scope. Repairs, index rebuild, sync, and scope admin stay on the tk CLI (tk doctor, tk reindex, tk sync, tk scope).",
+		Lead:   "Health for every registered scope. Sync all is on this page. Repairs, index rebuild, and scope admin stay on the tk CLI (tk doctor, tk reindex, tk scope).",
 		Items: []hubItem{
 			{
 				Title: "Integrity",
@@ -83,8 +85,14 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 				Ready: true,
 			},
 			{
+				Title:      "Sync all",
+				Blurb:      "Snapshot, fetch, integrate, and push every auto-commit git-root. One root's failure does not skip the others. Same as tk sync --all.",
+				PostAction: "/maintenance/sync",
+				PostLabel:  "Sync all",
+			},
+			{
 				Title: "More",
-				Blurb: "Doctor, sync, me, and scope registration will get surfaces here later. They will call the same Go functions tk uses — never a tk subprocess.",
+				Blurb: "Doctor, me, and scope registration will get surfaces here later. They will call the same Go functions tk uses — never a tk subprocess.",
 			},
 		},
 		Rows: rows,

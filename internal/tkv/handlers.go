@@ -504,7 +504,7 @@ func (s *Server) inspect(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	page.Chrome.bind(r)
+	s.bindChrome(&page.Chrome, r)
 	return s.render(w, "inspect", page)
 }
 

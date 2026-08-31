@@ -31,6 +31,12 @@
     <form class="search" action="/search" method="get">
       <input type="search" name="q" placeholder="search" value="{{.Chrome.Query}}" aria-label="search">
     </form>
+    {{if .Chrome.CanSync}}
+    <form class="write chrome-sync" method="post" action="/scope/{{.Chrome.Selected}}/sync" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+      <input type="hidden" name="return" value="{{.Chrome.Return}}">
+      <button type="submit">Sync</button>
+    </form>
+    {{end}}
   </div>
   <div class="chrome-row chrome-context">
     <nav class="scopes" aria-label="scopes">
@@ -65,8 +71,9 @@
   </div>
   {{end}}
 </header>
-{{if .Chrome.Notices}}
+{{if or .Chrome.Notices .Chrome.Alerts}}
 <div class="chrome-notices">
+{{range .Chrome.Alerts}}<p class="banner">{{.}}</p>{{end}}
 {{template "notices" .Chrome.Notices}}
 </div>
 {{end}}

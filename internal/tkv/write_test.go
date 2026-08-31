@@ -183,7 +183,7 @@ func TestGETDoesNotWrite(t *testing.T) {
 	before := ticketBody(t, dir, "wc-ab2c")
 	setLens(t, app, "wc", []string{"frontend"})
 	beforeLens := lensFile(t, app)
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/lens", "/scope/wc/lens/clear"} {
+	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/maintenance/sync"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))

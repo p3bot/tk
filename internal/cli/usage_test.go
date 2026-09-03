@@ -45,6 +45,7 @@ func TestArityUsageMessages(t *testing.T) {
 		{"rename one", []string{"scope", "rename", "old"}, "missing <new>", "tk scope rename <old> <new>"},
 		{"note add none", []string{"note", "add"}, "missing <text...>", "tk note add [--name slug] <text...>"},
 		{"field set none", []string{"scope", "field", "set"}, "missing <name>", "tk scope field set <name> --type <string|int|bool|strings> [--required] [--values V]... [--scope S]"},
+		{"field unset none", []string{"scope", "field", "unset"}, "missing <name>", "tk scope field unset <name> [--strip] [--scope S]"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -6,7 +6,9 @@ package scopefile
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/p3bot/tk/internal/flock"
@@ -121,19 +123,59 @@ func IsAllowlisted(path, dir string) bool {
 // LooksLikeTicket reports whether base is a ticket filename: full-id stem
 // with optional valid slug tail.
 func LooksLikeTicket(base string) bool {
+	_, ok := TicketIDFromBase(base)
+	return ok
+}
+
+// TicketIDFromBase extracts the full id from an allowlisted ticket filename.
+func TicketIDFromBase(base string) (string, bool) {
 	stem, ok := strings.CutSuffix(base, ".md")
 	if !ok {
-		return false
+		return "", false
 	}
 	parts := strings.SplitN(stem, "-", 3)
 	if len(parts) < 2 {
-		return false
+		return "", false
 	}
-	if !id.IsFullTicketID(parts[0] + "-" + parts[1]) {
-		return false
+	full := parts[0] + "-" + parts[1]
+	if !id.IsFullTicketID(full) {
+		return "", false
 	}
-	if len(parts) == 3 {
-		return slug.Valid(parts[2])
+	if len(parts) == 3 && !slug.Valid(parts[2]) {
+		return "", false
 	}
-	return true
+	return full, true
+}
+
+// ListTickets returns allowlisted ticket markdown at dir root and archive/,
+// sorted. Missing archive/ is normal. Nested residue and notes are omitted.
+func ListTickets(dir string) ([]string, error) {
+	var out []string
+	if err := collectTickets(dir, dir, &out); err != nil {
+		return nil, err
+	}
+	arch := filepath.Join(dir, "archive")
+	if err := collectTickets(dir, arch, &out); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func collectTickets(scopeDir, root string, out *[]string) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		path := filepath.Join(root, e.Name())
+		if !IsAllowlisted(path, scopeDir) || !LooksLikeTicket(e.Name()) {
+			continue
+		}
+		*out = append(*out, path)
+	}
+	return nil
 }

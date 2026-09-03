@@ -247,3 +247,25 @@ func TestSerializeCustomTypesRoundTrip(t *testing.T) {
 		t.Fatalf("custom fields changed across round-trip:\n first: %#v\nsecond: %#v", first.Custom, second.Custom)
 	}
 }
+
+func TestRemoveCustom(t *testing.T) {
+	m := &Model{Custom: []Field{
+		{Key: "jira", Value: "ABC-1"},
+		{Key: "area", Value: "frontend"},
+	}}
+	if !m.RemoveCustom("jira") {
+		t.Fatal("RemoveCustom jira should report present")
+	}
+	if len(m.Custom) != 1 || m.Custom[0].Key != "area" {
+		t.Fatalf("after remove jira: %#v", m.Custom)
+	}
+	if m.RemoveCustom("ghost") {
+		t.Fatal("RemoveCustom ghost should report absent")
+	}
+	if !m.RemoveCustom("area") {
+		t.Fatal("RemoveCustom last key should report present")
+	}
+	if m.Custom != nil {
+		t.Fatalf("empty Custom should be nil, got %#v", m.Custom)
+	}
+}

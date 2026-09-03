@@ -38,6 +38,7 @@ description: >-
 - depends, related, tags, links → tk meta add|rm
 - related write is one-way on the subject only (no mirror on the target); deps shows both directions
 - custom fields: declare per scope under `fields:` in tk.cue (CLI: `tk scope field`); meta allowlists built-ins plus declared names only; optional `required: true` is soft-warn policy only
+- retire a custom key with `tk scope field unset <name> --strip`: declaration gone and the key gone from all tickets in the scope (including when the declaration was already removed). Without `--strip`, unset is declaration-only and tickets stay untouched. Do not hand-edit fences to drop undeclared keys; `doctor --repair` does not drop them
 
 ## Commands
 
@@ -70,7 +71,7 @@ tk scope list                                                       # List regis
 tk scope rename <old> <new>                                         # Rename scope end-to-end
 tk scope field list [--scope S]                                     # List custom fields: (name type required values)
 tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # Upsert field; full replace from flags (omit --required demotes)
-tk scope field unset <name> [--scope S]                             # Remove field declaration only (tickets untouched)
+tk scope field unset <name> [--strip] [--scope S]                   # Remove field declaration; --strip also drops the key from all tickets
 tk sync [--scope S] [--all]                                         # Snapshot/integrate/push auto-commit roots (claim also pushes)
 tk doctor [--repair] [--re-space-order] [--all]                     # Diagnose integrity; optional repair
 tk reindex                                                          # Rebuild the machine-wide index from files

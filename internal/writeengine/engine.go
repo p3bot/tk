@@ -1,6 +1,6 @@
 // Package writeengine is the cobra-free ticket-file write session: create, meta
-// mutate, order, mark, and claim. Callers map structured results to process
-// edges; this package does not import cobra or internal/cli.
+// mutate, order, mark, claim, and custom-key strip. Callers map structured
+// results to process edges; this package does not import cobra or internal/cli.
 package writeengine
 
 import (

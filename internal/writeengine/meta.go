@@ -371,7 +371,7 @@ func applyMetaSet(m *frontmatter.Model, key, value string, field scopeconfig.Fie
 		return nil
 	}
 	if value == "" {
-		removeCustom(m, key)
+		m.RemoveCustom(key)
 		return nil
 	}
 	parsed, err := parseScalarValue(field, value)
@@ -404,7 +404,7 @@ func applyMetaListOp(m *frontmatter.Model, op MetaOp, key, value string, field s
 			return err
 		}
 		if len(next) == 0 {
-			removeCustom(m, key)
+			m.RemoveCustom(key)
 		} else {
 			setCustom(m, key, next)
 		}
@@ -490,21 +490,6 @@ func setCustom(m *frontmatter.Model, key string, value any) {
 		}
 	}
 	m.Custom = append(m.Custom, frontmatter.Field{Key: key, Value: value})
-}
-
-func removeCustom(m *frontmatter.Model, key string) {
-	out := make([]frontmatter.Field, 0, len(m.Custom))
-	for _, f := range m.Custom {
-		if f.Key == key {
-			continue
-		}
-		out = append(out, f)
-	}
-	if len(out) == 0 {
-		m.Custom = nil
-		return
-	}
-	m.Custom = out
 }
 
 func formatScalar(v any) string {

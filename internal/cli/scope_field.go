@@ -11,10 +11,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/atomicfile"
+	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/selfcommit"
 	"github.com/p3bot/tk/internal/token"
+	"github.com/p3bot/tk/internal/writeengine"
 )
 
 func newScopeFieldCmd(app *App) *cobra.Command {
@@ -26,7 +28,7 @@ func newScopeFieldCmd(app *App) *cobra.Command {
 			"scope's tk.cue. The CLI noun is field (alias: fields); the CUE key is fields.\n\n" +
 			"  list                 print declared fields (name, type, required, values)\n" +
 			"  set <name> --type T  create or fully replace one declaration\n" +
-			"  unset <name>         remove one declaration (ticket files untouched)\n\n" +
+			"  unset <name> [--strip]  remove one declaration; --strip also drops the key from tickets\n\n" +
 			"Target scope uses the ambient chain shared with board verbs: --scope >\n" +
 			"TK_SCOPE > cwd code-root (not a positional scope name). set fully replaces\n" +
 			"the named declaration from this invocation's flags: omit --required demotes\n" +
@@ -99,20 +101,33 @@ func newScopeFieldSetCmd(app *App) *cobra.Command {
 }
 
 func newScopeFieldUnsetCmd(app *App) *cobra.Command {
-	var scope string
+	var (
+		scope string
+		strip bool
+	)
 	cmd := &cobra.Command{
-		Use:   "unset <name> [--scope S]",
+		Use:   "unset <name> [--strip] [--scope S]",
 		Short: "Remove one custom field declaration from tk.cue",
-		Long: "Remove the named field from fields: in the ambient scope's tk.cue only.\n" +
-			"Does not open, rewrite, or strip keys from any ticket markdown — existing\n" +
-			"values stay on disk; meta no longer allowlists the key until re-declared.\n" +
-			"Prints the absolute tk.cue path on success.",
+		Long: "Remove the named field from fields: in the ambient scope's tk.cue.\n\n" +
+			"Without --strip, the name must be declared in tk.cue; ticket files are not\n" +
+			"opened or rewritten — existing values stay on disk; meta no longer allowlists\n" +
+			"the key until re-declared. Already-gone is usage.\n\n" +
+			"With --strip, the name is ensured absent from the evaluated fields: and from\n" +
+			"every allowlisted ticket at the scope dir root and under archive/. If the\n" +
+			"declaration is already gone, tickets that still carry the key are stripped.\n" +
+			"Built-in keys and meta aliases cannot be stripped. Sibling-package declarations\n" +
+			"that tk.cue does not own still refuse. Unparseable tickets are skipped with\n" +
+			"parse_error: on stderr; other tickets and the declaration ensure still complete.\n\n" +
+			"Prints the absolute path of each file actually rewritten (tk.cue and/or tickets).\n" +
+			"Nothing to rewrite: exit 0, empty stdout, no commit. Auto-commit scopes\n" +
+			"self-commit every changed file in one commit when a git-root exists.",
 		Args: exactArgs("<name>"),
 		RunE: func(c *cobra.Command, args []string) error {
-			return runScopeFieldUnset(app, c, args[0], scope)
+			return runScopeFieldUnset(app, c, args[0], scope, strip)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope to edit (defaults to ambient)")
+	cmd.Flags().BoolVar(&strip, "strip", false, "also drop the key from every ticket in the scope")
 	return cmd
 }
 
@@ -221,7 +236,13 @@ func runScopeFieldSet(app *App, c *cobra.Command, name, typ string, required boo
 	return nil
 }
 
-func runScopeFieldUnset(app *App, c *cobra.Command, name, scopeFlag string) error {
+func runScopeFieldUnset(app *App, c *cobra.Command, name, scopeFlag string, strip bool) error {
+	if strip {
+		if err := refuseStripReservedKey(name); err != nil {
+			return err
+		}
+	}
+
 	e, err := app.openEngine(c)
 	if err != nil {
 		return err
@@ -235,11 +256,18 @@ func runScopeFieldUnset(app *App, c *cobra.Command, name, scopeFlag string) erro
 	scope := resolved.Name
 	dir := resolved.Entry.Dir
 
+	lock, err := scopefile.AcquireLock(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
+
 	schema, err := loadScopeSchema(app, scope, dir)
 	if err != nil {
 		return err
 	}
-	if _, ok := schema.Fields[name]; !ok {
+	_, declared := schema.Fields[name]
+	if !strip && !declared {
 		return usageErrorf("field %q is not declared", name)
 	}
 	autoCommit := schema.AutoCommit
@@ -248,37 +276,70 @@ func runScopeFieldUnset(app *App, c *cobra.Command, name, scopeFlag string) erro
 		return err
 	}
 
-	lock, err := scopefile.AcquireLock(dir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = lock.Release() }()
-
 	cuePath := filepath.Join(dir, "tk.cue")
-	prev, err := os.ReadFile(cuePath)
-	if err != nil {
-		return err
-	}
-	if err := scopeconfig.UnsetField(dir, name); err != nil {
-		// Schema had the name (package-unified) but tk.cue does not own a copy.
-		if errors.Is(err, scopeconfig.ErrFieldNotDeclared) {
-			return usageErrorf("field %q is not declared in tk.cue (remove it from the sibling package file that defines it, or move the declaration into tk.cue first)", name)
+	var changed []string
+	if declared {
+		prev, err := os.ReadFile(cuePath)
+		if err != nil {
+			return err
 		}
-		return err
+		if err := scopeconfig.UnsetField(dir, name); err != nil {
+			// Schema had the name (package-unified) but tk.cue does not own a copy.
+			if errors.Is(err, scopeconfig.ErrFieldNotDeclared) {
+				return usageErrorf("field %q is not declared in tk.cue (remove it from the sibling package file that defines it, or move the declaration into tk.cue first)", name)
+			}
+			return err
+		}
+		if err := confirmFieldUnset(app, scope, dir, name, cuePath, prev); err != nil {
+			return err
+		}
+		changed = append(changed, cuePath)
 	}
-	if err := confirmFieldUnset(app, scope, dir, name, cuePath, prev); err != nil {
-		return err
+
+	if strip {
+		rewritten, skips, err := writeengine.StripCustomKey(dir, name)
+		for _, s := range skips {
+			stderrln(c, s.TokenLine())
+		}
+		if len(rewritten) > 0 {
+			if serr := e.rec.SyncPaths(scope, rewritten); serr != nil {
+				if err != nil {
+					return fmt.Errorf("%w (also failed to write-through index: %w)", err, serr)
+				}
+				return serr
+			}
+			changed = append(changed, rewritten...)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(changed) == 0 {
+		return nil
 	}
 
 	if err := e.fieldConfigDurability(c, scope, dir, autoCommit, root, hasRoot,
-		fmt.Sprintf("tk: scope field unset %s", name), cuePath); err != nil {
+		fmt.Sprintf("tk: scope field unset %s", name), changed...); err != nil {
 		return err
 	}
-	out, err := absPath(cuePath)
-	if err != nil {
-		return err
+	for _, p := range changed {
+		out, err := absPath(p)
+		if err != nil {
+			return err
+		}
+		stdoutln(c, out)
 	}
-	stdoutln(c, out)
+	return nil
+}
+
+func refuseStripReservedKey(name string) error {
+	if frontmatter.IsBuiltinKey(name) {
+		return usageErrorf("cannot --strip built-in frontmatter key %q", name)
+	}
+	if wire, ok := frontmatter.MetaKeyAliasTarget(name); ok {
+		return usageErrorf("cannot --strip meta alias %q (wire key %s)", name, wire)
+	}
 	return nil
 }
 
@@ -337,19 +398,19 @@ func confirmFieldUnset(app *App, scope, dir, name, cuePath string, prev []byte) 
 	return nil
 }
 
-// fieldConfigDurability matches scope rename: self-commit tk.cue on auto-commit roots.
-func (e *engine) fieldConfigDurability(c *cobra.Command, scope, dir string, autoCommit bool, root string, hasRoot bool, message, cuePath string) error {
-	if !autoCommit {
+// fieldConfigDurability matches scope rename: self-commit changed paths on auto-commit roots.
+func (e *engine) fieldConfigDurability(c *cobra.Command, scope, dir string, autoCommit bool, root string, hasRoot bool, message string, paths ...string) error {
+	if !autoCommit || len(paths) == 0 {
 		return nil
 	}
 	if !hasRoot {
 		stderrln(c, token.Line(token.SyncDisabled,
-			fmt.Sprintf("%s: no git repository — field config written but not committed", scope)))
+			fmt.Sprintf("%s: no git repository — files written but not committed", scope)))
 		return nil
 	}
 	if err := selfcommit.CommitPaths(c.Context(), selfcommit.BatchRequest{
 		StateDir: e.app.StateDir, GitRoot: root,
-		Message: message, Paths: []string{cuePath},
+		Message: message, Paths: paths,
 	}); err != nil {
 		return err
 	}

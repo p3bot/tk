@@ -1,9 +1,63 @@
 package scopefile
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestTicketIDFromBase(t *testing.T) {
+	id, ok := TicketIDFromBase("wc-ab2c-network-redesign.md")
+	if !ok || id != "wc-ab2c" {
+		t.Errorf("TicketIDFromBase = %q %v want wc-ab2c true", id, ok)
+	}
+	if _, ok := TicketIDFromBase("notes.md"); ok {
+		t.Error("non-ticket must not yield an id")
+	}
+}
+
+func TestListTickets(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("wc-ab2c-root.md", "root")
+	write("archive/wc-de34-old.md", "arch")
+	write("tk.cue", "name: \"wc\"\n")
+	write("notes/default.md", "note")
+	write("nested/wc-gh56-x.md", "residue")
+	write("random.md", "no")
+
+	got, err := ListTickets(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("ListTickets = %v, want 2 ticket paths", got)
+	}
+	if filepath.Base(got[0]) != "wc-de34-old.md" {
+		t.Errorf("sorted[0] = %q (archive sorts before root)", got[0])
+	}
+	if filepath.Base(got[1]) != "wc-ab2c-root.md" {
+		t.Errorf("sorted[1] = %q", got[1])
+	}
+
+	empty := t.TempDir()
+	got, err = ListTickets(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("empty dir ListTickets = %v", got)
+	}
+}
 
 func TestLooksLikeTicket(t *testing.T) {
 	cases := []struct {

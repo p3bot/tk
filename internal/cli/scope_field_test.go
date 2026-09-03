@@ -506,6 +506,43 @@ func TestScopeFieldUnsetPropagatesNonNotDeclaredErrors(t *testing.T) {
 	}
 }
 
+func TestScopeFieldUnsetStripPropagatesNonNotDeclaredErrors(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(
+		"package wccfg\nname: \"wc\"\nautoCommit: false\nfields: fieldDefs\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "defs.cue"), []byte(
+		"package wccfg\nfieldDefs: { jira: { type: \"string\", required: true } }\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "wc-ab2c", "has", "todo", "a0", "# Has\n", false, "jira: ABC-1\n")
+	path := filepath.Join(dir, "wc-ab2c-has.md")
+	before := readString(t, path)
+	cueBefore := readString(t, filepath.Join(dir, "tk.cue"))
+
+	_, errOut, err := run(t, app, "scope", "field", "unset", "jira", "--strip", "--scope", "wc")
+	if err == nil {
+		t.Fatal("unset --strip with fields: ref must fail")
+	}
+	msg := err.Error() + errOut
+	if strings.Contains(msg, "sibling package") {
+		t.Errorf("must not rewrite as sibling-only usage; err=%v errOut=%q", err, errOut)
+	}
+	if !strings.Contains(msg, "struct literal") {
+		t.Errorf("want non-struct-literal rewrite error, err=%v errOut=%q", err, errOut)
+	}
+	if readString(t, path) != before {
+		t.Error("--strip on fields: ref must not rewrite tickets")
+	}
+	if readString(t, filepath.Join(dir, "tk.cue")) != cueBefore {
+		t.Error("--strip on fields: ref must not rewrite tk.cue")
+	}
+}
+
 func TestMetaMarkRequiredMissingWarnMatrix(t *testing.T) {
 	app := newApp(t)
 	_ = initScope(t, app, "wc")
@@ -650,4 +687,299 @@ func TestMetaMarkRequiredMissingWarnMatrix(t *testing.T) {
 	_ = path
 	_ = path2
 	_ = path3
+}
+
+func TestScopeFieldUnsetStrip(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	t.Setenv("TK_SCOPE", "wc")
+
+	_, errOut, err := run(t, app, "scope", "field", "set", "jira", "--type", "string", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("set jira: %v (%s)", err, errOut)
+	}
+	_, errOut, err = run(t, app, "scope", "field", "set", "area", "--type", "string", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("set area: %v (%s)", err, errOut)
+	}
+
+	rootPath, rootID := createID(t, app, "wc", "Has jira")
+	_, errOut, err = run(t, app, "meta", "set", rootID, "jira", "ABC-1", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("meta set jira: %v (%s)", err, errOut)
+	}
+	_, errOut, err = run(t, app, "meta", "set", rootID, "area", "frontend", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("meta set area: %v (%s)", err, errOut)
+	}
+
+	_, archID := createID(t, app, "wc", "Archived jira")
+	_, errOut, err = run(t, app, "meta", "set", archID, "jira", "ABC-2", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("meta set archive jira: %v (%s)", err, errOut)
+	}
+	_, errOut, err = run(t, app, "mark", "done", archID, "--scope", "wc")
+	if err != nil {
+		t.Fatalf("mark done: %v (%s)", err, errOut)
+	}
+	gotArch, _, gerr := run(t, app, "get", archID, "--scope", "wc")
+	if gerr != nil {
+		t.Fatal(gerr)
+	}
+	archPath := strings.TrimSpace(gotArch)
+
+	cleanPath, _ := createID(t, app, "wc", "No jira")
+	notePath := filepath.Join(dir, "notes", "default.md")
+	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(notePath, []byte("---\njira: NOTE-1\n---\n# Note\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nestedPath := filepath.Join(dir, "nested", "wc-zzzz-x.md")
+	if err := os.MkdirAll(filepath.Dir(nestedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nestedPath, []byte("---\nid: wc-zzzz\nstatus: todo\norder: \"a0\"\ncreated: 2026-01-01T00:00:00Z\njira: NEST-1\n---\n# Nested\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, err := run(t, app, "scope", "field", "unset", "jira", "--strip", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("unset --strip: %v (%s)", err, errOut)
+	}
+	printed := lines(out)
+	if len(printed) != 3 {
+		t.Fatalf("stdout paths = %v, want tk.cue + 2 tickets", printed)
+	}
+	if !strings.HasSuffix(printed[0], "tk.cue") {
+		t.Errorf("first rewritten path should be tk.cue, got %q", printed[0])
+	}
+	joined := strings.Join(printed, "\n")
+	if !strings.Contains(joined, filepath.Base(rootPath)) || !strings.Contains(joined, filepath.Base(archPath)) {
+		t.Errorf("stdout should list stripped tickets, got %q", out)
+	}
+	if strings.Contains(joined, filepath.Base(cleanPath)) {
+		t.Errorf("unchanged ticket must not print, got %q", out)
+	}
+
+	if strings.Contains(readString(t, rootPath), "jira:") {
+		t.Error("root ticket still has jira")
+	}
+	if !strings.Contains(readString(t, rootPath), "area:") {
+		t.Error("root ticket dropped unrelated area")
+	}
+	if strings.Contains(readString(t, archPath), "jira:") {
+		t.Error("archive ticket still has jira")
+	}
+	if !strings.Contains(readString(t, notePath), "jira: NOTE-1") {
+		t.Error("notes must not be stripped")
+	}
+	if !strings.Contains(readString(t, nestedPath), "jira: NEST-1") {
+		t.Error("nested residue must not be stripped")
+	}
+
+	listOut, _, err := run(t, app, "scope", "field", "list", "--scope", "wc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(listOut, "jira\t") {
+		t.Errorf("jira should be gone from fields:, got %q", listOut)
+	}
+
+	docOut, _, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	if strings.Contains(docOut, "undeclared frontmatter key \"jira\"") {
+		t.Errorf("doctor should not report undeclared jira, got %q", docOut)
+	}
+
+	_, errOut, err = run(t, app, "meta", "set", rootID, "jira", "XYZ", "--scope", "wc")
+	if err == nil {
+		t.Fatal("meta set undeclared jira must fail")
+	}
+	if ExitCodeFromError(err) != exitUsage {
+		t.Errorf("exit = %d want usage; errOut=%q", ExitCodeFromError(err), errOut)
+	}
+
+	// Declaration already gone: leftover key on a new residue file.
+	leftover := filepath.Join(dir, "wc-np23-left.md")
+	addTicket(t, dir, "wc-np23", "left", "todo", "a9", "# Left\n", false, "jira: LEFT-1\n")
+	out, errOut, err = run(t, app, "scope", "field", "unset", "jira", "--strip", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("strip already-undeclared: %v (%s)", err, errOut)
+	}
+	if !strings.Contains(out, "wc-np23-left.md") {
+		t.Errorf("should rewrite leftover ticket, got %q", out)
+	}
+	if strings.Contains(out, "tk.cue") {
+		t.Errorf("tk.cue must not print when declaration already gone, got %q", out)
+	}
+	if strings.Contains(readString(t, leftover), "jira:") {
+		t.Error("leftover jira should be gone")
+	}
+
+	out, errOut, err = run(t, app, "scope", "field", "unset", "jira", "--strip", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("idempotent strip: %v (%s)", err, errOut)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("idempotent strip stdout want empty, got %q", out)
+	}
+
+	beforeRefuse := readString(t, rootPath)
+	for _, key := range []string{"status", "tag", "id", "summary", "link"} {
+		_, errOut, err = run(t, app, "scope", "field", "unset", key, "--strip", "--scope", "wc")
+		if err == nil || ExitCodeFromError(err) != exitUsage {
+			t.Errorf("strip %s should be usage, got %v (%s)", key, err, errOut)
+		}
+		if readString(t, rootPath) != beforeRefuse {
+			t.Errorf("refused strip %s must not rewrite tickets", key)
+		}
+	}
+}
+
+func TestScopeFieldUnsetStripParseErrorSkip(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+
+	_, errOut, err := run(t, app, "scope", "field", "set", "jira", "--type", "string", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("set jira: %v (%s)", err, errOut)
+	}
+	goodPath, goodID := createID(t, app, "wc", "Good")
+	_, errOut, err = run(t, app, "meta", "set", goodID, "jira", "ABC-1", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("meta set: %v (%s)", err, errOut)
+	}
+	bad := filepath.Join(dir, "wc-de34-broke.md")
+	badBody := "---\nid: wc-de34\nstatus: [unterminated\n---\n# broke\n"
+	if err := os.WriteFile(bad, []byte(badBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, err := run(t, app, "scope", "field", "unset", "jira", "--strip", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("strip with parse_error: %v (%s)", err, errOut)
+	}
+	if !strings.Contains(errOut, token.ParseError) || !strings.Contains(errOut, "wc-de34") {
+		t.Errorf("want parse_error skip naming the ticket, got %q", errOut)
+	}
+	if !strings.Contains(errOut, "skipped") {
+		t.Errorf("skip line should say skipped, got %q", errOut)
+	}
+	if !strings.HasSuffix(strings.Split(strings.TrimSpace(out), "\n")[0], "tk.cue") {
+		t.Errorf("declaration should still be removed, stdout %q", out)
+	}
+	if !strings.Contains(out, filepath.Base(goodPath)) {
+		t.Errorf("good ticket should be stripped, stdout %q", out)
+	}
+	if readString(t, bad) != badBody {
+		t.Error("parse_error ticket must be left untouched")
+	}
+	if strings.Contains(readString(t, goodPath), "jira:") {
+		t.Error("good ticket should lose jira")
+	}
+
+	listOut, _, err := run(t, app, "scope", "field", "list", "--scope", "wc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(listOut, "jira\t") {
+		t.Errorf("declaration ensure should complete, list %q", listOut)
+	}
+}
+
+func TestScopeFieldUnsetStripSiblingRefuse(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(
+		"package wccfg\nname: \"wc\"\nautoCommit: false\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fields.cue"), []byte(
+		"package wccfg\nfields: { jira: { type: \"string\", required: true } }\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "wc-ab2c", "has", "todo", "a0", "# Has\n", false, "jira: ABC-1\n")
+	path := filepath.Join(dir, "wc-ab2c-has.md")
+	before := readString(t, path)
+	cueBefore := readString(t, filepath.Join(dir, "tk.cue"))
+
+	_, errOut, err := run(t, app, "scope", "field", "unset", "jira", "--strip", "--scope", "wc")
+	if err == nil {
+		t.Fatal("sibling-only --strip must fail")
+	}
+	if ExitCodeFromError(err) != exitUsage {
+		t.Errorf("exit = %d want usage; err=%v errOut=%q", ExitCodeFromError(err), err, errOut)
+	}
+	if readString(t, path) != before {
+		t.Error("--strip sibling refuse must not rewrite tickets")
+	}
+	if readString(t, filepath.Join(dir, "tk.cue")) != cueBefore {
+		t.Error("--strip sibling refuse must not rewrite tk.cue")
+	}
+}
+
+func TestScopeFieldUnsetStripAutoCommit(t *testing.T) {
+	requireGit(t)
+	app := newApp(t)
+	dir, repo := initGitScope(t, app, "wc", true)
+
+	_, errOut, err := run(t, app, "scope", "field", "set", "jira", "--type", "string", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("set: %v (%s)", err, errOut)
+	}
+	path, id := createID(t, app, "wc", "Has jira")
+	_, errOut, err = run(t, app, "meta", "set", id, "jira", "ABC-1", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("meta set: %v (%s)", err, errOut)
+	}
+	beforeLog := gitLog(t, repo)
+
+	out, errOut, err := run(t, app, "scope", "field", "unset", "jira", "--strip", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("strip: %v (%s)", err, errOut)
+	}
+	printed := lines(out)
+	if len(printed) != 2 {
+		t.Fatalf("want tk.cue + ticket on stdout, got %v", printed)
+	}
+	log := gitLog(t, repo)
+	if len(log) != len(beforeLog)+1 {
+		t.Fatalf("strip should add one commit, before %v after %v", beforeLog, log)
+	}
+	if log[0] != "tk: scope field unset jira" {
+		t.Fatalf("commit message = %q", log[0])
+	}
+	tree := gitTree(t, repo)
+	relCue, _ := filepath.Rel(repo, filepath.Join(dir, "tk.cue"))
+	relTicket, _ := filepath.Rel(repo, path)
+	if !containsPath(tree, relCue) || !containsPath(tree, relTicket) {
+		t.Errorf("commit tree missing cue or ticket, got %v", tree)
+	}
+
+	out, errOut, err = run(t, app, "scope", "field", "unset", "jira", "--strip", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("second strip: %v (%s)", err, errOut)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("second strip stdout want empty, got %q", out)
+	}
+	after := gitLog(t, repo)
+	if len(after) != len(log) {
+		t.Fatalf("idempotent strip must not commit, before %v after %v", log, after)
+	}
+}
+
+func readString(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

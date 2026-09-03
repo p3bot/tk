@@ -66,6 +66,31 @@ type Field struct {
 	Value any
 }
 
+// RemoveCustom drops key from Custom if present. Returns whether it was present.
+func (m *Model) RemoveCustom(key string) bool {
+	if m == nil {
+		return false
+	}
+	out := make([]Field, 0, len(m.Custom))
+	found := false
+	for _, f := range m.Custom {
+		if f.Key == key {
+			found = true
+			continue
+		}
+		out = append(out, f)
+	}
+	if !found {
+		return false
+	}
+	if len(out) == 0 {
+		m.Custom = nil
+		return true
+	}
+	m.Custom = out
+	return true
+}
+
 // Model is the decoded frontmatter: built-in keys as typed fields plus undeclared keys in Custom.
 // A nil slice or empty string means the key was absent; Serialize omits absent optional keys.
 type Model struct {

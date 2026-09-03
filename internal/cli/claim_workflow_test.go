@@ -23,7 +23,7 @@ func TestClaimMarkRemoteAlreadyTaken(t *testing.T) {
 		t.Fatalf("A sync: %v", err)
 	}
 
-	out, errOut, err := run(t, b.app, "mark", "wc-ab2c", "in-progress")
+	out, errOut, err := run(t, b.app, "mark", "in-progress", "wc-ab2c")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("mark after remote took the ticket must fail, got %v (stderr %q)", err, errOut)
 	}
@@ -67,7 +67,7 @@ func TestClaimMarkHappyPathPushesInProgress(t *testing.T) {
 	requireGit(t)
 	a, b, _ := twoMachines(t)
 
-	out, errOut, err := run(t, a.app, "mark", "wc-ab2c", "in-progress")
+	out, errOut, err := run(t, a.app, "mark", "in-progress", "wc-ab2c")
 	if err != nil {
 		t.Fatalf("mark claim: %v (stderr %q)", err, errOut)
 	}
@@ -117,7 +117,7 @@ func TestClaimMarkFullIDFromOtherCwdUsesTicketRoot(t *testing.T) {
 	}
 
 	t.Chdir(xyClone)
-	out, errOut, err := run(t, bWC.app, "mark", "wc-ab2c", "in-progress")
+	out, errOut, err := run(t, bWC.app, "mark", "in-progress", "wc-ab2c")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("expected not-claimable after ticket-root refresh, got %v (stderr %q)", err, errOut)
 	}
@@ -211,7 +211,7 @@ func TestClaimNonTodoInProgressDoesNotRefresh(t *testing.T) {
 	if remoteHEAD == tracking {
 		t.Fatal("test setup: remote should have A's done commit that B has not fetched")
 	}
-	out, _, err := run(t, b.app, "mark", "wc-ab2c", "in-progress")
+	out, _, err := run(t, b.app, "mark", "in-progress", "wc-ab2c")
 	if err != nil {
 		t.Fatalf("review → in-progress must stay a local mark: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestClaimRepoDrivenDoesNotRefresh(t *testing.T) {
 	if remoteHEAD := strings.Fields(gitIn(t, b.clone, "ls-remote", "origin", "HEAD"))[0]; remoteHEAD == tracking {
 		t.Fatal("test setup: remote should have A's done commit that B has not fetched")
 	}
-	out, errOut, err := run(t, b.app, "mark", "rd-ab2c", "in-progress")
+	out, errOut, err := run(t, b.app, "mark", "in-progress", "rd-ab2c")
 	if err != nil {
 		t.Fatalf("repo-driven mark must not require network: %v (stderr %q)", err, errOut)
 	}
@@ -274,7 +274,7 @@ func TestClaimNoUpstreamStaysLocal(t *testing.T) {
 	dir, repo := initGitScope(t, app, "wc", true)
 	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "")
 
-	out, errOut, err := run(t, app, "mark", "wc-ab2c", "in-progress")
+	out, errOut, err := run(t, app, "mark", "in-progress", "wc-ab2c")
 	if err != nil {
 		t.Fatalf("no-upstream mark claim: %v (stderr %q)", err, errOut)
 	}
@@ -305,7 +305,7 @@ func TestClaimMidRebaseRefusesWithoutResume(t *testing.T) {
 
 	for _, args := range [][]string{
 		{"next", "--claim", "--scope", "wc"},
-		{"mark", "wc-ab2c", "in-progress"},
+		{"mark", "in-progress", "wc-ab2c"},
 	} {
 		out, errOut, err := run(t, b.app, args...)
 		if ExitCodeFromError(err) != exitFailure {
@@ -340,7 +340,7 @@ func TestClaimPreflightFailureDoesNotWrite(t *testing.T) {
 	}
 	writeCue(t, xyDir, "name: \"xy\"\nautoCommit: false\n")
 
-	out, errOut, err := run(t, b.app, "mark", "wc-ab2c", "in-progress")
+	out, errOut, err := run(t, b.app, "mark", "in-progress", "wc-ab2c")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("auto-commit mismatch preflight must fail, got %v (stderr %q)", err, errOut)
 	}
@@ -361,7 +361,7 @@ func TestClaimPushFailureKeepsWrite(t *testing.T) {
 	_ = a
 	denyPushes(t, b.clone)
 
-	out, errOut, err := run(t, b.app, "mark", "wc-ab2c", "in-progress")
+	out, errOut, err := run(t, b.app, "mark", "in-progress", "wc-ab2c")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("post-claim push failure must be non-zero, got %v (stderr %q)", err, errOut)
 	}
@@ -399,6 +399,145 @@ func TestClaimNextPushFailureKeepsWrite(t *testing.T) {
 	}
 	if strings.Contains(errOut, "sync_needed: unpushed") {
 		t.Errorf("must not emit unpushed, got %q", errOut)
+	}
+}
+
+func TestMarkBatchClaimOneRefreshOneCommitOnePush(t *testing.T) {
+	requireGit(t)
+	a, b, _ := twoMachines(t)
+
+	addTicket(t, a.scopeDir(), "wc-cd3e", "beta", "todo", "a1", "# beta\n\nbody line\n", false, "")
+	if _, _, err := a.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("A second-ticket sync: %v", err)
+	}
+	if _, _, err := b.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("B pull: %v", err)
+	}
+
+	before := strings.TrimSpace(gitIn(t, b.clone, "rev-parse", "HEAD"))
+	out, errOut, err := run(t, b.app, "mark", "in-progress", "wc-ab2c", "wc-cd3e")
+	if err != nil {
+		t.Fatalf("batch claim: %v (stderr %q)", err, errOut)
+	}
+	paths := lines(out)
+	if len(paths) != 2 {
+		t.Fatalf("stdout paths = %d, want 2: %q", len(paths), out)
+	}
+	if !strings.HasSuffix(paths[0], "wc-ab2c-alpha.md") || !strings.HasSuffix(paths[1], "wc-cd3e-beta.md") {
+		t.Errorf("argv order: %q", out)
+	}
+	for _, p := range paths {
+		if got := fmStatus(t, p); got != "in-progress" {
+			t.Errorf("%s status = %q", p, got)
+		}
+	}
+	n := gitIn(t, b.clone, "rev-list", "--count", before+"..HEAD")
+	if n != "1" {
+		t.Fatalf("want one new commit, got %s; log=%s", n, gitIn(t, b.clone, "log", "--oneline", before+"..HEAD"))
+	}
+	if subj := strings.TrimSpace(gitIn(t, b.clone, "log", "-1", "--format=%s")); subj != "tk: 2 tickets -> in-progress" {
+		t.Errorf("subject = %q", subj)
+	}
+	names := gitIn(t, b.clone, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+	if !strings.Contains(names, "wc-ab2c-alpha.md") || !strings.Contains(names, "wc-cd3e-beta.md") {
+		t.Errorf("commit files = %q", names)
+	}
+	if n := gitIn(t, b.clone, "rev-list", "--count", "@{u}..HEAD"); n != "0" {
+		t.Errorf("successful claim must push, unpushed=%s stderr=%q", n, errOut)
+	}
+
+	if _, _, err := a.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("A pull: %v", err)
+	}
+	if st := fmStatus(t, mustSeedTicket(t, a.scopeDir())); st != "in-progress" {
+		t.Errorf("peer seed status %q", st)
+	}
+}
+
+func TestMarkBatchClaimRemoteTookOneRefusesBoth(t *testing.T) {
+	requireGit(t)
+	a, b, _ := twoMachines(t)
+
+	addTicket(t, a.scopeDir(), "wc-cd3e", "beta", "todo", "a1", "# beta\n\nbody line\n", false, "")
+	if _, _, err := a.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("A second-ticket sync: %v", err)
+	}
+	if _, _, err := b.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("B pull: %v", err)
+	}
+
+	a.mark(t, "wc-ab2c", "review")
+	if _, _, err := a.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("A took seed: %v", err)
+	}
+
+	out, errOut, err := run(t, b.app, "mark", "in-progress", "wc-ab2c", "wc-cd3e")
+	if ExitCodeFromError(err) != exitFailure {
+		t.Fatalf("want fail after remote took a todo, got %v (stderr %q)", err, errOut)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("failed batch claim must not print paths, got %q", out)
+	}
+	if !strings.Contains(err.Error()+errOut, "no longer todo") {
+		t.Errorf("want no-longer-todo, got err=%v stderr=%q", err, errOut)
+	}
+	if subj := strings.TrimSpace(gitIn(t, b.clone, "log", "-1", "--format=%s")); strings.Contains(subj, "in-progress") {
+		t.Errorf("must not write a mark commit, subject %q", subj)
+	}
+	if st := fmStatus(t, mustSeedTicket(t, b.scopeDir())); st != "review" {
+		t.Errorf("seed after refresh should be review, got %q", st)
+	}
+	beta, _ := findTicket(t, b.scopeDir(), "wc-cd3e-beta.md")
+	if st := fmStatus(t, beta); st != "todo" {
+		t.Errorf("untaken todo must stay todo, got %q", st)
+	}
+}
+
+func TestMarkBatchClaimRereadsRemoteBodyIncludingDraft(t *testing.T) {
+	requireGit(t)
+	a, b, _ := twoMachines(t)
+
+	addTicket(t, a.scopeDir(), "wc-cd3e", "beta", "draft", "a1", "# beta\n\nbody line\n", false, "")
+	if _, _, err := a.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("A draft sync: %v", err)
+	}
+	if _, _, err := b.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("B pull: %v", err)
+	}
+
+	editBody(t, mustSeedTicket(t, a.scopeDir()), "remote todo body")
+	editBody(t, filepath.Join(a.scopeDir(), "wc-cd3e-beta.md"), "remote draft body")
+	if _, _, err := a.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("A body sync: %v", err)
+	}
+
+	out, errOut, err := run(t, b.app, "mark", "in-progress", "wc-ab2c", "wc-cd3e")
+	if err != nil {
+		t.Fatalf("mixed claim: %v (stderr %q)", err, errOut)
+	}
+	paths := lines(out)
+	if len(paths) != 2 {
+		t.Fatalf("stdout = %q", out)
+	}
+	todoBody, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(todoBody), "remote todo body") {
+		t.Errorf("todo must keep remote body after refresh, got %s", todoBody)
+	}
+	draftBody, err := os.ReadFile(paths[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(draftBody), "remote draft body") {
+		t.Errorf("draft member must re-read after refresh, got %s", draftBody)
+	}
+	if fmStatus(t, paths[0]) != "in-progress" || fmStatus(t, paths[1]) != "in-progress" {
+		t.Errorf("both must be in-progress")
+	}
+	if n := gitIn(t, b.clone, "rev-list", "--count", "@{u}..HEAD"); n != "0" {
+		t.Errorf("claim must push, unpushed=%s", n)
 	}
 }
 

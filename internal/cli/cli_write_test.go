@@ -390,10 +390,10 @@ func TestMarkTerminalBoundaryMovePlainFiles(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	_, id := createID(t, app, "wc", "Work")
 
-	if _, _, err := run(t, app, "mark", id, "todo"); err != nil {
+	if _, _, err := run(t, app, "mark", "todo", id); err != nil {
 		t.Fatalf("mark todo: %v", err)
 	}
-	out, _, err := run(t, app, "mark", id, "done")
+	out, _, err := run(t, app, "mark", "done", id)
 	if err != nil {
 		t.Fatalf("mark done: %v", err)
 	}
@@ -411,7 +411,7 @@ func TestMarkTerminalBoundaryMovePlainFiles(t *testing.T) {
 		t.Errorf("status not rewritten: %q", got)
 	}
 
-	out, _, err = run(t, app, "mark", id, "todo")
+	out, _, err = run(t, app, "mark", "todo", id)
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -426,15 +426,22 @@ func TestMarkRefusals(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	_, id := createID(t, app, "wc", "Work")
 
-	// Unknown status → exit 2.
-	if _, _, err := run(t, app, "mark", id, "nope"); ExitCodeFromError(err) != exitUsage {
+	// Unknown status → exit 2. Same wording as an id-shaped unknown first token.
+	_, _, err := run(t, app, "mark", "nope", id)
+	if ExitCodeFromError(err) != exitUsage {
 		t.Errorf("unknown status should exit 2, got %v", err)
 	}
+	if err == nil || !strings.Contains(err.Error(), `"nope" is not a known status`) {
+		t.Errorf("unknown status: got %v", err)
+	}
+	if err != nil && strings.Contains(err.Error(), "for scope") {
+		t.Errorf("CLI unknown status must not add a scope qualifier, got %v", err)
+	}
 	// Malformed id → exit 2.
-	if _, _, err := run(t, app, "mark", "bad!", "done", "--scope", "wc"); ExitCodeFromError(err) != exitUsage {
+	if _, _, err := run(t, app, "mark", "done", "bad!", "--scope", "wc"); ExitCodeFromError(err) != exitUsage {
 		t.Errorf("malformed id should exit 2, got %v", err)
 	}
-	if _, _, err := run(t, app, "mark", "wc-zzzz", "done"); ExitCodeFromError(err) != exitFailure {
+	if _, _, err := run(t, app, "mark", "done", "wc-zzzz"); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("unknown well-formed id should exit 1, got %v", err)
 	}
 	// parse_error quarantine → refuse, no write.
@@ -442,7 +449,7 @@ func TestMarkRefusals(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "wc-abcd-x.md"), []byte(bad), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, errOut, err := run(t, app, "mark", "wc-abcd", "done")
+	_, errOut, err := run(t, app, "mark", "done", "wc-abcd")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Errorf("parse_error mark should be non-zero, got %v", err)
 	}
@@ -456,7 +463,7 @@ func TestMarkRefusals(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, _, err := run(t, app, "mark", id, "done"); ExitCodeFromError(err) != exitFailure {
+	if _, _, err := run(t, app, "mark", "done", id); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("duplicate id should refuse non-zero, got %v", err)
 	}
 }
@@ -481,13 +488,13 @@ func TestMarkOpenDependsWarnMatrix(t *testing.T) {
 	if _, _, err := run(t, app, "meta", "add", subID, "depends", depID); err != nil {
 		t.Fatalf("meta add depends: %v", err)
 	}
-	if _, _, err := run(t, app, "mark", subID, "blocked"); err != nil {
+	if _, _, err := run(t, app, "mark", "blocked", subID); err != nil {
 		t.Fatalf("mark blocked: %v", err)
 	}
 
 	wantWarn := func(t *testing.T, id, newStatus string, waiting []string) {
 		t.Helper()
-		out, errOut, err := run(t, app, "mark", id, newStatus)
+		out, errOut, err := run(t, app, "mark", newStatus, id)
 		if err != nil {
 			t.Fatalf("mark %s: %v", newStatus, err)
 		}
@@ -505,7 +512,7 @@ func TestMarkOpenDependsWarnMatrix(t *testing.T) {
 	}
 	wantSilence := func(t *testing.T, id, newStatus string) {
 		t.Helper()
-		out, errOut, err := run(t, app, "mark", id, newStatus)
+		out, errOut, err := run(t, app, "mark", newStatus, id)
 		if err != nil {
 			t.Fatalf("mark %s: %v", newStatus, err)
 		}
@@ -539,7 +546,7 @@ func TestMarkOpenDependsWarnMatrix(t *testing.T) {
 	// Silence: enter statuses that do not imply ready/active work, despite open depends.
 	for _, s := range []string{"blocked", "draft", "backlog", "done", "cancelled"} {
 		// prep todo may soft-warn; only the enter-s mark is checked for silence.
-		if _, _, err := run(t, app, "mark", subID, "todo"); err != nil {
+		if _, _, err := run(t, app, "mark", "todo", subID); err != nil {
 			t.Fatalf("prep todo before %s: %v", s, err)
 		}
 		wantSilence(t, subID, s)
@@ -551,7 +558,7 @@ func TestMarkOpenDependsWarnMatrix(t *testing.T) {
 	wantSilence(t, aloneID, "todo")
 
 	// Silence: all depends terminal — both reopen into todo and further ready/active moves.
-	if _, _, err := run(t, app, "mark", depID, "done"); err != nil {
+	if _, _, err := run(t, app, "mark", "done", depID); err != nil {
 		t.Fatalf("close dep: %v", err)
 	}
 	// Subject ended the silence loop as cancelled.
@@ -567,7 +574,7 @@ func TestMarkOpenDependsDanglingAndMulti(t *testing.T) {
 	missing := "wc-zz99"
 	hangID := "wc-ab2c"
 	addTicket(t, dir, hangID, "hanging", "blocked", "a0", "# Hanging\n", false, "depends: ["+missing+"]\n")
-	out, errOut, err := run(t, app, "mark", hangID, "todo")
+	out, errOut, err := run(t, app, "mark", "todo", hangID)
 	if err != nil {
 		t.Fatalf("hanging todo: %v", err)
 	}
@@ -589,10 +596,10 @@ func TestMarkOpenDependsDanglingAndMulti(t *testing.T) {
 	if _, _, err := run(t, app, "meta", "add", multiID, "depends", aID); err != nil {
 		t.Fatalf("depends a: %v", err)
 	}
-	if _, _, err := run(t, app, "mark", multiID, "blocked"); err != nil {
+	if _, _, err := run(t, app, "mark", "blocked", multiID); err != nil {
 		t.Fatalf("multi blocked: %v", err)
 	}
-	out, errOut, err = run(t, app, "mark", multiID, "todo")
+	out, errOut, err = run(t, app, "mark", "todo", multiID)
 	if err != nil {
 		t.Fatalf("multi todo: %v", err)
 	}
@@ -621,7 +628,7 @@ func TestMarkOpenDependsDoesNotAffectNextGate(t *testing.T) {
 		t.Fatalf("depends: %v", err)
 	}
 	// Mark into todo with open depends: soft-warns but still not next-eligible.
-	_, errOut, err := run(t, app, "mark", subID, "todo")
+	_, errOut, err := run(t, app, "mark", "todo", subID)
 	if err != nil {
 		t.Fatalf("mark todo: %v", err)
 	}
@@ -773,7 +780,7 @@ func TestWriteVerbsRefuseUnparseableConfig(t *testing.T) {
 
 	checks := [][]string{
 		{"create", "New", "--scope", "wc"},
-		{"mark", id, "done"},
+		{"mark", "done", id},
 		{"order", id, "--first"},
 		{"next", "--claim", "--scope", "wc"},
 	}
@@ -806,7 +813,7 @@ func TestWriteVerbsSurfaceIntegrityWarnings(t *testing.T) {
 
 	cases := [][]string{
 		{"create", "New thing", "--scope", "wc"},
-		{"mark", "wc-de34", "review"},
+		{"mark", "review", "wc-de34"},
 		{"order", "wc-de34", "--first"},
 	}
 	for _, args := range cases {
@@ -833,10 +840,10 @@ func TestAutoCommitSelfCommitLifecycle(t *testing.T) {
 	if n := len(gitLog(t, repo)); n != 0 {
 		t.Fatalf("create must not self-commit, got %d commits", n)
 	}
-	if _, _, err := run(t, app, "mark", id, "todo"); err != nil {
+	if _, _, err := run(t, app, "mark", "todo", id); err != nil {
 		t.Fatalf("mark todo: %v", err)
 	}
-	out, _, err := run(t, app, "mark", id, "done")
+	out, _, err := run(t, app, "mark", "done", id)
 	if err != nil {
 		t.Fatalf("mark done: %v", err)
 	}
@@ -926,7 +933,7 @@ func TestAutoCommitPlannedRidesSyncDisabled(t *testing.T) {
 		t.Fatalf("init planned auto-commit: %v", err)
 	}
 	_, id := createID(t, app, "wc", "Work")
-	_, errOut, err := run(t, app, "mark", id, "todo")
+	_, errOut, err := run(t, app, "mark", "todo", id)
 	if err != nil {
 		t.Fatalf("planned mark should still land: %v", err)
 	}
@@ -941,7 +948,7 @@ func TestRepoDrivenWriteQuiet(t *testing.T) {
 	dir, _ := initGitScope(t, app, "rd", false)
 
 	_, id := createID(t, app, "rd", "Host thing")
-	_, errOut, err := run(t, app, "mark", id, "todo")
+	_, errOut, err := run(t, app, "mark", "todo", id)
 	if err != nil {
 		t.Fatalf("repo-driven mark: %v", err)
 	}
@@ -967,7 +974,7 @@ func TestRepoDrivenWriteQuiet(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "residue.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, errOut2, _ := run(t, app, "mark", id, "review")
+	_, errOut2, _ := run(t, app, "mark", "review", id)
 	if strings.Contains(errOut2, "uncommitted:") || strings.Contains(errOut2, "residue.txt") {
 		t.Errorf("write must stay quiet with residue present, got %q", errOut2)
 	}
@@ -1005,7 +1012,7 @@ func TestTkDrivenSelfCommitSyncNeededUnpushed(t *testing.T) {
 	gitIn(t, m.clone, "commit", "-m", "seed scope")
 	gitIn(t, m.clone, "push", "-u", "origin", "main")
 
-	_, errOut, err := run(t, m.app, "mark", "wc-ab2c", "review")
+	_, errOut, err := run(t, m.app, "mark", "review", "wc-ab2c")
 	if err != nil {
 		t.Fatalf("tk-driven mark: %v", err)
 	}
@@ -1034,7 +1041,7 @@ func TestTkDrivenWriteSyncNeededPushFailed(t *testing.T) {
 	if err := gitstate.WriteLastPushError(m.app.StateDir, m.clone, "auth failed"); err != nil {
 		t.Fatal(err)
 	}
-	_, errOut, err := run(t, m.app, "mark", "wc-ab2c", "review")
+	_, errOut, err := run(t, m.app, "mark", "review", "wc-ab2c")
 	if err != nil {
 		t.Fatalf("tk-driven mark: %v", err)
 	}
@@ -1058,7 +1065,7 @@ func TestMidRebaseRefusesWrites(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "rebase-merge"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := run(t, app, "mark", id, "todo"); ExitCodeFromError(err) != exitFailure {
+	if _, _, err := run(t, app, "mark", "todo", id); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("mid-rebase mark should refuse non-zero, got %v", err)
 	}
 	if _, _, err := run(t, app, "next", "--claim", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {

@@ -53,6 +53,8 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"tk sync",
 		"status_conflict",
 		"next --claim",
+		"tk mark <status> <id> [id...]",
+		"one path per unique marked ticket",
 		"tk order",
 		"never host push",
 		"stdout",
@@ -87,6 +89,9 @@ func TestFileProtocolDoesNotTeachRejectedAuthoring(t *testing.T) {
 	}
 	if strings.Contains(text, "create --body") || strings.Contains(text, "[--body]") {
 		t.Error("skill must not document create --body")
+	}
+	if strings.Contains(text, "tk mark <id> <status>") {
+		t.Error("skill must not teach the old mark argv; status is first")
 	}
 }
 

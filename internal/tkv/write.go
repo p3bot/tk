@@ -149,7 +149,7 @@ func (s *Server) postMark(w http.ResponseWriter, r *http.Request) error {
 	res, err := writeengine.Mark(sess.deps, nil, writeengine.MarkInput{
 		Scope:     name,
 		Dir:       sess.dir,
-		Lookup:    lu,
+		Lookups:   []writeengine.Lookup{lu},
 		NewStatus: newStatus,
 	})
 	return s.finishWrite(w, r, res, err)

@@ -92,8 +92,8 @@ func (m *machine) sync(t *testing.T, args ...string) (string, string, error) {
 
 func (m *machine) mark(t *testing.T, id, newStatus string) {
 	t.Helper()
-	if _, _, err := run(t, m.app, "mark", id, newStatus); err != nil {
-		t.Fatalf("mark %s %s: %v", id, newStatus, err)
+	if _, _, err := run(t, m.app, "mark", newStatus, id); err != nil {
+		t.Fatalf("mark %s %s: %v", newStatus, id, err)
 	}
 }
 

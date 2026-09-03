@@ -343,7 +343,7 @@ func TestSyncReleasesLocksForSubsequentWrite(t *testing.T) {
 	if _, _, err := b.sync(t, "--scope", "wc"); err != nil {
 		t.Fatalf("B sync: %v", err)
 	}
-	if _, _, err := run(t, b.app, "mark", "wc-ab2c", "in-progress"); err != nil {
+	if _, _, err := run(t, b.app, "mark", "in-progress", "wc-ab2c"); err != nil {
 		t.Fatalf("mark after sync must acquire the released locks and complete: %v", err)
 	}
 }

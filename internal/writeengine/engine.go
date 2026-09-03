@@ -64,9 +64,26 @@ func (l Lookup) query() string {
 	return l.Arg
 }
 
+// Member is one ticket in a batch write (tk mark with several ids).
+type Member struct {
+	Path            string
+	ID              string
+	OldStatus       string
+	NewStatus       string
+	Moved           bool
+	DependsOpen     []string
+	RequiredMissing []string
+}
+
 // Result is the structured outcome of a write. Path is empty when no write
 // landed. Adapters map fields to stdout/stderr; they do not parse tokens out
 // of Error() text except for typed failures.
+//
+// Members is the per-ticket outcome of a batch mark. When it is non-empty,
+// Path, ID, OldStatus, NewStatus, Moved, DependsOpen, and RequiredMissing are
+// the first member, so one-id adapters (tkv, create, claim-next, meta) keep
+// reading the scalars. Walk Tickets() for paths and per-ticket warnings; the
+// scalars are not a summary of the whole argv.
 type Result struct {
 	Path             string
 	ID               string
@@ -75,6 +92,7 @@ type Result struct {
 	Moved            bool
 	DependsOpen      []string
 	RequiredMissing  []string
+	Members          []Member
 	SyncNeeded       string
 	SyncDisabled     string
 	Warnings         []string
@@ -86,6 +104,27 @@ type Result struct {
 	ScaffoldCue      string
 	ArchiveNote      string
 	TagNew           []string
+}
+
+// Tickets is the per-ticket outcome of this write. When Members is set it is
+// the batch; otherwise a one-id result is a single-element list so emitters
+// do not fork on the scalar fields.
+func (r Result) Tickets() []Member {
+	if len(r.Members) > 0 {
+		return r.Members
+	}
+	if r.Path == "" && r.ID == "" && len(r.DependsOpen) == 0 && len(r.RequiredMissing) == 0 {
+		return nil
+	}
+	return []Member{{
+		Path:            r.Path,
+		ID:              r.ID,
+		OldStatus:       r.OldStatus,
+		NewStatus:       r.NewStatus,
+		Moved:           r.Moved,
+		DependsOpen:     r.DependsOpen,
+		RequiredMissing: r.RequiredMissing,
+	}}
 }
 
 // SchemaAutoCommit reports whether the schema enables tk-driven self-commit.

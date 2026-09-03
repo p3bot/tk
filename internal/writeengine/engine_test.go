@@ -17,7 +17,7 @@ func TestMarkArchiveRelocate(t *testing.T) {
 	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
 	path := addTicket(t, e.dir, "wc-ab2c", "todo")
 
-	res, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c"), NewStatus: "done"})
+	res, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "done"})
 	if err != nil {
 		t.Fatalf("mark done: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestMarkArchiveRelocate(t *testing.T) {
 		t.Errorf("old root path still present")
 	}
 
-	res, err = Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c"), NewStatus: "todo"})
+	res, err = Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "todo"})
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -47,14 +47,14 @@ func TestMarkRefusesUnknownDuplicateParseUnusable(t *testing.T) {
 	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
 	addTicket(t, e.dir, "wc-ab2c", "todo")
 
-	_, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c"), NewStatus: "nope"})
+	_, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "nope"})
 	var unk *UnknownStatusError
 	if !errors.As(err, &unk) {
 		t.Errorf("unknown status: got %v", err)
 	}
 
 	writeFile(t, filepath.Join(e.dir, "wc-abcd-x.md"), "---\nid: wc-abcd\nstatus: [unterminated\n---\n# broke\n")
-	_, err = Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-abcd"), NewStatus: "done"})
+	_, err = Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-abcd")}, NewStatus: "done"})
 	var pe *ParseQuarantineError
 	if !errors.As(err, &pe) {
 		t.Errorf("parse quarantine: got %v", err)
@@ -66,14 +66,14 @@ func TestMarkRefusesUnknownDuplicateParseUnusable(t *testing.T) {
 	src := filepath.Join(e.dir, "wc-ab2c-work.md")
 	data, _ := os.ReadFile(src)
 	writeFile(t, filepath.Join(e.dir, "wc-ab2c-dup.md"), string(data))
-	_, err = Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c"), NewStatus: "done"})
+	_, err = Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "done"})
 	var dup *DuplicateError
 	if !errors.As(err, &dup) {
 		t.Errorf("duplicate: got %v", err)
 	}
 
 	bad := newPlainEnv(t, "zz", "name: \"zz\"\nthis is not cue {\n")
-	_, err = Mark(bad.deps, nil, MarkInput{Scope: "zz", Dir: bad.dir, Lookup: fullLookup("zz-ab2c"), NewStatus: "done"})
+	_, err = Mark(bad.deps, nil, MarkInput{Scope: "zz", Dir: bad.dir, Lookups: []Lookup{fullLookup("zz-ab2c")}, NewStatus: "done"})
 	var un *UnusableError
 	if !errors.As(err, &un) {
 		t.Errorf("unusable: got %v", err)
@@ -93,7 +93,7 @@ func TestMidRebaseRefusesMarkAndClaim(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c"), NewStatus: "done"})
+	_, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "done"})
 	var mid *MidRebaseError
 	if !errors.As(err, &mid) {
 		t.Fatalf("mark: want mid-rebase, got %v", err)
@@ -128,7 +128,7 @@ func TestMarkSelfCommitFailKeepsWarnings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c"), NewStatus: "done"})
+	res, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "done"})
 	if err == nil {
 		t.Fatal("want self-commit failure")
 	}
@@ -183,7 +183,7 @@ func TestMarkTodoInProgressIsClaim(t *testing.T) {
 	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
 	path := addTicket(t, e.dir, "wc-ab2c", "todo")
 
-	res, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c"), NewStatus: "in-progress"})
+	res, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "in-progress"})
 	if err != nil {
 		t.Fatalf("mark claim: %v", err)
 	}
@@ -263,4 +263,108 @@ func TestClaimPushFailedKeepsWrite(t *testing.T) {
 	if !strings.Contains(string(data), "status: in-progress") {
 		t.Errorf("write must stand, got %s", data)
 	}
+}
+
+func TestMarkBatchOneCommit(t *testing.T) {
+	if !git.Available() {
+		t.Skip("git not on PATH")
+	}
+	e, repo := initAutoCommitRepo(t, "wc")
+	addTicket(t, e.dir, "wc-ab2c", "draft")
+	addTicket(t, e.dir, "wc-cd3e", "draft")
+	addTicket(t, e.dir, "wc-fg4h", "draft")
+
+	res, err := Mark(e.deps, nil, MarkInput{
+		Scope: "wc",
+		Dir:   e.dir,
+		Lookups: []Lookup{
+			fullLookup("wc-ab2c"),
+			fullLookup("wc-cd3e"),
+			fullLookup("wc-fg4h"),
+		},
+		NewStatus: "todo",
+	})
+	if err != nil {
+		t.Fatalf("batch mark: %v", err)
+	}
+	if len(res.Members) != 3 {
+		t.Fatalf("members = %d, want 3", len(res.Members))
+	}
+	log := gitLog(t, repo)
+	if len(log) != 1 || log[0] != "tk: 3 tickets -> todo" {
+		t.Fatalf("commit log = %v", log)
+	}
+}
+
+func TestMarkBatchUnknownDoesNotWrite(t *testing.T) {
+	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
+	path := addTicket(t, e.dir, "wc-ab2c", "draft")
+
+	_, err := Mark(e.deps, nil, MarkInput{
+		Scope: "wc",
+		Dir:   e.dir,
+		Lookups: []Lookup{
+			fullLookup("wc-ab2c"),
+			fullLookup("wc-zzzz"),
+		},
+		NewStatus: "todo",
+	})
+	var unk *UnknownTicketError
+	if !errors.As(err, &unk) {
+		t.Fatalf("want unknown ticket, got %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "status: draft") {
+		t.Errorf("must not write before unknown id, got %s", data)
+	}
+}
+
+func TestMarkBatchCollapseSameID(t *testing.T) {
+	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
+	addTicket(t, e.dir, "wc-ab2c", "draft")
+	addTicket(t, e.dir, "wc-cd3e", "draft")
+
+	res, err := Mark(e.deps, nil, MarkInput{
+		Scope: "wc",
+		Dir:   e.dir,
+		Lookups: []Lookup{
+			fullLookup("wc-ab2c"),
+			fullLookup("wc-ab2c"),
+			fullLookup("wc-cd3e"),
+		},
+		NewStatus: "todo",
+	})
+	if err != nil {
+		t.Fatalf("collapse: %v", err)
+	}
+	if len(res.Members) != 2 {
+		t.Fatalf("members = %d, want 2", len(res.Members))
+	}
+	if res.Members[0].ID != "wc-ab2c" || res.Members[1].ID != "wc-cd3e" {
+		t.Errorf("order = %s %s", res.Members[0].ID, res.Members[1].ID)
+	}
+}
+
+func TestResultTickets(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		if got := (Result{NewStatus: "todo"}).Tickets(); got != nil {
+			t.Errorf("got %#v, want nil", got)
+		}
+	})
+	t.Run("scalar", func(t *testing.T) {
+		got := Result{Path: "/a.md", ID: "wc-ab2c", NewStatus: "todo", DependsOpen: []string{"wc-de34"}}.Tickets()
+		if len(got) != 1 || got[0].Path != "/a.md" || got[0].ID != "wc-ab2c" || got[0].DependsOpen[0] != "wc-de34" {
+			t.Errorf("scalar = %#v", got)
+		}
+	})
+	t.Run("members win", func(t *testing.T) {
+		got := Result{
+			Path:    "/first.md",
+			ID:      "wc-ab2c",
+			Members: []Member{{Path: "/a.md", ID: "wc-ab2c"}, {Path: "/b.md", ID: "wc-cd3e"}},
+		}.Tickets()
+		if len(got) != 2 || got[0].ID != "wc-ab2c" || got[1].ID != "wc-cd3e" {
+			t.Errorf("members = %#v", got)
+		}
+	})
 }

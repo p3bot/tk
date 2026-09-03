@@ -66,7 +66,7 @@ func TestMeSetShowClear(t *testing.T) {
 		t.Error("cleared me entry must be gone")
 	}
 
-	_, _, err = run(t, app, "mark", "me", "done", "--scope", "wc")
+	_, _, err = run(t, app, "mark", "done", "me", "--scope", "wc")
 	if ExitCodeFromError(err) == 0 {
 		t.Fatal("mark me after clear must fail as unknown")
 	}
@@ -80,7 +80,7 @@ func TestMeShowFollowsArchiveMove(t *testing.T) {
 	if _, _, err := run(t, app, "me", "wc-ab2c", "--scope", "wc"); err != nil {
 		t.Fatalf("set: %v", err)
 	}
-	if _, _, err := run(t, app, "mark", "wc-ab2c", "done", "--scope", "wc"); err != nil {
+	if _, _, err := run(t, app, "mark", "done", "wc-ab2c", "--scope", "wc"); err != nil {
 		t.Fatalf("mark done: %v", err)
 	}
 	want, _, err := run(t, app, "get", "wc-ab2c")
@@ -129,7 +129,7 @@ func TestMeAliasThroughVerbs(t *testing.T) {
 		t.Errorf("meta get me id = %q want wc-ab2c", out)
 	}
 
-	if _, _, err := run(t, app, "mark", "me", "review", "--scope", "wc"); err != nil {
+	if _, _, err := run(t, app, "mark", "review", "me", "--scope", "wc"); err != nil {
 		t.Fatalf("mark me: %v", err)
 	}
 	if got := fmValue(t, strings.TrimSpace(want), "status"); got != "review" {
@@ -363,7 +363,7 @@ func TestMeNotWrittenByClaimOrMark(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, _, err := run(t, app, "mark", "wc-de34", "in-progress", "--scope", "wc"); err != nil {
+	if _, _, err := run(t, app, "mark", "in-progress", "wc-de34", "--scope", "wc"); err != nil {
 		t.Fatalf("mark in-progress: %v", err)
 	}
 	dataAfter, err := os.ReadFile(filepath.Join(app.ConfigDir, "me.cue"))

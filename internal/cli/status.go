@@ -113,7 +113,7 @@ func newStatusCmd(app *App) *cobra.Command {
 			"duplicate_id, equal_order, archive layout drift) — not soft doctor classes or\n" +
 			"depended-on scopes from the next closure.\n" +
 			"\n" +
-			"To change a ticket's status, use `tk mark <id> <status>`.",
+			"To change a ticket's status, use `tk mark <status> <id> [id...]`.",
 		Args: maxArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			key := ""

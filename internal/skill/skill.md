@@ -12,8 +12,9 @@ description: >-
 # Ticket management with tk
 
 - A scope is a directory of tickets plus its tk.cue
-- tk create, get, next, and mark print a cleaned absolute path on stdout
+- tk create, get, and next print a cleaned absolute path on stdout
 - That path is live: call create once, work with it, do not create ticket files yourself
+- mark prints one path per unique marked ticket
 - A ticket is one markdown file: YAML frontmatter fence, then a single ATX H1, then the body
 - Fence (opening `---` through closing `---`): sealed except via tk mutators; parse_error: in-place fence repair (see Recovery)
 - H1: live title
@@ -43,7 +44,7 @@ description: >-
 ```
 tk create <title> [status] [--scope S] [--tag T]...                 # Scaffold ticket (FM + H1); optional tags; print path
 tk get <id> [--content] [--scope S]                                 # Resolve id to path; --content prints full file
-tk mark <id> <status> [--scope S]                                   # Set status; done/cancelled move to archive/; soft depends_open: / required_missing: as applicable
+tk mark <status> <id> [id...] [--scope S]                           # Set status; done/cancelled move to archive/; soft depends_open: / required_missing: as applicable
 tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 
@@ -93,7 +94,7 @@ tk skill uninstall [agents...] [--local]                            # Remove own
 
 Orient: `tk status` | `tk status [key]` (bare value) -> `tk list` -> `tk next` | `tk get <id>`
 
-Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk mark <id> <status>` -> Durability
+Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk mark <status> <id>` -> Durability
 
 Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk order / mark -> Durability
 

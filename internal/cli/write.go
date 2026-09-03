@@ -23,8 +23,13 @@ func emitWriteResult(c *cobra.Command, res writeengine.Result, err error) error 
 	}
 
 	printPath := err == nil || errors.Is(err, writeengine.ErrPushFailed)
-	if printPath && res.Path != "" {
-		stdoutln(c, res.Path)
+	tickets := res.Tickets()
+	if printPath {
+		for _, m := range tickets {
+			if m.Path != "" {
+				stdoutln(c, m.Path)
+			}
+		}
 	}
 	if res.SyncDisabled != "" {
 		stderrln(c, token.Line(token.SyncDisabled, res.SyncDisabled))
@@ -32,11 +37,15 @@ func emitWriteResult(c *cobra.Command, res writeengine.Result, err error) error 
 	if res.SyncNeeded != "" {
 		stderrln(c, token.Line(token.SyncNeeded, res.SyncNeeded))
 	}
-	if printPath && len(res.DependsOpen) > 0 {
-		stderrln(c, token.FormatDependsOpen(res.ID, res.NewStatus, res.DependsOpen))
-	}
-	if printPath && len(res.RequiredMissing) > 0 {
-		stderrln(c, token.FormatRequiredMissing(res.ID, res.RequiredMissing))
+	if printPath {
+		for _, m := range tickets {
+			if len(m.DependsOpen) > 0 {
+				stderrln(c, token.FormatDependsOpen(m.ID, m.NewStatus, m.DependsOpen))
+			}
+			if len(m.RequiredMissing) > 0 {
+				stderrln(c, token.FormatRequiredMissing(m.ID, m.RequiredMissing))
+			}
+		}
 	}
 	if printPath && res.ArchiveNote != "" {
 		stderrln(c, res.ArchiveNote)

@@ -36,8 +36,8 @@ func TestArityUsageMessages(t *testing.T) {
 	}{
 		{"deps none", []string{"deps"}, "missing <id>", "tk deps <id> [--scope S] [--transitive] [--tree]"},
 		{"get none", []string{"get"}, "missing <id>", "tk get <id> [--content] [--scope S]"},
-		{"mark none", []string{"mark"}, "missing <id> <status>", "tk mark <id> <status> [--scope S]"},
-		{"mark one", []string{"mark", "ab2c"}, "missing <status>", "tk mark <id> <status> [--scope S]"},
+		{"mark none", []string{"mark"}, "missing <status> <id>", "tk mark <status> <id> [id...] [--scope S]"},
+		{"mark one", []string{"mark", "todo"}, "missing <id>", "tk mark <status> <id> [id...] [--scope S]"},
 		{"create none", []string{"create"}, "missing <title>", "tk create <title> [status] [--scope S] [--tag T]..."},
 		{"meta set none", []string{"meta", "set"}, "missing <id> <key> <value>", "tk meta set <id> <key> <value> [--scope S]"},
 		{"meta set two", []string{"meta", "set", "ab2c", "summary"}, "missing <value>", "tk meta set <id> <key> <value> [--scope S]"},

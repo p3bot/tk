@@ -44,7 +44,7 @@ Ticket documents are ordinary markdown files in this repo's scope directory
 scope dir root; terminal status moves a file into `archive/` via `tk mark`
 (do not hand-move).
 
-- When a ticket is complete, set a terminal status with `tk mark <id> done`
+- When a ticket is complete, set a terminal status with `tk mark done <id>`
   (or another terminal status). That renames into `archive/` in the same write.
 - Cross-ticket references use logical labels (`P1`…`P8`) or full ids
   (`tk-mwtc`, …); path or filename references need rewriting after id/slug

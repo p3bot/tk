@@ -90,6 +90,11 @@ func (s *Session) CompleteState(message, newPath, oldPath string) (syncDisabled,
 	return completeState(s.deps, s.Scope, s.Dir, s.AutoCommit, message, newPath, oldPath, s.Root, s.HasRoot)
 }
 
+// CompletePaths is CompleteState over every touched path in one commit.
+func (s *Session) CompletePaths(message string, paths []string) (syncDisabled, syncNeeded string, err error) {
+	return completePaths(s.deps, s.Scope, s.Dir, s.AutoCommit, message, paths, s.Root, s.HasRoot)
+}
+
 // RefuseUnusable refuses writes when the dir is unreachable or tk.cue is unusable.
 func RefuseUnusable(res *reconcile.Result, scope, dir string) error {
 	if res.Unreachable[scope] {
@@ -134,20 +139,22 @@ func SyncNeededReason(ctx context.Context, stateDir, dir, root string) string {
 }
 
 func completeState(deps Deps, scope, dir string, autoCommit bool, message, newPath, oldPath, root string, hasRoot bool) (string, string, error) {
+	return completePaths(deps, scope, dir, autoCommit, message, WrittenPaths(newPath, oldPath), root, hasRoot)
+}
+
+func completePaths(deps Deps, scope, dir string, autoCommit bool, message string, paths []string, root string, hasRoot bool) (string, string, error) {
 	if !autoCommit {
 		return "", "", nil
 	}
 	if !hasRoot {
 		return fmt.Sprintf("%s: no git repository for %s — files written but not committed", scope, dir), "", nil
 	}
-	req := selfcommit.Request{
+	if err := selfcommit.CommitPaths(ctxOf(deps), selfcommit.BatchRequest{
 		StateDir: deps.StateDir,
 		GitRoot:  root,
 		Message:  message,
-		NewPath:  newPath,
-		OldPath:  oldPath,
-	}
-	if err := selfcommit.Commit(ctxOf(deps), req); err != nil {
+		Paths:    paths,
+	}); err != nil {
 		return "", "", fmt.Errorf("self-commit %s: %w", scope, err)
 	}
 	return "", SyncNeededReason(ctxOf(deps), deps.StateDir, dir, root), nil

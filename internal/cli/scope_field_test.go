@@ -524,7 +524,7 @@ func TestMetaMarkRequiredMissingWarnMatrix(t *testing.T) {
 	}
 
 	path, id := createID(t, app, "wc", "Required matrix")
-	_, errOut, err = run(t, app, "mark", id, "todo", "--scope", "wc")
+	_, errOut, err = run(t, app, "mark", "todo", id, "--scope", "wc")
 	if err != nil {
 		t.Fatalf("mark todo: %v (%s)", err, errOut)
 	}
@@ -594,7 +594,7 @@ func TestMetaMarkRequiredMissingWarnMatrix(t *testing.T) {
 	}
 
 	// mark done with all satisfied: no required_missing.
-	_, errOut, err = run(t, app, "mark", id, "done", "--scope", "wc")
+	_, errOut, err = run(t, app, "mark", "done", id, "--scope", "wc")
 	if err != nil {
 		t.Fatalf("mark done satisfied: %v (%s)", err, errOut)
 	}
@@ -602,7 +602,7 @@ func TestMetaMarkRequiredMissingWarnMatrix(t *testing.T) {
 		t.Errorf("satisfied done must not warn required, got %q", errOut)
 	}
 	// same-status re-mark done: quiet.
-	_, errOut, err = run(t, app, "mark", id, "done", "--scope", "wc")
+	_, errOut, err = run(t, app, "mark", "done", id, "--scope", "wc")
 	if err != nil {
 		t.Fatalf("re-mark done: %v (%s)", err, errOut)
 	}
@@ -612,11 +612,11 @@ func TestMetaMarkRequiredMissingWarnMatrix(t *testing.T) {
 
 	// Second ticket: transition into done with gaps warns; cancelled does not.
 	path2, id2 := createID(t, app, "wc", "Gaps ticket")
-	_, _, err = run(t, app, "mark", id2, "todo", "--scope", "wc")
+	_, _, err = run(t, app, "mark", "todo", id2, "--scope", "wc")
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, errOut, err := run(t, app, "mark", id2, "done", "--scope", "wc")
+	out, errOut, err := run(t, app, "mark", "done", id2, "--scope", "wc")
 	if err != nil {
 		t.Fatalf("mark done missing: %v (%s)", err, errOut)
 	}
@@ -636,11 +636,11 @@ func TestMetaMarkRequiredMissingWarnMatrix(t *testing.T) {
 	}
 
 	path3, id3 := createID(t, app, "wc", "Cancel ticket")
-	_, _, err = run(t, app, "mark", id3, "todo", "--scope", "wc")
+	_, _, err = run(t, app, "mark", "todo", id3, "--scope", "wc")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, errOut, err = run(t, app, "mark", id3, "cancelled", "--scope", "wc")
+	_, errOut, err = run(t, app, "mark", "cancelled", id3, "--scope", "wc")
 	if err != nil {
 		t.Fatalf("mark cancelled: %v (%s)", err, errOut)
 	}

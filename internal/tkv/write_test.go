@@ -183,13 +183,13 @@ func TestGETDoesNotWrite(t *testing.T) {
 	before := ticketBody(t, dir, "wc-ab2c")
 	setLens(t, app, "wc", []string{"frontend"})
 	beforeLens := lensFile(t, app)
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/maintenance/sync"} {
+	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/maintenance/sync"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))
 		}
 	}
-	// GET /scope/{name}/mark, /claim, and /create collide with inspect {id}; they must 404, not hit POST.
+	// GET /scope/{name}/mark, /claim, /create, and /meta collide with inspect {id}; they must 404, not hit POST.
 	if code := do(s, "/scope/wc/mark").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/mark = %d, want inspect 404", code)
 	}
@@ -198,6 +198,9 @@ func TestGETDoesNotWrite(t *testing.T) {
 	}
 	if code := do(s, "/scope/wc/create").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/create = %d, want inspect 404", code)
+	}
+	if code := do(s, "/scope/wc/meta").Code; code != http.StatusNotFound {
+		t.Fatalf("GET /scope/wc/meta = %d, want inspect 404", code)
 	}
 	head := httptest.NewRequest(http.MethodHead, "/scope/wc/ab2c", nil)
 	hw := httptest.NewRecorder()
@@ -901,6 +904,26 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if !strings.Contains(ins, `method="post" action="/scope/wc/mark"`) {
 		t.Fatalf("inspect missing mark form: %s", ins)
 	}
+	if !strings.Contains(ins, `method="post" action="/scope/wc/meta"`) {
+		t.Fatalf("inspect missing meta form: %s", ins)
+	}
+	for _, label := range []string{
+		`aria-label="Save summary"`,
+		`aria-label="Clear summary"`,
+		`aria-label="Add tags"`,
+		`aria-label="Add depends"`,
+		`aria-label="Add related"`,
+		`aria-label="Add links"`,
+	} {
+		if !strings.Contains(ins, label) {
+			t.Fatalf("inspect missing %s: %s", label, ins)
+		}
+	}
+	for _, key := range []string{"id", "status", "order", "created", "status_conflict"} {
+		if strings.Contains(ins, `name="key" value="`+key+`"`) {
+			t.Fatalf("inspect offered immutable key %s: %s", key, ins)
+		}
+	}
 	if !strings.Contains(board, `method="post" action="/scope/wc/lens"`) {
 		t.Fatalf("kanban missing chrome lens form: %s", board)
 	}
@@ -932,7 +955,7 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 			t.Fatalf("unusable schema must still offer chrome lens: %s", board)
 		}
 		ins := do(s, "/scope/wc/ab2c").Body.String()
-		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) {
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) {
 			t.Fatalf("inspect still offers ticket writes: %s", ins)
 		}
 		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
@@ -954,7 +977,7 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 			t.Fatalf("parse-quarantined board must still offer create: %s", board)
 		}
 		ins := do(s, "/scope/wc/abcd").Body.String()
-		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) {
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) {
 			t.Fatalf("inspect still offers ticket writes: %s", ins)
 		}
 		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
@@ -992,6 +1015,22 @@ func TestPOSTWriteRefusesForeignOrigin(t *testing.T) {
 	}
 	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") {
 		t.Fatalf("must not write: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+
+	w = doPostHeader(s, "/scope/wc/meta", url.Values{
+		"id":    {"wc-ab2c"},
+		"op":    {"add"},
+		"key":   {"tags"},
+		"value": {"x"},
+	}, http.Header{"Origin": {"https://evil.example"}})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("meta foreign origin: want 403, got %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") {
+		t.Fatalf("must not write: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+	if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "tags:") {
+		t.Fatalf("meta foreign origin wrote tags: %s", ticketBody(t, dir, "wc-ab2c"))
 	}
 
 	w = doPostHeader(s, "/scope/wc/mark", form, http.Header{
@@ -1698,4 +1737,371 @@ func TestPOSTLensRefusesForeignOrigin(t *testing.T) {
 	if lensFile(t, app) != before {
 		t.Fatal("foreign origin wrote lens.cue")
 	}
+}
+
+func postMeta(s *Server, op, key, value string) *httptest.ResponseRecorder {
+	return doPost(s, "/scope/wc/meta", url.Values{
+		"id":    {"wc-ab2c"},
+		"op":    {op},
+		"key":   {key},
+		"value": {value},
+	})
+}
+
+func metaSetInputValue(body, key string) (string, bool) {
+	rest := body
+	for {
+		i := strings.Index(rest, "<form")
+		if i < 0 {
+			return "", false
+		}
+		rest = rest[i:]
+		end := strings.Index(rest, "</form>")
+		if end < 0 {
+			return "", false
+		}
+		form := rest[:end]
+		rest = rest[end+len("</form>"):]
+		if !strings.Contains(form, `name="op" value="set"`) || !strings.Contains(form, `name="key" value="`+key+`"`) {
+			continue
+		}
+		const marker = `type="text" name="value" value="`
+		j := strings.Index(form, marker)
+		if j < 0 {
+			continue
+		}
+		val := form[j+len(marker):]
+		k := strings.Index(val, `"`)
+		if k < 0 {
+			return "", false
+		}
+		return html.UnescapeString(val[:k]), true
+	}
+}
+
+func TestInspectMetaWrites(t *testing.T) {
+	t.Run("tags add rm", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		s := mustServer(t, app)
+
+		w := postMeta(s, "add", "tags", "frontend")
+		page := mustFollow(t, s, w)
+		body := page.Body.String()
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "frontend") {
+			t.Fatalf("file missing tag: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if !strings.Contains(body, `class="tag">frontend</span>`) {
+			t.Fatalf("inspect missing tag: %s", body)
+		}
+		if !strings.Contains(body, html.EscapeString(token.FormatTagNew("frontend"))) {
+			t.Fatalf("missing tag_new banner: %s", body)
+		}
+
+		w = postMeta(s, "rm", "tags", "frontend")
+		page = mustFollow(t, s, w)
+		raw := ticketBody(t, dir, "wc-ab2c")
+		if strings.Contains(raw, "frontend") || strings.Contains(raw, "tags:") {
+			t.Fatalf("tag still on file: %s", raw)
+		}
+		if strings.Contains(page.Body.String(), `class="tag">frontend</span>`) {
+			t.Fatalf("inspect still shows tag: %s", page.Body.String())
+		}
+	})
+
+	t.Run("summary set and clear", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		s := mustServer(t, app)
+
+		w := postMeta(s, "set", "summary", "one line why")
+		page := mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "summary: one line why") {
+			t.Fatalf("file summary: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if got, ok := metaSetInputValue(page.Body.String(), "summary"); !ok || got != "one line why" {
+			t.Fatalf("inspect summary field = %q ok=%v", got, ok)
+		}
+
+		w = postMeta(s, "set", "summary", "")
+		page = mustFollow(t, s, w)
+		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "summary:") {
+			t.Fatalf("clear must omit summary: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if got, ok := metaSetInputValue(page.Body.String(), "summary"); !ok || got != "" {
+			t.Fatalf("cleared summary field = %q ok=%v", got, ok)
+		}
+
+		w = postMeta(s, "set", "summary", "again")
+		mustFollow(t, s, w)
+		w = postMeta(s, "set", "summary", "   ")
+		page = mustFollow(t, s, w)
+		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "summary:") {
+			t.Fatalf("empty save must omit summary: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if got, ok := metaSetInputValue(page.Body.String(), "summary"); !ok || got != "" {
+			t.Fatalf("empty save field = %q ok=%v", got, ok)
+		}
+	})
+
+	t.Run("declared scalar set clear", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(
+			"name: \"wc\"\nautoCommit: false\nfields: {\n  jira: { type: \"string\" }\n  pts: { type: \"int\" }\n  flag: { type: \"bool\" }\n}\n",
+		), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		s := mustServer(t, app)
+
+		ins := do(s, "/scope/wc/ab2c").Body.String()
+		for _, key := range []string{"jira", "pts", "flag"} {
+			got, ok := metaSetInputValue(ins, key)
+			if !ok || got != "" {
+				t.Fatalf("absent %s control = %q ok=%v\n%s", key, got, ok, ins)
+			}
+			if !strings.Contains(ins, `aria-label="Save `+key+`"`) || !strings.Contains(ins, `aria-label="Clear `+key+`"`) {
+				t.Fatalf("absent %s save/clear names: %s", key, ins)
+			}
+		}
+
+		w := postMeta(s, "set", "jira", "TK-1")
+		page := mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "jira: TK-1") {
+			t.Fatalf("file jira: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if got, ok := metaSetInputValue(page.Body.String(), "jira"); !ok || got != "TK-1" {
+			t.Fatalf("inspect jira = %q ok=%v", got, ok)
+		}
+
+		w = postMeta(s, "set", "pts", "3")
+		page = mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "pts: 3") {
+			t.Fatalf("file pts: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if got, ok := metaSetInputValue(page.Body.String(), "pts"); !ok || got != "3" {
+			t.Fatalf("inspect pts = %q ok=%v", got, ok)
+		}
+
+		w = postMeta(s, "set", "flag", "true")
+		page = mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "flag: true") {
+			t.Fatalf("file flag: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if got, ok := metaSetInputValue(page.Body.String(), "flag"); !ok || got != "true" {
+			t.Fatalf("inspect flag = %q ok=%v", got, ok)
+		}
+
+		for _, key := range []string{"jira", "pts", "flag"} {
+			w = postMeta(s, "set", key, "")
+			page = mustFollow(t, s, w)
+			if strings.Contains(ticketBody(t, dir, "wc-ab2c"), key+":") {
+				t.Fatalf("clear must omit %s: %s", key, ticketBody(t, dir, "wc-ab2c"))
+			}
+			if got, ok := metaSetInputValue(page.Body.String(), key); !ok || got != "" {
+				t.Fatalf("cleared %s field = %q ok=%v", key, got, ok)
+			}
+		}
+	})
+
+	t.Run("declared strings add rm", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(
+			"name: \"wc\"\nautoCommit: false\nfields: { owners: { type: \"strings\" } }\n",
+		), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		s := mustServer(t, app)
+
+		ins := do(s, "/scope/wc/ab2c").Body.String()
+		if !strings.Contains(ins, `name="key" value="owners"`) {
+			t.Fatalf("absent owners add missing: %s", ins)
+		}
+		if !strings.Contains(ins, `aria-label="Add owners"`) {
+			t.Fatalf("owners add unnamed: %s", ins)
+		}
+
+		w := postMeta(s, "add", "owners", "ada")
+		page := mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "ada") {
+			t.Fatalf("file owners: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if !strings.Contains(page.Body.String(), ">ada</span>") {
+			t.Fatalf("inspect owners: %s", page.Body.String())
+		}
+
+		w = postMeta(s, "rm", "owners", "ada")
+		page = mustFollow(t, s, w)
+		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "owners:") {
+			t.Fatalf("owners still on file: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if strings.Contains(page.Body.String(), ">ada</span>") {
+			t.Fatalf("inspect still shows owner: %s", page.Body.String())
+		}
+	})
+
+	t.Run("depends self refuse and legal add", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		addTicket(t, dir, "wc-de34", "other", "todo", "a1", "# Other\n", false, "")
+		s := mustServer(t, app)
+		before := ticketBody(t, dir, "wc-ab2c")
+
+		w := postMeta(s, "add", "depends", "wc-ab2c")
+		if w.Code != http.StatusConflict {
+			t.Fatalf("self: want 409, got %d %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "depends_self:") {
+			t.Fatalf("self message: %s", w.Body.String())
+		}
+		if ticketBody(t, dir, "wc-ab2c") != before {
+			t.Fatalf("self wrote: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+
+		w = postMeta(s, "add", "depends", "wc-de34")
+		page := mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "wc-de34") {
+			t.Fatalf("file depends: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		subject := page.Body.String()
+		if !strings.Contains(subject, "wc-de34") {
+			t.Fatalf("inspect depends: %s", subject)
+		}
+		if !strings.Contains(subject, `aria-label="Remove depends wc-de34"`) {
+			t.Fatalf("outbound depends missing rm: %s", subject)
+		}
+		target := do(s, "/scope/wc/de34").Body.String()
+		if strings.Contains(target, `aria-label="Remove depends wc-ab2c"`) {
+			t.Fatalf("inbound depended offered rm: %s", target)
+		}
+	})
+
+	t.Run("related one-way", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		addTicket(t, dir, "wc-de34", "other", "todo", "a1", "# Other\n", false, "")
+		s := mustServer(t, app)
+
+		w := postMeta(s, "add", "related", "wc-de34")
+		mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "wc-de34") {
+			t.Fatalf("subject missing related: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if strings.Contains(ticketBody(t, dir, "wc-de34"), "related:") {
+			t.Fatalf("target related was mirrored: %s", ticketBody(t, dir, "wc-de34"))
+		}
+		target := do(s, "/scope/wc/de34").Body.String()
+		if strings.Contains(target, `aria-label="Remove related wc-ab2c"`) {
+			t.Fatalf("inbound related offered rm: %s", target)
+		}
+		subject := do(s, "/scope/wc/ab2c").Body.String()
+		if !strings.Contains(subject, `aria-label="Remove related wc-de34"`) {
+			t.Fatalf("outbound related missing rm: %s", subject)
+		}
+	})
+
+	t.Run("links add rm from empty", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		s := mustServer(t, app)
+
+		ins := do(s, "/scope/wc/ab2c").Body.String()
+		if !strings.Contains(ins, "<h2>links</h2>") {
+			t.Fatalf("links heading omitted when empty: %s", ins)
+		}
+		if !strings.Contains(ins, `name="key" value="links"`) {
+			t.Fatalf("empty links add missing: %s", ins)
+		}
+
+		w := postMeta(s, "add", "links", "https://example.com/a")
+		page := mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "https://example.com/a") {
+			t.Fatalf("file links: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if !strings.Contains(page.Body.String(), "https://example.com/a") {
+			t.Fatalf("inspect links: %s", page.Body.String())
+		}
+
+		w = postMeta(s, "rm", "links", "https://example.com/a")
+		page = mustFollow(t, s, w)
+		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "links:") {
+			t.Fatalf("links still on file: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if strings.Contains(page.Body.String(), "https://example.com/a") {
+			t.Fatalf("inspect still shows link: %s", page.Body.String())
+		}
+	})
+
+	t.Run("blank add rm is 400", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [keep]\n")
+		s := mustServer(t, app)
+		before := ticketBody(t, dir, "wc-ab2c")
+
+		w := postMeta(s, "add", "tags", "   ")
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("blank add: want 400, got %d %s", w.Code, w.Body.String())
+		}
+		w = postMeta(s, "rm", "tags", "")
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("blank rm: want 400, got %d %s", w.Code, w.Body.String())
+		}
+		if ticketBody(t, dir, "wc-ab2c") != before {
+			t.Fatalf("blank write mutated: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+	})
+
+	t.Run("unknown key 400", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "orphan: leftover\n")
+		s := mustServer(t, app)
+		before := ticketBody(t, dir, "wc-ab2c")
+
+		ins := do(s, "/scope/wc/ab2c").Body.String()
+		if !strings.Contains(ins, "orphan") {
+			t.Fatalf("undeclared key missing: %s", ins)
+		}
+		if strings.Contains(ins, `name="key" value="orphan"`) {
+			t.Fatalf("undeclared key offered a write form: %s", ins)
+		}
+
+		w := postMeta(s, "set", "orphan", "nope")
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("unknown key: want 400, got %d %s", w.Code, w.Body.String())
+		}
+		if ticketBody(t, dir, "wc-ab2c") != before {
+			t.Fatal("unknown key wrote")
+		}
+	})
+
+	t.Run("required_missing banner", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(
+			"name: \"wc\"\nautoCommit: false\nfields: { jira: { type: \"string\", required: true } }\n",
+		), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		s := mustServer(t, app)
+
+		w := postMeta(s, "add", "tags", "shared")
+		page := mustFollow(t, s, w)
+		if !strings.Contains(page.Body.String(), "required_missing:") {
+			t.Fatalf("missing required banner: %s", page.Body.String())
+		}
+		if !strings.Contains(page.Body.String(), "jira") {
+			t.Fatalf("banner should name jira: %s", page.Body.String())
+		}
+	})
 }

@@ -438,12 +438,78 @@ type inspectPage struct {
 	Related      []neighbour
 	Links        []string
 	CanClaim     bool
+	CanMeta      bool
 	MarkStatuses []string
 }
 
 type customField struct {
-	Key   string
-	Value string
+	Key        string
+	Scalar     string
+	Values     []string
+	Multi      bool
+	Writable   bool
+	Undeclared bool
+}
+
+type metaAddView struct {
+	Scope, ID, Key, Placeholder string
+}
+
+type metaRmView struct {
+	Scope, ID, Key, Value string
+}
+
+type metaSetView struct {
+	Scope, ID, Key string
+}
+
+func (p inspectPage) MetaAdd(key, placeholder string) metaAddView {
+	return metaAddView{Scope: p.Chrome.Selected, ID: p.ID, Key: key, Placeholder: placeholder}
+}
+
+func (p inspectPage) MetaRm(key, value string) metaRmView {
+	return metaRmView{Scope: p.Chrome.Selected, ID: p.ID, Key: key, Value: value}
+}
+
+func (p inspectPage) MetaSet(key string) metaSetView {
+	return metaSetView{Scope: p.Chrome.Selected, ID: p.ID, Key: key}
+}
+
+type neighbourListView struct {
+	Scope, ID, Key, Placeholder string
+	CanMeta                     bool
+	Items                       []neighbour
+}
+
+func (v neighbourListView) MetaAdd() metaAddView {
+	return metaAddView{Scope: v.Scope, ID: v.ID, Key: v.Key, Placeholder: v.Placeholder}
+}
+
+func (v neighbourListView) MetaRm(id string) metaRmView {
+	return metaRmView{Scope: v.Scope, ID: v.ID, Key: v.Key, Value: id}
+}
+
+func (p inspectPage) neighbourList(key, placeholder string, items []neighbour, writable bool) neighbourListView {
+	return neighbourListView{
+		Scope:       p.Chrome.Selected,
+		ID:          p.ID,
+		Key:         key,
+		Placeholder: placeholder,
+		CanMeta:     p.CanMeta && writable,
+		Items:       items,
+	}
+}
+
+func (p inspectPage) DependsList() neighbourListView {
+	return p.neighbourList("depends", "full id", p.Depends, true)
+}
+
+func (p inspectPage) RelatedList() neighbourListView {
+	return p.neighbourList("related", "full id", p.Related, true)
+}
+
+func (p inspectPage) DependedList() neighbourListView {
+	return p.neighbourList("", "", p.Depended, false)
 }
 
 type neighbour struct {
@@ -452,6 +518,7 @@ type neighbour struct {
 	Title      string
 	Href       string
 	Unresolved bool
+	Owned      bool
 }
 
 func (s *Server) inspect(w http.ResponseWriter, r *http.Request) error {
@@ -527,13 +594,14 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 		Summary:     p.Summary,
 		Tags:        p.Tags,
 		Created:     p.Created,
-		Custom:      formatCustom(p.Custom),
+		Custom:      inspectCustoms(schema, p.Custom, schema != nil && !p.ParseError),
 		Archived:    p.Archived,
 		SchemaErr:   p.SchemaError,
 		Path:        p.Path,
 		ParseMsg:    p.ParseMsg,
 	}
 	out.CanClaim, out.MarkStatuses = ticketWriteControls(schema, p.Status, p.ParseError)
+	out.CanMeta = schema != nil && !p.ParseError
 
 	raw, err := os.ReadFile(p.Path)
 	if err != nil {
@@ -568,18 +636,58 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 	return out, nil
 }
 
-func formatCustom(m map[string]any) []customField {
-	if len(m) == 0 {
-		return nil
+func inspectCustoms(schema *scopeconfig.Schema, present map[string]any, writable bool) []customField {
+	declared := map[string]scopeconfig.Field{}
+	if schema != nil {
+		declared = schema.Fields
 	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+	names := make([]string, 0, len(declared))
+	for name := range declared {
+		names = append(names, name)
 	}
-	sort.Strings(keys)
-	out := make([]customField, 0, len(keys))
-	for _, k := range keys {
-		out = append(out, customField{Key: k, Value: formatValue(m[k])})
+	sort.Strings(names)
+	out := make([]customField, 0, len(names)+len(present))
+	seen := map[string]bool{}
+	for _, name := range names {
+		seen[name] = true
+		f := declared[name]
+		cf := customField{Key: name, Writable: writable}
+		v, ok := present[name]
+		if f.Type == scopeconfig.FieldStrings {
+			cf.Multi = true
+			if !ok {
+				out = append(out, cf)
+				continue
+			}
+			list, err := frontmatter.StringList(v)
+			if err != nil {
+				cf.Scalar = formatValue(v)
+				cf.Writable = false
+				cf.Multi = false
+			} else {
+				cf.Values = list
+			}
+			out = append(out, cf)
+			continue
+		}
+		if ok {
+			cf.Scalar = formatValue(v)
+		}
+		out = append(out, cf)
+	}
+	var extra []string
+	for k := range present {
+		if !seen[k] {
+			extra = append(extra, k)
+		}
+	}
+	sort.Strings(extra)
+	for _, k := range extra {
+		out = append(out, customField{
+			Key:        k,
+			Scalar:     formatValue(present[k]),
+			Undeclared: true,
+		})
 	}
 	return out
 }
@@ -641,13 +749,13 @@ func (s *Server) inspectGraph(fullID string) (depends, depended, related []neigh
 				continue
 			}
 			seenDep[e.ToID] = true
-			depends = append(depends, makeNeighbour(e.ToID, byID))
+			depends = append(depends, makeNeighbour(e.ToID, byID, true))
 		case index.EdgeRelated:
 			if seenRel[e.ToID] {
 				continue
 			}
 			seenRel[e.ToID] = true
-			related = append(related, makeNeighbour(e.ToID, byID))
+			related = append(related, makeNeighbour(e.ToID, byID, true))
 		}
 	}
 	for _, e := range to {
@@ -657,20 +765,20 @@ func (s *Server) inspectGraph(fullID string) (depends, depended, related []neigh
 				continue
 			}
 			seenBy[e.FromID] = true
-			depended = append(depended, makeNeighbour(e.FromID, byID))
+			depended = append(depended, makeNeighbour(e.FromID, byID, false))
 		case index.EdgeRelated:
 			if seenRel[e.FromID] {
 				continue
 			}
 			seenRel[e.FromID] = true
-			related = append(related, makeNeighbour(e.FromID, byID))
+			related = append(related, makeNeighbour(e.FromID, byID, false))
 		}
 	}
 	return depends, depended, related, nil
 }
 
-func makeNeighbour(fullID string, byID map[string]*index.Ticket) neighbour {
-	n := neighbour{ID: fullID, Href: inspectHref(fullID)}
+func makeNeighbour(fullID string, byID map[string]*index.Ticket, owned bool) neighbour {
+	n := neighbour{ID: fullID, Href: inspectHref(fullID), Owned: owned}
 	if t := byID[fullID]; t != nil {
 		n.Status = t.Status
 		n.Title = t.Title

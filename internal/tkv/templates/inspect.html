@@ -19,16 +19,70 @@
     <div><dt>status</dt><dd>{{.Status}}</dd></div>
     <div><dt>order</dt><dd>{{.Order}}</dd></div>
     <div><dt>title</dt><dd>{{.TicketTitle}}</dd></div>
-    <div><dt>summary</dt><dd>{{.Summary}}</dd></div>
-    <div><dt>tags</dt><dd>{{range .Tags}}<span class="tag">{{.}}</span> {{end}}</dd></div>
     <div><dt>created</dt><dd>{{.Created}}</dd></div>
-    {{range .Custom}}
-    <div><dt>{{.Key}}</dt><dd>{{.Value}}</dd></div>
-    {{end}}
     <div><dt>archived</dt><dd>{{if .Archived}}yes{{else}}no{{end}}</dd></div>
     <div><dt>schema_error</dt><dd>{{if .SchemaErr}}yes{{else}}no{{end}}</dd></div>
     <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
   </dl>
+  <h2>summary</h2>
+  {{if .CanMeta}}
+  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/meta">
+    {{template "metaSetFields" (.MetaSet "summary")}}
+    <label>
+      Summary
+      <input type="text" name="value" value="{{.Summary}}">
+    </label>
+    <button type="submit" aria-label="Save summary">Save</button>
+  </form>
+  {{template "metaClear" (.MetaSet "summary")}}
+  {{else}}
+  <p>{{if .Summary}}{{.Summary}}{{else}}<span class="empty">none</span>{{end}}</p>
+  {{end}}
+  <h2>tags</h2>
+  {{if .Tags}}
+  <ul class="meta-list">
+    {{range .Tags}}
+    <li>
+      <span class="tag">{{.}}</span>
+      {{if $.CanMeta}}{{template "metaRm" ($.MetaRm "tags" .)}}{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="empty">none</p>
+  {{end}}
+  {{if .CanMeta}}{{template "metaAdd" (.MetaAdd "tags" "tag")}}{{end}}
+  {{range .Custom}}
+  {{$field := .}}
+  <h2>{{$field.Key}}{{if $field.Undeclared}} <span class="empty">undeclared</span>{{end}}</h2>
+  {{if $field.Multi}}
+    {{if $field.Values}}
+    <ul class="meta-list">
+      {{range $field.Values}}
+      <li>
+        <span>{{.}}</span>
+        {{if and $.CanMeta $field.Writable}}{{template "metaRm" ($.MetaRm $field.Key .)}}{{end}}
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">none</p>
+    {{end}}
+    {{if and $.CanMeta $field.Writable}}{{template "metaAdd" ($.MetaAdd $field.Key $field.Key)}}{{end}}
+  {{else if or $field.Undeclared (not $.CanMeta) (not $field.Writable)}}
+  <p>{{if $field.Scalar}}{{$field.Scalar}}{{else}}<span class="empty">none</span>{{end}}</p>
+  {{else}}
+  <form class="write" method="post" action="/scope/{{$.Chrome.Selected}}/meta">
+    {{template "metaSetFields" ($.MetaSet $field.Key)}}
+    <label>
+      {{$field.Key}}
+      <input type="text" name="value" value="{{$field.Scalar}}">
+    </label>
+    <button type="submit" aria-label="Save {{$field.Key}}">Save</button>
+  </form>
+  {{template "metaClear" ($.MetaSet $field.Key)}}
+  {{end}}
+  {{end}}
   {{if .CanClaim}}
   <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/claim">
     <input type="hidden" name="id" value="{{.ID}}">
@@ -51,37 +105,86 @@
   </form>
   {{end}}
   <h2>depends on</h2>
-  {{template "neighbours" .Depends}}
+  {{template "neighbourList" .DependsList}}
   <h2>depended on by</h2>
-  {{template "neighbours" .Depended}}
+  {{template "neighbourList" .DependedList}}
   <h2>related</h2>
-  {{template "neighbours" .Related}}
-  {{if .Links}}
+  {{template "neighbourList" .RelatedList}}
   <h2>links</h2>
-  <ul>
-    {{range .Links}}<li><a href="{{.}}">{{.}}</a></li>{{end}}
+  {{if .Links}}
+  <ul class="meta-list">
+    {{range .Links}}
+    <li>
+      <a href="{{.}}">{{.}}</a>
+      {{if $.CanMeta}}{{template "metaRm" ($.MetaRm "links" .)}}{{end}}
+    </li>
+    {{end}}
   </ul>
+  {{else}}
+  <p class="empty">none</p>
   {{end}}
+  {{if .CanMeta}}{{template "metaAdd" (.MetaAdd "links" "https://")}}{{end}}
 </aside>
 </main>
 </body>
 </html>
 {{end}}
 
-{{define "neighbours"}}
-{{if .}}
+{{define "metaSetFields"}}
+<input type="hidden" name="id" value="{{.ID}}">
+<input type="hidden" name="op" value="set">
+<input type="hidden" name="key" value="{{.Key}}">
+{{end}}
+
+{{define "metaClear"}}
+<form class="write" method="post" action="/scope/{{.Scope}}/meta">
+  <input type="hidden" name="id" value="{{.ID}}">
+  <input type="hidden" name="op" value="set">
+  <input type="hidden" name="key" value="{{.Key}}">
+  <input type="hidden" name="value" value="">
+  <button type="submit" aria-label="Clear {{.Key}}">Clear</button>
+</form>
+{{end}}
+
+{{define "metaAdd"}}
+<form class="write" method="post" action="/scope/{{.Scope}}/meta">
+  <input type="hidden" name="id" value="{{.ID}}">
+  <input type="hidden" name="op" value="add">
+  <input type="hidden" name="key" value="{{.Key}}">
+  <label>
+    <span class="sr-only">Add {{.Key}}</span>
+    <input type="text" name="value" required placeholder="{{.Placeholder}}">
+  </label>
+  <button type="submit" aria-label="Add {{.Key}}">Add</button>
+</form>
+{{end}}
+
+{{define "metaRm"}}
+<form class="write" method="post" action="/scope/{{.Scope}}/meta">
+  <input type="hidden" name="id" value="{{.ID}}">
+  <input type="hidden" name="op" value="rm">
+  <input type="hidden" name="key" value="{{.Key}}">
+  <input type="hidden" name="value" value="{{.Value}}">
+  <button type="submit" aria-label="Remove {{.Key}} {{.Value}}">Remove</button>
+</form>
+{{end}}
+
+{{define "neighbourList"}}
+{{if .Items}}
 <ul class="neighbours">
-  {{range .}}
+  {{range .Items}}
   <li>
     {{if .Unresolved}}
       <span class="unresolved">{{.ID}}</span> unresolved
     {{else}}
       <a href="{{.Href}}">{{.ID}}</a> {{.Status}} {{.Title}}
     {{end}}
+    {{if and $.CanMeta .Owned}}{{template "metaRm" ($.MetaRm .ID)}}{{end}}
   </li>
   {{end}}
 </ul>
 {{else}}
 <p class="empty">none</p>
 {{end}}
+{{if and .CanMeta .Key}}{{template "metaAdd" .MetaAdd}}{{end}}
 {{end}}

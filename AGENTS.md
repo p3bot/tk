@@ -8,7 +8,7 @@ live authority and must not override the tree.
 
 ## Implementation status
 
-P1 through P7 have landed, plus `tkv` (reads plus mark/claim/create/lens/sync). `tk` runs as a Cobra CLI with the machine-local CUE
+P1 through P7 have landed, plus `tkv` (reads plus mark/claim/create/meta/lens/sync). `tk` runs as a Cobra CLI with the machine-local CUE
 registry, scope `tk.cue` evaluation, ambient resolution, and the full `tk scope`
 verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `field`); the machine-wide
 SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
@@ -27,7 +27,7 @@ Commands, Ticket files, Identifiers, Workflows; structure and hot-path guidance
 tests; no design-doc dependency) plus agentdex-backed `skill install`/`list`/
 `uninstall` (paths from the agent catalog; no hardcoded product skills dirs);
 and `tkv` — a human-facing localhost dashboard (`cmd/tkv`) for overview, kanban,
-inspect, search, depends graph, and maintenance, with mark, claim, and create writes
+inspect, search, depends graph, and maintenance, with mark, claim, create, and meta writes
 through the same engine as `tk`, chrome set/clear of the machine-local tag
 lens, and chrome/maintenance `tk sync` (agents keep using `tk`).
 
@@ -102,7 +102,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `syncengine` — per-root snapshot/integrate/integrity/push; `tk sync` and claim
   - `writeengine` — cobra-free ticket-file write session, create, meta, order, mark, and claim orchestration
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
-  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, mark/claim/create, chrome lens, sync)
+  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, mark/claim/create/meta, chrome lens, sync)
   - `cli` — Cobra command tree, exit codes, signals, colour/TTY, path hand-off
 
 ## Build, test, lint, format

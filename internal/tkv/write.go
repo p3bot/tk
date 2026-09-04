@@ -222,6 +222,70 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+func (s *Server) postMeta(w http.ResponseWriter, r *http.Request) error {
+	if err := r.ParseForm(); err != nil {
+		return errBadRequest("malformed form")
+	}
+	name := r.PathValue("name")
+	if !id.IsScopeName(name) {
+		return errNotFound("unknown scope")
+	}
+	lu, err := lookupFromArg(r.FormValue("id"))
+	if err != nil {
+		return err
+	}
+	if lu.ByFull && id.ScopeOfFullID(lu.Arg) != name {
+		return errNotFound(fmt.Sprintf("ticket %q does not belong to scope %q", lu.Arg, name))
+	}
+	op, err := parseMetaOp(r.FormValue("op"))
+	if err != nil {
+		return err
+	}
+	key := strings.TrimSpace(r.FormValue("key"))
+	if key == "" {
+		return errBadRequest("missing key")
+	}
+	value := strings.TrimSpace(r.FormValue("value"))
+	if (op == writeengine.MetaAdd || op == writeengine.MetaRm) && value == "" {
+		return errBadRequest(fmt.Sprintf("meta %s value must be non-empty", op))
+	}
+
+	sess, release, err := s.beginWrite(r.Context(), name)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	res, err := writeengine.Meta(sess.deps, writeengine.MetaInput{
+		Scope:  name,
+		Dir:    sess.dir,
+		Lookup: lu,
+		Op:     op,
+		Key:    key,
+		Value:  value,
+	})
+	if err != nil {
+		return mapWriteError(res, err)
+	}
+	http.Redirect(w, r, appendNotices(inspectHref(res.ID), res), http.StatusSeeOther)
+	return nil
+}
+
+func parseMetaOp(raw string) (writeengine.MetaOp, error) {
+	switch strings.TrimSpace(raw) {
+	case "set":
+		return writeengine.MetaSet, nil
+	case "add":
+		return writeengine.MetaAdd, nil
+	case "rm":
+		return writeengine.MetaRm, nil
+	case "":
+		return 0, errBadRequest("missing op")
+	default:
+		return 0, errBadRequest(fmt.Sprintf("unknown meta op %q", raw))
+	}
+}
+
 // formCreateTags is the HTML dual of repeatable --tag: comma-separated, blanks skipped.
 func formCreateTags(values []string) []string {
 	if len(values) == 0 {

@@ -229,7 +229,23 @@ aside dt { color: var(--muted); }
 aside dd { margin: 0; overflow-wrap: anywhere; }
 .path { font-size: 0.875rem; }
 .neighbours { list-style: none; padding: 0; margin: 0 0 1rem; }
-.neighbours li { padding: 0.2rem 0; }
+.neighbours li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: baseline;
+  padding: 0.2rem 0;
+}
+.neighbours .write, .meta-list .write { margin-top: 0; }
+.meta-list { list-style: none; padding: 0; margin: 0 0 0.4rem; }
+.meta-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.15rem 0;
+}
+aside h2 + p { margin: 0 0 0.6rem; }
 .unresolved { color: var(--issues); }
 .banner { background: var(--banner); color: var(--issues); padding: 0.5rem 0.7rem; border-radius: 4px; }
 .banner.soft { background: #fffbeb; color: #92400e; }

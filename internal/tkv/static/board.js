@@ -22,6 +22,11 @@
         const hay = (card.getAttribute("data-filter") || "").toLowerCase();
         const show = q === "" || hay.includes(q);
         card.hidden = !show;
+        const order = card.querySelector(".order");
+        if (order) {
+          // Find is visual-only; do not order against hidden neighbours.
+          order.hidden = q !== "";
+        }
         if (show) {
           n++;
         }

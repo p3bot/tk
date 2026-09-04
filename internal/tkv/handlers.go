@@ -16,6 +16,7 @@ import (
 	"github.com/p3bot/tk/internal/gitroot"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/order"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/scopeadmin"
@@ -202,6 +203,8 @@ type kanbanCard struct {
 	Next         bool
 	CanClaim     bool
 	MarkStatuses []string
+	BeforeID     string
+	AfterID      string
 }
 
 func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
@@ -270,7 +273,8 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	cols := make([]kanbanCol, 0, len(colNames))
 	for _, st := range colNames {
 		col := kanbanCol{Status: st}
-		for _, p := range byStatus[st] {
+		cards := byStatus[st]
+		for i, p := range cards {
 			waiting := gate.EvalDepends(p).WaitingOn
 			card := kanbanCard{
 				ID:          p.ID,
@@ -283,6 +287,16 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 				Next:        nextID != "" && p.ID == nextID,
 			}
 			card.CanClaim, card.MarkStatuses = ticketWriteControls(schema, p.Status, p.ParseError)
+			// Neighbours are this server-filtered column, not the CLI scope-wide set.
+			// Skip a dest the engine will refuse; do not walk past a visible broken card.
+			if ticketWritable(schema, p.ParseError) {
+				if i > 0 && order.Valid(cards[i-1].OrderKey) {
+					card.BeforeID = cards[i-1].ID
+				}
+				if i+1 < len(cards) && order.Valid(cards[i+1].OrderKey) {
+					card.AfterID = cards[i+1].ID
+				}
+			}
 			col.Cards = append(col.Cards, card)
 		}
 		cols = append(cols, col)
@@ -439,6 +453,7 @@ type inspectPage struct {
 	Links        []string
 	CanClaim     bool
 	CanMeta      bool
+	CanOrder     bool
 	MarkStatuses []string
 }
 
@@ -584,6 +599,7 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 	if entry, ok := reg.Scopes[p.Scope]; ok {
 		schema = s.rec.SchemaCached(p.Scope, entry.Dir)
 	}
+	writable := ticketWritable(schema, p.ParseError)
 	out := inspectPage{
 		Title:       p.ID,
 		Chrome:      ch,
@@ -594,14 +610,15 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 		Summary:     p.Summary,
 		Tags:        p.Tags,
 		Created:     p.Created,
-		Custom:      inspectCustoms(schema, p.Custom, schema != nil && !p.ParseError),
+		Custom:      inspectCustoms(schema, p.Custom, writable),
 		Archived:    p.Archived,
 		SchemaErr:   p.SchemaError,
 		Path:        p.Path,
 		ParseMsg:    p.ParseMsg,
 	}
 	out.CanClaim, out.MarkStatuses = ticketWriteControls(schema, p.Status, p.ParseError)
-	out.CanMeta = schema != nil && !p.ParseError
+	out.CanMeta = writable
+	out.CanOrder = writable
 
 	raw, err := os.ReadFile(p.Path)
 	if err != nil {

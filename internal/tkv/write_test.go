@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/order"
 	"github.com/p3bot/tk/internal/registry"
@@ -79,6 +80,19 @@ func ticketBody(t *testing.T, dir, id string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+func ticketOrder(t *testing.T, dir, id string) string {
+	t.Helper()
+	interior, _, ok := frontmatter.Split([]byte(ticketBody(t, dir, id)))
+	if !ok {
+		t.Fatalf("%s: no frontmatter", id)
+	}
+	m, err := frontmatter.Parse(interior)
+	if err != nil {
+		t.Fatalf("%s: parse: %v", id, err)
+	}
+	return m.Order
 }
 
 func colSection(body, status string) string {
@@ -183,13 +197,13 @@ func TestGETDoesNotWrite(t *testing.T) {
 	before := ticketBody(t, dir, "wc-ab2c")
 	setLens(t, app, "wc", []string{"frontend"})
 	beforeLens := lensFile(t, app)
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/maintenance/sync"} {
+	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/maintenance/sync"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))
 		}
 	}
-	// GET /scope/{name}/mark, /claim, /create, and /meta collide with inspect {id}; they must 404, not hit POST.
+	// GET /scope/{name}/mark, /claim, /create, /meta, and /order collide with inspect {id}; they must 404, not hit POST.
 	if code := do(s, "/scope/wc/mark").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/mark = %d, want inspect 404", code)
 	}
@@ -201,6 +215,9 @@ func TestGETDoesNotWrite(t *testing.T) {
 	}
 	if code := do(s, "/scope/wc/meta").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/meta = %d, want inspect 404", code)
+	}
+	if code := do(s, "/scope/wc/order").Code; code != http.StatusNotFound {
+		t.Fatalf("GET /scope/wc/order = %d, want inspect 404", code)
 	}
 	head := httptest.NewRequest(http.MethodHead, "/scope/wc/ab2c", nil)
 	hw := httptest.NewRecorder()
@@ -215,6 +232,431 @@ func TestGETDoesNotWrite(t *testing.T) {
 	if lensFile(t, app) != beforeLens {
 		t.Fatal("GET/HEAD mutated lens.cue")
 	}
+}
+
+func TestPOSTOrderDownSwapsTwoTodos(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "first", "todo", "a0", "# First\n", false, "")
+	addTicket(t, dir, "wc-de34", "second", "todo", "a1", "# Second\n", false, "")
+	s := mustServer(t, app)
+
+	board := do(s, "/scope/wc").Body.String()
+	todo := colSection(board, status.Todo)
+	if !strings.Contains(todo, `aria-label="Move wc-ab2c down"`) {
+		t.Fatalf("first card missing down: %s", todo)
+	}
+	if strings.Contains(todo, `aria-label="Move wc-ab2c up"`) {
+		t.Fatalf("first card offered up: %s", todo)
+	}
+	if !strings.Contains(todo, `aria-label="Move wc-de34 up"`) {
+		t.Fatalf("second card missing up: %s", todo)
+	}
+	if strings.Contains(todo, `aria-label="Move wc-de34 down"`) {
+		t.Fatalf("second card offered down: %s", todo)
+	}
+	if strings.Contains(todo, `name="dest" value="first"`) || strings.Contains(todo, `name="dest" value="last"`) {
+		t.Fatalf("kanban offered board-end dest: %s", todo)
+	}
+	if iFirst, iSecond := strings.Index(todo, `class="title">First</span>`), strings.Index(todo, `class="title">Second</span>`); iFirst < 0 || iSecond < 0 || iFirst > iSecond {
+		t.Fatalf("seed order: %s", todo)
+	}
+
+	beforeSecond := ticketOrder(t, dir, "wc-de34")
+	want, err := order.KeyBetween(beforeSecond, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-ab2c"},
+		"after":  {"wc-de34"},
+		"return": {"board"},
+	})
+	page := mustFollow(t, s, w)
+	if ticketOrder(t, dir, "wc-ab2c") != want {
+		t.Fatalf("order key = %q, want %q (tk order --after)", ticketOrder(t, dir, "wc-ab2c"), want)
+	}
+	if ticketOrder(t, dir, "wc-de34") != beforeSecond {
+		t.Fatalf("neighbour order rewritten: %s", ticketBody(t, dir, "wc-de34"))
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") || !strings.Contains(ticketBody(t, dir, "wc-de34"), "status: todo") {
+		t.Fatalf("status changed:\n%s\n%s", ticketBody(t, dir, "wc-ab2c"), ticketBody(t, dir, "wc-de34"))
+	}
+	todo = colSection(page.Body.String(), status.Todo)
+	iFirst, iSecond := strings.Index(todo, `class="title">First</span>`), strings.Index(todo, `class="title">Second</span>`)
+	if iFirst < 0 || iSecond < 0 || iSecond > iFirst {
+		t.Fatalf("down did not make first card second: %s", todo)
+	}
+}
+
+func TestPOSTOrderUpSwapsTwoTodos(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "first", "todo", "a0", "# First\n", false, "")
+	addTicket(t, dir, "wc-de34", "second", "todo", "a1", "# Second\n", false, "")
+	s := mustServer(t, app)
+
+	beforeFirst := ticketOrder(t, dir, "wc-ab2c")
+	want, err := order.KeyBetween("", beforeFirst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-de34"},
+		"before": {"wc-ab2c"},
+		"return": {"board"},
+	})
+	page := mustFollow(t, s, w)
+	if ticketOrder(t, dir, "wc-de34") != want {
+		t.Fatalf("order key = %q, want %q (tk order --before)", ticketOrder(t, dir, "wc-de34"), want)
+	}
+	if ticketOrder(t, dir, "wc-ab2c") != beforeFirst {
+		t.Fatalf("neighbour order rewritten: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") || !strings.Contains(ticketBody(t, dir, "wc-de34"), "status: todo") {
+		t.Fatalf("status changed:\n%s\n%s", ticketBody(t, dir, "wc-ab2c"), ticketBody(t, dir, "wc-de34"))
+	}
+	todo := colSection(page.Body.String(), status.Todo)
+	iFirst, iSecond := strings.Index(todo, `class="title">First</span>`), strings.Index(todo, `class="title">Second</span>`)
+	if iFirst < 0 || iSecond < 0 || iSecond > iFirst {
+		t.Fatalf("up did not make second card first: %s", todo)
+	}
+}
+
+func TestPOSTOrderNeighboursAreVisibleColumn(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-de34", "tagged-first", "todo", "a0", "# Tagged first\n", false, "tags: [frontend]\n")
+	addTicket(t, dir, "wc-ab2c", "hidden", "todo", "a1", "# Hidden\n", false, "tags: [backend]\n")
+	addTicket(t, dir, "wc-fg56", "tagged-second", "todo", "a2", "# Tagged second\n", false, "tags: [frontend]\n")
+	setLens(t, app, "wc", []string{"frontend"})
+	s := mustServer(t, app)
+
+	todo := colSection(do(s, "/scope/wc").Body.String(), status.Todo)
+	if strings.Contains(todo, "Hidden") {
+		t.Fatalf("lens still shows untagged card: %s", todo)
+	}
+	if !strings.Contains(todo, `name="after" value="wc-fg56"`) {
+		t.Fatalf("down neighbour must be the next visible card, not the hidden one: %s", todo)
+	}
+	if strings.Contains(todo, `name="after" value="wc-ab2c"`) || strings.Contains(todo, `name="before" value="wc-ab2c"`) {
+		t.Fatalf("hidden ticket used as neighbour: %s", todo)
+	}
+
+	hidden := ticketOrder(t, dir, "wc-ab2c")
+	second := ticketOrder(t, dir, "wc-fg56")
+	want, err := order.KeyBetween(second, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-de34"},
+		"after":  {"wc-fg56"},
+		"return": {"board"},
+	})
+	page := mustFollow(t, s, w)
+	if ticketOrder(t, dir, "wc-de34") != want {
+		t.Fatalf("order key = %q, want %q (after visible neighbour)", ticketOrder(t, dir, "wc-de34"), want)
+	}
+	if ticketOrder(t, dir, "wc-ab2c") != hidden {
+		t.Fatalf("hidden ticket rewritten: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+	todo = colSection(page.Body.String(), status.Todo)
+	iFirst, iSecond := strings.Index(todo, `class="title">Tagged first</span>`), strings.Index(todo, `class="title">Tagged second</span>`)
+	if iFirst < 0 || iSecond < 0 || iSecond > iFirst {
+		t.Fatalf("down relative to visible next did not swap: %s", todo)
+	}
+}
+
+func TestKanbanOrderOmitsInvalidNeighbour(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-aa22", "first", "todo", "a0", "# First\n", false, "")
+	addTicket(t, dir, "wc-bb33", "broken", "todo", "a1!", "# Broken\n", false, "")
+	addTicket(t, dir, "wc-cc44", "third", "todo", "a2", "# Third\n", false, "")
+	s := mustServer(t, app)
+
+	todo := colSection(do(s, "/scope/wc").Body.String(), status.Todo)
+	if strings.Contains(todo, `name="after" value="wc-bb33"`) || strings.Contains(todo, `name="before" value="wc-bb33"`) {
+		t.Fatalf("invalid-order card used as neighbour: %s", todo)
+	}
+	if strings.Contains(todo, `aria-label="Move wc-aa22 down"`) {
+		t.Fatalf("must not walk past a visible broken card: %s", todo)
+	}
+	if strings.Contains(todo, `aria-label="Move wc-cc44 up"`) {
+		t.Fatalf("must not walk past a visible broken card: %s", todo)
+	}
+	if !strings.Contains(todo, `name="before" value="wc-aa22"`) || !strings.Contains(todo, `name="after" value="wc-cc44"`) {
+		t.Fatalf("broken card must still order against valid neighbours: %s", todo)
+	}
+
+	beforeFirst := ticketOrder(t, dir, "wc-aa22")
+	want, err := order.KeyBetween("", beforeFirst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-bb33"},
+		"before": {"wc-aa22"},
+		"return": {"board"},
+	})
+	mustFollow(t, s, w)
+	if ticketOrder(t, dir, "wc-bb33") != want {
+		t.Fatalf("broken card up = %q, want %q", ticketOrder(t, dir, "wc-bb33"), want)
+	}
+}
+
+func TestPOSTOrderInspectFirstLast(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-bb33", "old-min", "done", "a0", "# Old min\n", true, "")
+	addTicket(t, dir, "wc-aa22", "alpha", "todo", "a1", "# Alpha\n", false, "")
+	addTicket(t, dir, "wc-cc44", "gamma", "todo", "a2", "# Gamma\n", false, "")
+	addTicket(t, dir, "wc-dd55", "old-max", "done", "a3", "# Old max\n", true, "")
+	s := mustServer(t, app)
+
+	ins := do(s, "/scope/wc/cc44").Body.String()
+	if !strings.Contains(ins, `name="dest" value="first"`) || !strings.Contains(ins, `name="dest" value="last"`) {
+		t.Fatalf("inspect missing board-end dest: %s", ins)
+	}
+	if strings.Contains(ins, `aria-label="Move wc-cc44 up"`) || strings.Contains(ins, `aria-label="Move wc-cc44 down"`) {
+		t.Fatalf("inspect offered column up/down: %s", ins)
+	}
+	if !strings.Contains(ins, "Whole scope, including other statuses and archive.") {
+		t.Fatalf("inspect first/last must say board ends: %s", ins)
+	}
+
+	archivedMin := ticketOrder(t, dir, "wc-bb33")
+	wantFirst, err := order.KeyBetween("", archivedMin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if colFirst, err := order.KeyBetween("", ticketOrder(t, dir, "wc-aa22")); err != nil {
+		t.Fatal(err)
+	} else if wantFirst == colFirst {
+		t.Fatal("fixture does not distinguish scope-wide first from column-local first")
+	}
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-cc44"},
+		"dest":   {"first"},
+		"return": {"inspect"},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if !strings.HasPrefix(loc, "/scope/wc/wc-cc44") {
+		t.Fatalf("inspect first must 303 to inspect, got %s", loc)
+	}
+	page := mustFollow(t, s, w)
+	if ticketOrder(t, dir, "wc-cc44") != wantFirst {
+		t.Fatalf("first key = %q, want %q (tk order --first)", ticketOrder(t, dir, "wc-cc44"), wantFirst)
+	}
+	if ticketOrder(t, dir, "wc-aa22") != "a1" || ticketOrder(t, dir, "wc-bb33") != archivedMin || ticketOrder(t, dir, "wc-dd55") != "a3" {
+		t.Fatal("first rewrote a neighbour")
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-cc44"), "status: todo") {
+		t.Fatalf("first changed status: %s", ticketBody(t, dir, "wc-cc44"))
+	}
+	if !strings.Contains(page.Body.String(), "<dd>"+wantFirst+"</dd>") {
+		t.Fatalf("inspect order dd: %s", page.Body.String())
+	}
+
+	archivedMax := ticketOrder(t, dir, "wc-dd55")
+	wantLast, err := order.KeyBetween(archivedMax, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if colLast, err := order.KeyBetween(ticketOrder(t, dir, "wc-cc44"), ""); err != nil {
+		t.Fatal(err)
+	} else if wantLast == colLast {
+		t.Fatal("fixture does not distinguish scope-wide last from column-local last")
+	}
+	w = doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-aa22"},
+		"dest":   {"last"},
+		"return": {"inspect"},
+	})
+	mustFollow(t, s, w)
+	if ticketOrder(t, dir, "wc-aa22") != wantLast {
+		t.Fatalf("last key = %q, want %q (tk order --last)", ticketOrder(t, dir, "wc-aa22"), wantLast)
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-aa22"), "status: todo") {
+		t.Fatalf("last changed status: %s", ticketBody(t, dir, "wc-aa22"))
+	}
+}
+
+func TestPOSTOrderPreservesBoardQuery(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "first", "todo", "a0", "# First\n", false, "tags: [frontend]\n")
+	addTicket(t, dir, "wc-de34", "second", "todo", "a1", "# Second\n", false, "tags: [frontend]\n")
+	s := mustServer(t, app)
+
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":       {"wc-ab2c"},
+		"after":    {"wc-de34"},
+		"return":   {"board"},
+		"backlog":  {"1"},
+		"archived": {"1"},
+		"tag":      {"frontend"},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Path != "/scope/wc" {
+		t.Fatalf("path = %s", loc)
+	}
+	q := u.Query()
+	if q.Get("backlog") != "1" || q.Get("archived") != "1" {
+		t.Fatalf("board switches dropped: %s", loc)
+	}
+	if got := q["tag"]; len(got) != 1 || got[0] != "frontend" {
+		t.Fatalf("tag chips dropped: %s", loc)
+	}
+}
+
+func TestPOSTOrderNoLegalBetweenIsConflict(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-aa22", "alpha", "todo", "a0", "# Alpha\n", false, "")
+	addTicket(t, dir, "wc-bb33", "beta", "todo", "a0", "# Beta\n", false, "")
+	addTicket(t, dir, "wc-cc44", "gamma", "todo", "a1", "# Gamma\n", false, "")
+	s := mustServer(t, app)
+
+	before := ticketBody(t, dir, "wc-cc44")
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-cc44"},
+		"before": {"wc-bb33"},
+		"return": {"board"},
+	})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("want 409, got %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "re-space with tk doctor") {
+		t.Fatalf("message: %s", w.Body.String())
+	}
+	if ticketBody(t, dir, "wc-cc44") != before {
+		t.Fatalf("no-legal-between wrote: %s", ticketBody(t, dir, "wc-cc44"))
+	}
+}
+
+func TestPOSTOrderMissingDest(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+	s := mustServer(t, app)
+
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-ab2c"},
+		"return": {"board"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d %s", w.Code, w.Body.String())
+	}
+	if ticketOrder(t, dir, "wc-ab2c") != "a0" {
+		t.Fatalf("missing dest wrote: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+
+	w = doPost(s, "/scope/wc/order", url.Values{
+		"id":     {"wc-ab2c"},
+		"dest":   {"first"},
+		"before": {"wc-ab2c"},
+		"return": {"board"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("two dests: want 400, got %d %s", w.Code, w.Body.String())
+	}
+	if ticketOrder(t, dir, "wc-ab2c") != "a0" {
+		t.Fatalf("two dests wrote: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+}
+
+func TestPOSTOrderEngineRefuses(t *testing.T) {
+	t.Run("parse", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		path := filepath.Join(dir, "wc-abcd-x.md")
+		if err := os.WriteFile(path, []byte("---\nid: wc-abcd\nstatus: [unterminated\n---\n# broke\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		before, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := mustServer(t, app)
+		w := doPost(s, "/scope/wc/order", url.Values{
+			"id":     {"wc-abcd"},
+			"dest":   {"first"},
+			"return": {"board"},
+		})
+		if w.Code != http.StatusConflict {
+			t.Fatalf("want 409, got %d %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), token.ParseError) {
+			t.Fatalf("message: %s", w.Body.String())
+		}
+		after, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(after) != string(before) {
+			t.Fatalf("parse wrote: %s", after)
+		}
+	})
+	t.Run("unusable", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"wc\"\nthis is not cue {\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s := mustServer(t, app)
+		w := doPost(s, "/scope/wc/order", url.Values{
+			"id":     {"wc-ab2c"},
+			"dest":   {"first"},
+			"return": {"board"},
+		})
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("want 503, got %d %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), token.ConfigUnparseable) {
+			t.Fatalf("message: %s", w.Body.String())
+		}
+		if ticketOrder(t, dir, "wc-ab2c") != "a0" {
+			t.Fatalf("must not write: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+	})
+	t.Run("mid-rebase", func(t *testing.T) {
+		app := newTestApp(t)
+		dir, repo := initDrivenScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		if err := os.MkdirAll(filepath.Join(repo, ".git", "rebase-merge"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		s := mustServer(t, app)
+		w := doPost(s, "/scope/wc/order", url.Values{
+			"id":     {"wc-ab2c"},
+			"dest":   {"first"},
+			"return": {"board"},
+		})
+		if w.Code != http.StatusConflict {
+			t.Fatalf("want 409, got %d %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "mid-sync-conflict") {
+			t.Fatalf("message: %s", w.Body.String())
+		}
+		if ticketOrder(t, dir, "wc-ab2c") != "a0" {
+			t.Fatalf("must not write: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+	})
 }
 
 func TestPOSTMarkDoneArchivesAndRedirects(t *testing.T) {
@@ -907,6 +1349,21 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if !strings.Contains(ins, `method="post" action="/scope/wc/meta"`) {
 		t.Fatalf("inspect missing meta form: %s", ins)
 	}
+	if !strings.Contains(ins, `method="post" action="/scope/wc/order"`) {
+		t.Fatalf("inspect missing order form: %s", ins)
+	}
+	if !strings.Contains(ins, `name="dest" value="first"`) || !strings.Contains(ins, `name="dest" value="last"`) {
+		t.Fatalf("inspect missing board first/last: %s", ins)
+	}
+	if strings.Contains(ins, `aria-label="Move wc-ab2c up"`) || strings.Contains(ins, `aria-label="Move wc-ab2c down"`) {
+		t.Fatalf("inspect offered column up/down: %s", ins)
+	}
+	if strings.Contains(board, `name="dest" value="first"`) || strings.Contains(board, `name="dest" value="last"`) {
+		t.Fatalf("kanban offered board first/last: %s", board)
+	}
+	if strings.Contains(board, `action="/scope/wc/order"`) {
+		t.Fatalf("single-card board offered up/down: %s", board)
+	}
 	for _, label := range []string{
 		`aria-label="Save summary"`,
 		`aria-label="Clear summary"`,
@@ -940,12 +1397,13 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 		app := newTestApp(t)
 		dir := initScope(t, app, "wc")
 		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		addTicket(t, dir, "wc-de34", "other", "todo", "a1", "# Other\n", false, "")
 		if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"wc\"\nthis is not cue {\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		s := mustServer(t, app)
 		board := do(s, "/scope/wc").Body.String()
-		if strings.Contains(board, `action="/scope/wc/claim"`) || strings.Contains(board, `action="/scope/wc/mark"`) || strings.Contains(board, `action="/scope/wc/create"`) {
+		if strings.Contains(board, `action="/scope/wc/claim"`) || strings.Contains(board, `action="/scope/wc/mark"`) || strings.Contains(board, `action="/scope/wc/create"`) || strings.Contains(board, `action="/scope/wc/order"`) {
 			t.Fatalf("unusable schema still offers ticket writes: %s", board)
 		}
 		if strings.Contains(board, "Claim next") {
@@ -955,7 +1413,7 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 			t.Fatalf("unusable schema must still offer chrome lens: %s", board)
 		}
 		ins := do(s, "/scope/wc/ab2c").Body.String()
-		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) {
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) {
 			t.Fatalf("inspect still offers ticket writes: %s", ins)
 		}
 		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
@@ -965,19 +1423,23 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 	t.Run("parse", func(t *testing.T) {
 		app := newTestApp(t)
 		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
 		if err := os.WriteFile(filepath.Join(dir, "wc-abcd-x.md"), []byte("---\nid: wc-abcd\nstatus: [unterminated\n---\n# broke\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		s := mustServer(t, app)
 		board := do(s, "/scope/wc").Body.String()
-		if strings.Contains(board, `action="/scope/wc/claim"`) || strings.Contains(board, `action="/scope/wc/mark"`) {
-			t.Fatalf("parse-quarantined card still offers writes: %s", board)
+		if strings.Contains(board, `href="/scope/wc/abcd"`) {
+			t.Fatalf("parse-quarantined ticket listed on the board: %s", board)
+		}
+		if !strings.Contains(board, `aria-label="Claim wc-ab2c"`) || !strings.Contains(board, `aria-label="Mark wc-ab2c"`) {
+			t.Fatalf("healthy card lost writes because a sibling is quarantined: %s", board)
 		}
 		if !strings.Contains(board, `action="/scope/wc/create"`) {
 			t.Fatalf("parse-quarantined board must still offer create: %s", board)
 		}
 		ins := do(s, "/scope/wc/abcd").Body.String()
-		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) {
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) {
 			t.Fatalf("inspect still offers ticket writes: %s", ins)
 		}
 		if !strings.Contains(ins, `action="/scope/wc/lens"`) {

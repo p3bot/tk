@@ -212,6 +212,14 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
 .card .id { display: block; font-size: 0.8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .card .title { display: block; font-weight: 650; margin: 0.15rem 0; }
 .card .waiting { display: block; font-size: 0.875rem; color: var(--issues); }
+.order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+.order[hidden] { display: none; }
+.order .write { margin-top: 0; }
 .inspect { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1.5rem; align-items: start; }
 .body { background: var(--ticket); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; }
 .body h1 { margin-top: 0; }

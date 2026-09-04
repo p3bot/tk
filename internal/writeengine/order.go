@@ -15,7 +15,8 @@ type Dest struct {
 	After  Lookup
 }
 
-func (d Dest) count() int {
+// Count is how many placements are set. Order requires exactly one.
+func (d Dest) Count() int {
 	n := 0
 	if d.First {
 		n++
@@ -42,7 +43,7 @@ type OrderInput struct {
 
 // Order rewrites one ticket's order key and self-commits on tk-driven roots.
 func Order(deps Deps, in OrderInput) (Result, error) {
-	if in.Dest.count() != 1 {
+	if in.Dest.Count() != 1 {
 		return Result{}, &UsageError{Msg: "order needs exactly one destination"}
 	}
 

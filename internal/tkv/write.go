@@ -271,6 +271,72 @@ func (s *Server) postMeta(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+func (s *Server) postOrder(w http.ResponseWriter, r *http.Request) error {
+	if err := r.ParseForm(); err != nil {
+		return errBadRequest("malformed form")
+	}
+	name := r.PathValue("name")
+	if !id.IsScopeName(name) {
+		return errNotFound("unknown scope")
+	}
+	lu, err := lookupFromArg(r.FormValue("id"))
+	if err != nil {
+		return err
+	}
+	if lu.ByFull && id.ScopeOfFullID(lu.Arg) != name {
+		return errNotFound(fmt.Sprintf("ticket %q does not belong to scope %q", lu.Arg, name))
+	}
+	dest, err := destFromForm(r)
+	if err != nil {
+		return err
+	}
+
+	sess, release, err := s.beginWrite(r.Context(), name)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	res, err := writeengine.Order(sess.deps, writeengine.OrderInput{
+		Scope:  name,
+		Dir:    sess.dir,
+		Lookup: lu,
+		Dest:   dest,
+	})
+	return s.finishWrite(w, r, res, err)
+}
+
+func destFromForm(r *http.Request) (writeengine.Dest, error) {
+	var d writeengine.Dest
+	switch v := strings.TrimSpace(r.FormValue("dest")); v {
+	case "":
+	case "first":
+		d.First = true
+	case "last":
+		d.Last = true
+	default:
+		return writeengine.Dest{}, errBadRequest(fmt.Sprintf("unknown order dest %q", v))
+	}
+	if v := strings.TrimSpace(r.FormValue("before")); v != "" {
+		lu, err := lookupFromArg(v)
+		if err != nil {
+			return writeengine.Dest{}, err
+		}
+		d.Before = lu
+	}
+	if v := strings.TrimSpace(r.FormValue("after")); v != "" {
+		lu, err := lookupFromArg(v)
+		if err != nil {
+			return writeengine.Dest{}, err
+		}
+		d.After = lu
+	}
+	if d.Count() != 1 {
+		return writeengine.Dest{}, errBadRequest("order needs exactly one destination")
+	}
+	return d, nil
+}
+
 func parseMetaOp(raw string) (writeengine.MetaOp, error) {
 	switch strings.TrimSpace(raw) {
 	case "set":
@@ -546,11 +612,15 @@ func knownStatusNames(schema *scopeconfig.Schema) []string {
 	return append(out, extra...)
 }
 
+func ticketWritable(schema *scopeconfig.Schema, parseError bool) bool {
+	return schema != nil && !parseError
+}
+
 // ticketWriteControls is the GET-time write affordance. Unusable config
 // (nil schema) and parse-quarantined rows are already known to the page;
 // the engine will refuse those POSTs, so the forms stay off.
 func ticketWriteControls(schema *scopeconfig.Schema, statusName string, parseError bool) (canClaim bool, mark []string) {
-	if schema == nil || parseError {
+	if !ticketWritable(schema, parseError) {
 		return false, nil
 	}
 	return statusName == status.Todo, markStatuses(knownStatusNames(schema), statusName)

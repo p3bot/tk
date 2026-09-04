@@ -170,6 +170,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /scope/{name}/claim", s.wrapEngine(s.postClaim))
 	mux.HandleFunc("POST /scope/{name}/create", s.wrapEngine(s.postCreate))
 	mux.HandleFunc("POST /scope/{name}/meta", s.wrapEngine(s.postMeta))
+	mux.HandleFunc("POST /scope/{name}/order", s.wrapEngine(s.postOrder))
 	mux.HandleFunc("POST /scope/{name}/lens", s.wrapEngine(s.postLensSet))
 	mux.HandleFunc("POST /scope/{name}/lens/clear", s.wrapEngine(s.postLensClear))
 	mux.HandleFunc("POST /scope/{name}/sync", s.wrapEngine(s.postChromeSync))

@@ -850,8 +850,8 @@ func TestStaticCSS(t *testing.T) {
 		t.Fatalf("content-type = %q", ct)
 	}
 	css := w.Body.String()
-	if !strings.Contains(css, ".card[hidden]") || !strings.Contains(css, ".col[hidden]") {
-		t.Fatalf("hidden cards/columns must override display:block: %s", css)
+	if !strings.Contains(css, ".card[hidden]") || !strings.Contains(css, ".col[hidden]") || !strings.Contains(css, ".order[hidden]") {
+		t.Fatalf("hidden cards/columns/order must override display: %s", css)
 	}
 	if !strings.Contains(css, "--ticket: #fff;") ||
 		!strings.Contains(css, ".card {\n  display: block;") ||
@@ -866,6 +866,9 @@ func TestStaticCSS(t *testing.T) {
 	jsBody := js.Body.String()
 	if !strings.Contains(jsBody, "data-board-filter") || !strings.Contains(jsBody, "data-board-switch") {
 		t.Fatalf("board.js = %s", jsBody)
+	}
+	if !strings.Contains(jsBody, `querySelector(".order")`) || !strings.Contains(jsBody, "order.hidden = q !== \"\"") {
+		t.Fatalf("board.js must hide order controls while find is active: %s", jsBody)
 	}
 
 	logo := do(s, "/static/tk-logo.svg")

@@ -24,6 +24,24 @@
     <div><dt>schema_error</dt><dd>{{if .SchemaErr}}yes{{else}}no{{end}}</dd></div>
     <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
   </dl>
+  {{if .CanOrder}}
+  <h2>board order</h2>
+  <p class="empty">Whole scope, including other statuses and archive.</p>
+  <div class="order">
+    <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/order">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="dest" value="first">
+      <input type="hidden" name="return" value="inspect">
+      <button type="submit" aria-label="Move {{.ID}} to board first">Board first</button>
+    </form>
+    <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/order">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="dest" value="last">
+      <input type="hidden" name="return" value="inspect">
+      <button type="submit" aria-label="Move {{.ID}} to board last">Board last</button>
+    </form>
+  </div>
+  {{end}}
   <h2>summary</h2>
   {{if .CanMeta}}
   <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/meta">

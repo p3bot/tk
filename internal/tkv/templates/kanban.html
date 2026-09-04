@@ -79,6 +79,26 @@
         <button type="submit" aria-label="Mark {{.ID}}">Mark</button>
       </form>
       {{end}}
+      {{if or .BeforeID .AfterID}}
+      <div class="order">
+        {{if .BeforeID}}
+        <form class="write" method="post" action="/scope/{{$.Name}}/order">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <input type="hidden" name="before" value="{{.BeforeID}}">
+          {{template "boardReturn" $}}
+          <button type="submit" aria-label="Move {{.ID}} up">Up</button>
+        </form>
+        {{end}}
+        {{if .AfterID}}
+        <form class="write" method="post" action="/scope/{{$.Name}}/order">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <input type="hidden" name="after" value="{{.AfterID}}">
+          {{template "boardReturn" $}}
+          <button type="submit" aria-label="Move {{.ID}} down">Down</button>
+        </form>
+        {{end}}
+      </div>
+      {{end}}
     </article>
     {{end}}
   </div>

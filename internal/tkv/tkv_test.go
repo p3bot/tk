@@ -1016,6 +1016,30 @@ func TestPrimaryNav(t *testing.T) {
 	}
 }
 
+func TestChromeOmitsMePointer(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "network", "todo", "a0", "# Network\n", false, "")
+	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	if err := store.WriteMe(map[string]string{"wc": "wc-ab2c"}); err != nil {
+		t.Fatal(err)
+	}
+	s := mustServer(t, app)
+	board := do(s, "/scope/wc")
+	if board.Code != 200 {
+		t.Fatalf("kanban = %d %s", board.Code, board.Body.String())
+	}
+	b := board.Body.String()
+	if strings.Contains(b, "<dt>me</dt>") || strings.Contains(b, "wc-ab2c</dd>") {
+		t.Fatalf("chrome still shows me: %s", b)
+	}
+	for _, key := range []string{"scope", "mode", "lens", "integrity"} {
+		if !strings.Contains(b, "<dt>"+key+"</dt>") {
+			t.Fatalf("chrome missing %s: %s", key, b)
+		}
+	}
+}
+
 func TestDependsGraphPage(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")

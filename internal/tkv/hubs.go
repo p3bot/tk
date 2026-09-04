@@ -92,7 +92,7 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 			},
 			{
 				Title: "More",
-				Blurb: "Doctor, me, and scope registration will get surfaces here later. They will call the same Go functions tk uses — never a tk subprocess.",
+				Blurb: "Doctor and scope registration will get surfaces here later. They will call the same Go functions tk uses — never a tk subprocess.",
 			},
 		},
 		Rows: rows,

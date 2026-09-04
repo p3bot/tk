@@ -256,7 +256,6 @@ type chrome struct {
 	Return    string
 	Notices   []string
 	Alerts    []string
-	Me        string
 	Integrity string
 	Query     string
 }
@@ -385,7 +384,6 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 	c.Mode = statusMode(schema, schema == nil, hasRoot)
 	c.Lens = strings.Join(reg.Lens[selected], " ")
 	c.LensTags = append([]string(nil), reg.Lens[selected]...)
-	c.Me = reg.Me[selected]
 	c.CanLens = resolve.CheckName(s.app.Ctx, selected, entry) == nil
 	tags, err := s.db.ScopeDistinctTags(selected)
 	if err != nil {

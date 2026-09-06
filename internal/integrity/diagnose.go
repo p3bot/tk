@@ -1,6 +1,6 @@
 // Package integrity is the doctor diagnose report and the shared repair
-// orchestration above pure internal/repair: acquiring entry for doctor, locks-held
-// batch apply + edge_verify for both doctor and sync integrity. Pure repair stays
+// orchestration above pure internal/repair: acquiring entry for tk repair, locks-held
+// batch apply + edge_verify for both tk repair and sync integrity. Pure repair stays
 // planning-only; this package owns flock, rewrite apply, and self-commit under
 // held locks.
 package integrity
@@ -155,14 +155,14 @@ func (d *diagnoser) collisions(scope string) error {
 		return err
 	}
 	for _, col := range dups {
-		d.add(token.Line(token.DuplicateID, fmt.Sprintf("%s claimed by %s — run tk doctor --repair", col.Key, strings.Join(col.Members, ", "))))
+		d.add(token.Line(token.DuplicateID, fmt.Sprintf("%s claimed by %s — run tk repair", col.Key, strings.Join(col.Members, ", "))))
 	}
 	eq, err := d.deps.DB.EqualOrders([]string{scope})
 	if err != nil {
 		return err
 	}
 	for _, col := range eq {
-		d.add(token.Line(token.EqualOrder, fmt.Sprintf("%s share order %q: %s — run tk doctor --repair", scope, col.Key, strings.Join(col.Members, ", "))))
+		d.add(token.Line(token.EqualOrder, fmt.Sprintf("%s share order %q: %s — run tk repair", scope, col.Key, strings.Join(col.Members, ", "))))
 	}
 	return nil
 }
@@ -182,7 +182,7 @@ func (d *diagnoser) perRow(dir string, rows []*index.Ticket, schema *scopeconfig
 		case !order.Valid(p.OrderKey):
 			d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has an invalid order key %q (%s) — outside the closed order grammar; set a quoted valid key, or run tk order", p.ID, p.OrderKey, p.Path)))
 		case len(p.OrderKey) > repair.OrderLongThreshold:
-			d.add(token.Line(token.OrderLong, fmt.Sprintf("%s order key is %d chars (%s) — run tk doctor --re-space-order", p.ID, len(p.OrderKey), p.Path)))
+			d.add(token.Line(token.OrderLong, fmt.Sprintf("%s order key is %d chars (%s) — run tk repair --re-space-order", p.ID, len(p.OrderKey), p.Path)))
 		}
 		terminal := status.IsTerminal(p.Status, custom)
 		switch {

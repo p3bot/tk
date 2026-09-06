@@ -189,20 +189,6 @@ func TestReindexDoesNotReportCollision(t *testing.T) {
 	}
 }
 
-func TestDoctorHelpOmitsReindex(t *testing.T) {
-	app := newApp(t)
-	out, _, err := run(t, app, "doctor", "--help")
-	if err != nil {
-		t.Fatalf("doctor --help: %v", err)
-	}
-	if strings.Contains(out, "--reindex") {
-		t.Errorf("doctor --help must not mention --reindex:\n%s", out)
-	}
-	if !strings.Contains(out, "tk reindex") {
-		t.Errorf("doctor --help should point at tk reindex:\n%s", out)
-	}
-}
-
 func TestSkillListsReindex(t *testing.T) {
 	app := newApp(t)
 	out, _, err := run(t, app, "skill")

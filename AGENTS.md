@@ -15,7 +15,7 @@ SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
 `pulse`, `get`, `meta`, `next`, `deps`, `search`, `query`, `lens`); the authoring
 hot path (`create`, `mark`, `order`, `edit`, `next --claim`) with local git
 self-commit, and claim-time refresh/push on a tk-driven root with an upstream;
-`tk doctor` with its integrity repairs and the closed token catalogue; P6a's
+`tk doctor` (diagnose) and `tk repair`; the closed token catalogue; P6a's
 frontmatter merge package (`internal/fmmerge`), the rebase driver
 (`internal/rebasedriver`), and the read/integrate/push half of the git wrapper;
 P6b's `tk sync` and claim push — snapshot, fetch-and-integrate, sync-time

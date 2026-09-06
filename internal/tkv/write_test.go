@@ -540,7 +540,7 @@ func TestPOSTOrderNoLegalBetweenIsConflict(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("want 409, got %d %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "re-space with tk doctor") {
+	if !strings.Contains(w.Body.String(), "run tk repair") {
 		t.Fatalf("message: %s", w.Body.String())
 	}
 	if ticketBody(t, dir, "wc-cc44") != before {

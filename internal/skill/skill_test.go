@@ -65,7 +65,7 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"scope field",
 		"[--strip]",
 		"Do not hand-edit fences to drop undeclared keys",
-		"doctor --repair` does not drop them",
+		"tk repair` does not drop them",
 		"mark does not enforce depends",
 		"tk reindex",
 		"sealed except via tk mutators",
@@ -154,6 +154,22 @@ func TestSkillDoesNotTeachDoctorReindex(t *testing.T) {
 	}
 	if !strings.Contains(text, "tk reindex") {
 		t.Error("skill must teach tk reindex")
+	}
+}
+
+func TestSkillListsRepair(t *testing.T) {
+	text := skill.Text()
+	if !strings.Contains(text, "tk repair [--re-space-order] [--all]") {
+		t.Error("skill Commands must list tk repair")
+	}
+	if strings.Contains(text, "tk doctor [--repair]") || strings.Contains(text, "tk doctor --repair") || strings.Contains(text, "tk doctor --re-space-order") {
+		t.Error("skill must not list mutating flags on tk doctor")
+	}
+	if !strings.Contains(text, "Integrity: `tk doctor` -> `tk repair` | `tk repair --re-space-order` | `tk repair --all`") {
+		t.Error("skill Integrity must name tk repair --all as a full command")
+	}
+	if !strings.Contains(text, "Recovery: `tk pulse` -> `tk doctor` -> `tk repair`") {
+		t.Error("skill Recovery must go pulse then doctor then repair")
 	}
 }
 

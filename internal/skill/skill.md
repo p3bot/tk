@@ -38,7 +38,7 @@ description: >-
 - depends, related, tags, links → tk meta add|rm
 - related write is one-way on the subject only (no mirror on the target); deps shows both directions
 - custom fields: declare per scope under `fields:` in tk.cue (CLI: `tk scope field`); meta allowlists built-ins plus declared names only; optional `required: true` is soft-warn policy only
-- retire a custom key with `tk scope field unset <name> --strip`: declaration gone and the key gone from all tickets in the scope (including when the declaration was already removed). Without `--strip`, unset is declaration-only and tickets stay untouched. Do not hand-edit fences to drop undeclared keys; `doctor --repair` does not drop them
+- retire a custom key with `tk scope field unset <name> --strip`: declaration gone and the key gone from all tickets in the scope (including when the declaration was already removed). Without `--strip`, unset is declaration-only and tickets stay untouched. Do not hand-edit fences to drop undeclared keys; `tk repair` does not drop them
 
 ## Commands
 
@@ -73,7 +73,8 @@ tk scope field list [--scope S]                                     # List custo
 tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # Upsert field; full replace from flags (omit --required demotes)
 tk scope field unset <name> [--strip] [--scope S]                   # Remove field declaration; --strip also drops the key from all tickets
 tk sync [--scope S] [--all]                                         # Snapshot/integrate/push auto-commit roots (claim also pushes)
-tk doctor [--repair] [--re-space-order] [--all]                     # Diagnose integrity; optional repair
+tk doctor                                                           # Diagnose integrity (never mutates files)
+tk repair [--re-space-order] [--all]                                # Repair id collisions, equal order, archive layout
 tk reindex                                                          # Rebuild the machine-wide index from files
 tk skill                                                            # Print this agent skill contract
 tk skill install [agents...] [--local]                              # Install into agentdex skills roots
@@ -107,14 +108,14 @@ Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `ren
 
 Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
-  - Commands that self commit: mark, order, next --claim, meta set/add/rm, scope field set|unset, scope rename
+  - Commands that self commit: mark, order, next --claim, meta set/add/rm, scope field set|unset, scope rename, repair
   - Create and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
 - repo-driven: host git commit/push (no `tk sync`)
 - plain-files: no git step
 
-Integrity: `tk doctor` -> optional `--repair` | `--re-space-order` | `--all`
+Integrity: `tk doctor` -> `tk repair` | `tk repair --re-space-order` | `tk repair --all`
 
 Index: `tk reindex` when the index is wrong relative to files
 
-Recovery: `tk pulse` -> `tk doctor` -> fix residue -> `tk sync` if tk-driven. parse_error: `tk get` path (exit 0); in-place fence repair; keep the path, id, and created; mutators refuse until parse succeeds; do not cancel+recreate unless a human asks.
+Recovery: `tk pulse` -> `tk doctor` -> `tk repair` -> `tk sync` if tk-driven. parse_error: `tk get` path (exit 0); in-place fence repair; keep the path, id, and created; mutators refuse until parse succeeds; do not cancel+recreate unless a human asks.

@@ -95,7 +95,7 @@ func ensureReadOnly(sqlText string) error {
 }
 
 func readOnlyRefusal(what string) error {
-	return fmt.Errorf("tk query is read-only: refusing %s — the index is a derived cache; durable change is the ticket files or tk doctor --repair, not the DB", what)
+	return fmt.Errorf("tk query is read-only: refusing %s — the index is a derived cache; durable change is the ticket files or tk repair, not the DB", what)
 }
 
 // splitStatements is literal-aware: ';' inside '…' or "…" is not a separator;

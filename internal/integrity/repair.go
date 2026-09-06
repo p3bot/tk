@@ -31,7 +31,7 @@ type Reporter interface {
 type Flags struct {
 	Repair       bool
 	ReSpaceOrder bool
-	// All: mid-rebase skips instead of hard-refusing (doctor --all).
+	// All: mid-rebase skips instead of hard-refusing (repair --all).
 	All bool
 }
 
@@ -92,7 +92,7 @@ func RepairScope(deps Deps, rep Reporter, scope, dir string, f Flags) error {
 	return RunBatches(deps, rep, t, f)
 }
 
-// RunBatches is the locks-held core (doctor acquires; sync already holds both).
+// RunBatches is the locks-held core (repair acquires; sync already holds both).
 // Caller must hold the scope flock and, for auto-commit git-roots, the commit lock.
 func RunBatches(deps Deps, rep Reporter, t *Target, f Flags) error {
 	if f.Repair {
@@ -181,7 +181,7 @@ func repairCollisions(deps Deps, rep Reporter, t *Target) error {
 			return err
 		}
 		if mid {
-			rep.Err(fmt.Sprintf("skipping %s: unfinished archive-layout move, not a collision — re-run tk doctor --repair to complete it", col.Key))
+			rep.Err(fmt.Sprintf("skipping %s: unfinished archive-layout move, not a collision — re-run tk repair to complete it", col.Key))
 			continue
 		}
 		if anyParseError(members) {
@@ -204,7 +204,7 @@ func repairCollisions(deps Deps, rep Reporter, t *Target) error {
 }
 
 // ReportEdgeVerify emits edge_verify lines for actually-repaired collision ids.
-// The kept side still holds the collided id. Shared by doctor collision repair
+// The kept side still holds the collided id. Shared by tk repair
 // and sync integrity drain.
 func ReportEdgeVerify(deps Deps, rep Reporter, collidedIDs []string) error {
 	for _, collidedID := range collidedIDs {

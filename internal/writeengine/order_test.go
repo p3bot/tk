@@ -82,7 +82,7 @@ func TestOrderNoLegalBetweenAndSelf(t *testing.T) {
 	if !errors.Is(err, order.ErrEqualKeys) {
 		t.Errorf("unwrap: %v", err)
 	}
-	if !strings.Contains(err.Error(), "re-space with tk doctor") {
+	if !strings.Contains(err.Error(), "run tk repair") {
 		t.Errorf("message: %v", err)
 	}
 

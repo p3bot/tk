@@ -50,7 +50,7 @@ type DuplicateError struct {
 }
 
 func (e *DuplicateError) Error() string {
-	return token.Line(token.DuplicateID, fmt.Sprintf("%s is claimed by %d files: %s — resolve with tk doctor --repair",
+	return token.Line(token.DuplicateID, fmt.Sprintf("%s is claimed by %d files: %s — resolve with tk repair",
 		e.ID, len(e.Paths), strings.Join(e.Paths, ", ")))
 }
 
@@ -131,14 +131,14 @@ func (e *NeighbourOrderError) Error() string {
 	return fmt.Sprintf("neighbour %q has no valid order", e.Arg)
 }
 
-// NoLegalOrderError is KeyBetween failure; equal slots need doctor re-space.
+// NoLegalOrderError is KeyBetween failure; equal slots need tk repair.
 type NoLegalOrderError struct {
 	ID  string
 	Err error
 }
 
 func (e *NoLegalOrderError) Error() string {
-	return fmt.Sprintf("no legal order between neighbours for %s (%s) — re-space with tk doctor", e.ID, e.Err)
+	return fmt.Sprintf("no legal order between neighbours for %s (%s) — run tk repair", e.ID, e.Err)
 }
 
 func (e *NoLegalOrderError) Unwrap() error { return e.Err }

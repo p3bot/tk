@@ -114,7 +114,7 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 		}
 	}
 	if row.Mode == "" {
-		row.Mode = statusMode(schema, cfgErr != nil, inRepo)
+		row.Mode = pulseMode(schema, cfgErr != nil, inRepo)
 	}
 
 	pulse, err := s.db.ScopePulse(name, reg.Lens[name])

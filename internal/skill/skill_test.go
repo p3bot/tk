@@ -85,6 +85,28 @@ func TestRequiredGuidancePresent(t *testing.T) {
 	}
 }
 
+func TestSkillPulseCommand(t *testing.T) {
+	text := skill.Text()
+	if !strings.Contains(text, "tk pulse [key] [--scope S]") {
+		t.Error("skill Commands must list tk pulse")
+	}
+	if !strings.Contains(text, "Orient: `tk pulse`") {
+		t.Error("skill Orient must use tk pulse")
+	}
+	if !strings.Contains(text, "Durability (`tk pulse mode`)") {
+		t.Error("skill Durability must use tk pulse mode")
+	}
+	if !strings.Contains(text, "Recovery: `tk pulse`") {
+		t.Error("skill Recovery must use tk pulse")
+	}
+	if strings.Contains(text, "tk status [key]") || strings.Contains(text, "`tk status`") || strings.Contains(text, "`tk status mode`") {
+		t.Error("skill must not list tk status as a command")
+	}
+	if !strings.Contains(text, "tk mark <status> <id> [id...]") {
+		t.Error("skill must still teach ticket-field status via tk mark")
+	}
+}
+
 func TestFileProtocolDoesNotTeachRejectedAuthoring(t *testing.T) {
 	text := skill.Text()
 	if strings.Contains(text, "tk body") {

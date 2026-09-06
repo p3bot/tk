@@ -50,7 +50,7 @@ tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    #
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 
 tk list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens)
-tk status [key] [--scope S]                                         # Scope pulse; optional key → bare value
+tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
 tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key; soft required_missing: if gaps remain
 tk meta add <id> <key> <value> [--scope S]                          # Append multi-value frontmatter entry; soft required_missing: if gaps remain
@@ -93,7 +93,7 @@ tk skill uninstall [agents...] [--local]                            # Remove own
 
 ## Workflows
 
-Orient: `tk status` | `tk status [key]` (bare value) -> `tk list` -> `tk next` | `tk get <id>`
+Orient: `tk pulse` | `tk pulse [key]` (bare value) -> `tk list` -> `tk next` | `tk get <id>`
 
 Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk mark <status> <id>` -> Durability
 
@@ -105,7 +105,7 @@ Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next` (m
 
 Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `field list|set|unset`
 
-Durability (`tk status mode`):
+Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
   - Commands that self commit: mark, order, next --claim, meta set/add/rm, scope field set|unset, scope rename
   - Create and file edits never commit; requires `tk sync`
@@ -117,4 +117,4 @@ Integrity: `tk doctor` -> optional `--repair` | `--re-space-order` | `--all`
 
 Index: `tk reindex` when the index is wrong relative to files
 
-Recovery: `tk status` -> `tk doctor` -> fix residue -> `tk sync` if tk-driven. parse_error: `tk get` path (exit 0); in-place fence repair; keep the path, id, and created; mutators refuse until parse succeeds; do not cancel+recreate unless a human asks.
+Recovery: `tk pulse` -> `tk doctor` -> fix residue -> `tk sync` if tk-driven. parse_error: `tk get` path (exit 0); in-place fence repair; keep the path, id, and created; mutators refuse until parse succeeds; do not cancel+recreate unless a human asks.

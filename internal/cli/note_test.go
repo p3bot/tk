@@ -496,20 +496,20 @@ func TestNoteDoctorAllowlist(t *testing.T) {
 	}
 }
 
-func TestNoteStatusKey(t *testing.T) {
+func TestNotePulseKey(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 
-	out, _, err := run(t, app, "status", "note", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "note", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status note: %v", err)
+		t.Fatalf("pulse note: %v", err)
 	}
 	if strings.TrimSpace(out) != defaultNotePath(dir) {
-		t.Errorf("status note = %q want %q", out, defaultNotePath(dir))
+		t.Errorf("pulse note = %q want %q", out, defaultNotePath(dir))
 	}
-	full, _, err := run(t, app, "status", "--scope", "wc")
+	full, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	if parsePulse(full)["note"] != defaultNotePath(dir) {
 		t.Errorf("pulse note = %q", parsePulse(full)["note"])
@@ -679,9 +679,9 @@ func TestNoteRepoDrivenUncommitted(t *testing.T) {
 	} else if strings.Contains(errOut, token.SyncNeeded) {
 		t.Errorf("repo-driven add must not emit sync_needed:, got %q", errOut)
 	}
-	out, _, err := run(t, app, "status", "uncommitted", "--scope", "rd")
+	out, _, err := run(t, app, "pulse", "uncommitted", "--scope", "rd")
 	if err != nil {
-		t.Fatalf("status uncommitted: %v", err)
+		t.Fatalf("pulse uncommitted: %v", err)
 	}
 	if strings.TrimSpace(out) == "" || strings.TrimSpace(out) == "0" {
 		t.Errorf("repo-driven dirty note should count as uncommitted, got %q", out)
@@ -881,12 +881,12 @@ func TestNoteUseFreshDefaultAndBareAdd(t *testing.T) {
 	if out != "default\n" {
 		t.Errorf("fresh use = %q want default\\n", out)
 	}
-	out, _, err = run(t, app, "status", "note", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "note", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status note: %v", err)
+		t.Fatalf("pulse note: %v", err)
 	}
 	if strings.TrimSpace(out) != defaultNotePath(dir) {
-		t.Errorf("status note = %q want %q", out, defaultNotePath(dir))
+		t.Errorf("pulse note = %q want %q", out, defaultNotePath(dir))
 	}
 
 	out, _, err = run(t, app, "note", "add", "hello", "--scope", "wc")
@@ -940,12 +940,12 @@ func TestNoteUseSetDoesNotCreateFileOrSync(t *testing.T) {
 	if out != "grant\n" {
 		t.Errorf("use show = %q want grant\\n", out)
 	}
-	out, _, err = run(t, app, "status", "note", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "note", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status note: %v", err)
+		t.Fatalf("pulse note: %v", err)
 	}
 	if strings.TrimSpace(out) != namedNotePath(dir, "grant") {
-		t.Errorf("status note = %q want %q", out, namedNotePath(dir, "grant"))
+		t.Errorf("pulse note = %q want %q", out, namedNotePath(dir, "grant"))
 	}
 
 	if err := os.MkdirAll(filepath.Join(dir, scopefile.NoteDir), 0o755); err != nil {
@@ -1344,12 +1344,12 @@ func TestNoteUseCorruptStore(t *testing.T) {
 	if !strings.Contains(err.Error(), "note.cue") {
 		t.Errorf("resolve error must name note.cue, got %v", err)
 	}
-	_, _, err = run(t, app, "status", "note", "--scope", "wc")
+	_, _, err = run(t, app, "pulse", "note", "--scope", "wc")
 	if err == nil {
-		t.Fatal("status note must refuse an invalid stored slug")
+		t.Fatal("pulse note must refuse an invalid stored slug")
 	}
 	if !strings.Contains(err.Error(), "note.cue") {
-		t.Errorf("status error must name note.cue, got %v", err)
+		t.Errorf("pulse error must name note.cue, got %v", err)
 	}
 	out, _, err := run(t, app, "note", "--name", "shared", "--scope", "wc")
 	if err != nil {
@@ -1409,15 +1409,15 @@ func TestNoteUseHelpAndSkill(t *testing.T) {
 			t.Errorf("use Long should mention %q, got:\n%s", want, useHelp)
 		}
 	}
-	statusHelp, _, err := run(t, app, "status", "--help")
+	pulseHelp, _, err := run(t, app, "pulse", "--help")
 	if err != nil {
-		t.Fatalf("status --help: %v", err)
+		t.Fatalf("pulse --help: %v", err)
 	}
-	if !strings.Contains(statusHelp, "tk note use") {
-		t.Errorf("status Long should describe the effective path via tk note use, got:\n%s", statusHelp)
+	if !strings.Contains(pulseHelp, "tk note use") {
+		t.Errorf("pulse Long should describe the effective path via tk note use, got:\n%s", pulseHelp)
 	}
-	if strings.Contains(statusHelp, "notes/default.md, whether") {
-		t.Error("status Long must not hard-code notes/default.md as the only path")
+	if strings.Contains(pulseHelp, "notes/default.md, whether") {
+		t.Error("pulse Long must not hard-code notes/default.md as the only path")
 	}
 	if strings.Contains(help, "except on delete") || strings.Contains(help, "requires --name") {
 		t.Errorf("note Long must not require --name on delete, got:\n%s", help)

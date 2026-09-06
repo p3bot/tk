@@ -962,13 +962,13 @@ func TestRepoDrivenWriteQuiet(t *testing.T) {
 	if _, readErr, _ := run(t, app, "get", id); strings.Contains(readErr, "uncommitted:") || strings.Contains(readErr, "sync_needed:") {
 		t.Errorf("reads must never ride durability tokens, got %q", readErr)
 	}
-	// Status pulse still surfaces host dirty (opt-in visibility).
-	out, _, err := run(t, app, "status", "--scope", "rd")
+	// Pulse still surfaces host dirty (opt-in visibility).
+	out, _, err := run(t, app, "pulse", "--scope", "rd")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	if p := parsePulse(out); p["uncommitted"] == "" || p["uncommitted"] == "0" {
-		t.Fatalf("status pulse should report host dirty, uncommitted=%q in %q", p["uncommitted"], out)
+		t.Fatalf("pulse should report host dirty, uncommitted=%q in %q", p["uncommitted"], out)
 	}
 	// Non-allowlist residue must not invent a write-side signal either.
 	if err := os.WriteFile(filepath.Join(dir, "residue.txt"), []byte("x"), 0o644); err != nil {

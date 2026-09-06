@@ -115,7 +115,7 @@ not a CLI rule.
 commit on a repo-driven scope. Slugs follow the
 existing ticket-slug grammar (`a-z0-9` and hyphens, 1–48). `list`, `add`,
 `set`, `edit`, `delete`, `help`, and `use` are reserved names and cannot be
-document slugs. `tk status note` prints the path of `notes/<effective-slug>.md`
+document slugs. `tk pulse note` prints the path of `notes/<effective-slug>.md`
 whether or not the file exists.
 
 ## Output and exit codes

@@ -17,7 +17,7 @@ import (
 	"github.com/p3bot/tk/internal/token"
 )
 
-// How a scope was chosen — closed labels for the status dashboard's `resolved` field.
+// How a scope was chosen — closed labels for the pulse dashboard's `resolved` field.
 const (
 	SourceFlag = "flag" // --scope
 	SourceEnv  = "env"  // TK_SCOPE

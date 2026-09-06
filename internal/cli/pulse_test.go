@@ -14,13 +14,13 @@ func parsePulse(out string) map[string]string {
 		if !ok {
 			continue
 		}
-		// Keys are left-justified to statusKeyWidth before the tab.
+		// Keys are left-justified to pulseKeyWidth before the tab.
 		m[strings.TrimRight(key, " ")] = val
 	}
 	return m
 }
 
-func pulseKeys(out string) []string {
+func parsePulseKeys(out string) []string {
 	var keys []string
 	for _, line := range lines(out) {
 		key, _, ok := strings.Cut(line, "\t")
@@ -31,7 +31,11 @@ func pulseKeys(out string) []string {
 	return keys
 }
 
-func TestStatusDashboardKeyOrderAndCounts(t *testing.T) {
+func looksLikePulse(out string) bool {
+	return slicesEqual(parsePulseKeys(out), pulseKeys)
+}
+
+func TestPulseDashboardKeyOrderAndCounts(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "todo", "todo", "a1", "# T\n", false, "")
@@ -43,17 +47,17 @@ func TestStatusDashboardKeyOrderAndCounts(t *testing.T) {
 	addTicket(t, dir, "wc-ag28", "done", "done", "a7", "# Done\n", true, "")
 	addTicket(t, dir, "wc-ah29", "cancel", "cancelled", "a8", "# X\n", true, "")
 
-	out, errOut, err := run(t, app, "status", "--scope", "wc")
+	out, errOut, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v stderr=%q", err, errOut)
+		t.Fatalf("pulse: %v stderr=%q", err, errOut)
 	}
-	if keys := pulseKeys(out); !slicesEqual(keys, statusKeys) {
-		t.Fatalf("key order = %v, want %v\nout=%q", keys, statusKeys, out)
+	if keys := parsePulseKeys(out); !slicesEqual(keys, pulseKeys) {
+		t.Fatalf("key order = %v, want %v\nout=%q", keys, pulseKeys, out)
 	}
 	for _, line := range lines(out) {
 		tab := strings.IndexByte(line, '\t')
-		if tab != statusKeyWidth {
-			t.Errorf("tab at col %d want %d on line %q", tab, statusKeyWidth, line)
+		if tab != pulseKeyWidth {
+			t.Errorf("tab at col %d want %d on line %q", tab, pulseKeyWidth, line)
 		}
 	}
 	for _, tok := range []string{"duplicate_id:", "parse_error:", "uncommitted:", "lens:"} {
@@ -120,17 +124,17 @@ func TestStatusDashboardKeyOrderAndCounts(t *testing.T) {
 	}
 }
 
-func TestStatusEmptyNextExitsZero(t *testing.T) {
+func TestPulseEmptyNextExitsZero(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	// Only a blocked ticket — nothing next-eligible.
 	addTicket(t, dir, "wc-aa22", "b", "blocked", "a0", "# B\n", false, "")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status with empty next must exit 0: %v", err)
+		t.Fatalf("pulse with empty next must exit 0: %v", err)
 	}
-	if keys := pulseKeys(out); !slicesEqual(keys, statusKeys) {
+	if keys := parsePulseKeys(out); !slicesEqual(keys, pulseKeys) {
 		t.Fatalf("must still emit full key block, got %v", keys)
 	}
 	p := parsePulse(out)
@@ -143,96 +147,96 @@ func TestStatusEmptyNextExitsZero(t *testing.T) {
 	}
 }
 
-func TestStatusPositionalsAreUsage(t *testing.T) {
+func TestPulsePositionalsAreUsage(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 	// At most one optional key; two or more positionals remain usage exit 2.
-	out, _, err := run(t, app, "status", "wc-aa22", "blocked")
+	out, _, err := run(t, app, "pulse", "wc-aa22", "blocked")
 	if ExitCodeFromError(err) != exitUsage {
-		t.Errorf("status with two positionals should exit 2, got %v", err)
+		t.Errorf("pulse with two positionals should exit 2, got %v", err)
 	}
 	if out != "" {
 		t.Errorf("multi-arg refuse must leave stdout empty, got %q", out)
 	}
 }
 
-func TestStatusAttributeKeyBareValue(t *testing.T) {
+func TestPulseAttributeKeyBareValue(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "todo", "todo", "a1", "# T\n", false, "")
 	addTicket(t, dir, "wc-ac24", "ip", "in-progress", "a3", "# I\n", false, "")
 
-	full, _, err := run(t, app, "status", "--scope", "wc")
+	full, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("full status: %v", err)
+		t.Fatalf("full pulse: %v", err)
 	}
 	want := parsePulse(full)
 
 	// Representative locked keys: bare value matches full pulse; no key name or tab.
 	for _, key := range []string{"scope", "mode", "total", "todo", "in-progress", "next", "claimed", "integrity", "uncommitted"} {
-		out, _, err := run(t, app, "status", key, "--scope", "wc")
+		out, _, err := run(t, app, "pulse", key, "--scope", "wc")
 		if err != nil {
-			t.Errorf("status %s: %v", key, err)
+			t.Errorf("pulse %s: %v", key, err)
 			continue
 		}
 		if strings.Contains(out, "\t") {
-			t.Errorf("status %s must not emit full-pulse key\\tvalue lines, got %q", key, out)
+			t.Errorf("pulse %s must not emit full-pulse key\\tvalue lines, got %q", key, out)
 		}
 		if want[key] == "" {
 			if out != "" {
-				t.Errorf("status %s: empty value should be empty stdout, got %q", key, out)
+				t.Errorf("pulse %s: empty value should be empty stdout, got %q", key, out)
 			}
 			continue
 		}
 		if out != want[key]+"\n" {
-			t.Errorf("status %s = %q want %q", key, out, want[key]+"\n")
+			t.Errorf("pulse %s = %q want %q", key, out, want[key]+"\n")
 		}
 	}
 	if want["mode"] != "plain-files" {
 		t.Fatalf("fixture mode = %q want plain-files", want["mode"])
 	}
-	modeOut, _, err := run(t, app, "status", "mode", "--scope", "wc")
+	modeOut, _, err := run(t, app, "pulse", "mode", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status mode: %v", err)
+		t.Fatalf("pulse mode: %v", err)
 	}
 	if modeOut != "plain-files\n" {
-		t.Errorf("status mode = %q want plain-files\\n", modeOut)
+		t.Errorf("pulse mode = %q want plain-files\\n", modeOut)
 	}
 }
 
-func TestStatusAttributeEmptyValue(t *testing.T) {
+func TestPulseAttributeEmptyValue(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	// Only blocked — next empty; no claimed/in-progress.
 	addTicket(t, dir, "wc-aa22", "b", "blocked", "a0", "# B\n", false, "")
 
-	out, _, err := run(t, app, "status", "next", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "next", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status next empty must exit 0: %v", err)
+		t.Fatalf("pulse next empty must exit 0: %v", err)
 	}
 	if out != "" {
 		t.Errorf("empty next must be empty stdout, got %q", out)
 	}
-	out, _, err = run(t, app, "status", "claimed", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "claimed", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status claimed empty: %v", err)
+		t.Fatalf("pulse claimed empty: %v", err)
 	}
 	if out != "" {
 		t.Errorf("empty claimed must be empty stdout, got %q", out)
 	}
-	out, _, err = run(t, app, "status", "lens", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "lens", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status lens empty: %v", err)
+		t.Fatalf("pulse lens empty: %v", err)
 	}
 	if out != "" {
 		t.Errorf("empty lens must be empty stdout, got %q", out)
 	}
 	// Full pulse still emits every locked key line, including empty next.
-	full, _, err := run(t, app, "status", "--scope", "wc")
+	full, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("full status: %v", err)
+		t.Fatalf("full pulse: %v", err)
 	}
-	if keys := pulseKeys(full); !slicesEqual(keys, statusKeys) {
+	if keys := parsePulseKeys(full); !slicesEqual(keys, pulseKeys) {
 		t.Fatalf("full pulse must still emit every key line, got %v", keys)
 	}
 	if p := parsePulse(full); p["next"] != "" {
@@ -240,11 +244,11 @@ func TestStatusAttributeEmptyValue(t *testing.T) {
 	}
 }
 
-func TestStatusAttributeUnknownKey(t *testing.T) {
+func TestPulseAttributeUnknownKey(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 
-	out, _, err := run(t, app, "status", "nope", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "nope", "--scope", "wc")
 	if ExitCodeFromError(err) != exitUsage {
 		t.Fatalf("unknown key exit = %v want 2", err)
 	}
@@ -252,17 +256,17 @@ func TestStatusAttributeUnknownKey(t *testing.T) {
 		t.Errorf("unknown key must leave stdout empty, got %q", out)
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, `unknown status key "nope"`) {
+	if !strings.Contains(msg, `unknown pulse key "nope"`) {
 		t.Errorf("message should name bad key, got %q", msg)
 	}
-	for _, k := range statusKeys {
+	for _, k := range pulseKeys {
 		if !strings.Contains(msg, k) {
 			t.Errorf("catalogue missing %q in %q", k, msg)
 		}
 	}
 }
 
-func TestStatusAttributeKeepsStderrDiagnostics(t *testing.T) {
+func TestPulseAttributeKeepsStderrDiagnostics(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "fe", "todo", "a0", "# FE\n", false, "tags: [frontend]\n")
@@ -271,22 +275,22 @@ func TestStatusAttributeKeepsStderrDiagnostics(t *testing.T) {
 	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
 		t.Fatalf("lens: %v", err)
 	}
-	out, errOut, err := run(t, app, "status", "next", "--scope", "wc")
+	out, errOut, err := run(t, app, "pulse", "next", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status next: %v", err)
+		t.Fatalf("pulse next: %v", err)
 	}
 	if !strings.Contains(errOut, "lens:") {
 		t.Errorf("attribute path must still echo lens on stderr, got %q", errOut)
 	}
 	if out != "wc-aa22\n" {
-		t.Errorf("status next under lens = %q want wc-aa22\\n", out)
+		t.Errorf("pulse next under lens = %q want wc-aa22\\n", out)
 	}
 	if strings.Contains(out, "\t") {
 		t.Errorf("attribute stdout must not be full pulse, got %q", out)
 	}
 }
 
-func TestStatusLensFiltersWorkingBoard(t *testing.T) {
+func TestPulseLensFiltersWorkingBoard(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "fe", "todo", "a0", "# FE\n", false, "tags: [frontend]\n")
@@ -298,9 +302,9 @@ func TestStatusLensFiltersWorkingBoard(t *testing.T) {
 	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
 		t.Fatalf("lens: %v", err)
 	}
-	out, errOut, err := run(t, app, "status", "--scope", "wc")
+	out, errOut, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	if !strings.Contains(errOut, "lens:") {
 		t.Errorf("active lens should echo on stderr, got %q", errOut)
@@ -333,11 +337,11 @@ func TestStatusLensFiltersWorkingBoard(t *testing.T) {
 		t.Fatalf("next: %v", err)
 	}
 	if !strings.Contains(nextOut, "wc-aa22") {
-		t.Errorf("tk next should match status next, got %q", nextOut)
+		t.Errorf("tk next should match pulse next, got %q", nextOut)
 	}
 }
 
-func TestStatusNextUsesReconcileClosure(t *testing.T) {
+func TestPulseNextUsesReconcileClosure(t *testing.T) {
 	app := newApp(t)
 	up := initScope(t, app, "up")
 	wc := initScope(t, app, "wc")
@@ -345,9 +349,9 @@ func TestStatusNextUsesReconcileClosure(t *testing.T) {
 	addTicket(t, up, "up-aa22", "core", "done", "a0", "# Core\n", true, "")
 	addTicket(t, wc, "wc-bb22", "feat", "todo", "a0", "# Feature\n", false, "depends: [up-aa22]\n")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	p := parsePulse(out)
 	if p["next"] != "wc-bb22" {
@@ -362,30 +366,30 @@ func TestStatusNextUsesReconcileClosure(t *testing.T) {
 	}
 }
 
-func TestStatusNextTokensMatchBareNext(t *testing.T) {
+func TestPulseNextTokensMatchBareNext(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "ready", "todo", "a0", "# Ready\n", false, "")
 	addTicket(t, dir, "wc-ab23", "held", "todo", "a1", "# Held\n", false, "depends: [wc-zz99]\n")
 
-	_, statusErr, err := run(t, app, "status", "--scope", "wc")
+	_, pulseErr, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	_, nextErr, err := run(t, app, "next", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("next: %v", err)
 	}
-	if !strings.Contains(statusErr, "depends_dangling:") {
-		t.Errorf("status must walk past the chosen next and emit later tokens, stderr=%q", statusErr)
+	if !strings.Contains(pulseErr, "depends_dangling:") {
+		t.Errorf("pulse must walk past the chosen next and emit later tokens, stderr=%q", pulseErr)
 	}
 	if !strings.Contains(nextErr, "depends_dangling:") {
 		t.Errorf("next baseline missing depends_dangling, stderr=%q", nextErr)
 	}
-	statusToks := tokenLines(statusErr)
+	pulseToks := tokenLines(pulseErr)
 	nextToks := tokenLines(nextErr)
-	if !slicesEqual(statusToks, nextToks) {
-		t.Errorf("status tokens %v != next tokens %v", statusToks, nextToks)
+	if !slicesEqual(pulseToks, nextToks) {
+		t.Errorf("pulse tokens %v != next tokens %v", pulseToks, nextToks)
 	}
 }
 
@@ -399,16 +403,16 @@ func tokenLines(errOut string) []string {
 	return out
 }
 
-func TestStatusDanglingEdgeCount(t *testing.T) {
+func TestPulseDanglingEdgeCount(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "a", "todo", "a0", "# A\n", false, "depends: [wc-zz99]\n")
 	addTicket(t, dir, "wc-ab23", "b", "todo", "a1", "# B\n", false, "depends: [wc-zz99]\n")
 	addTicket(t, dir, "wc-ac24", "c", "todo", "a2", "# C\n", false, "depends: [other-xx00]\n")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	p := parsePulse(out)
 	if p["dangling"] != "2" {
@@ -416,7 +420,7 @@ func TestStatusDanglingEdgeCount(t *testing.T) {
 	}
 }
 
-func TestStatusIntegrityAmbientOnly(t *testing.T) {
+func TestPulseIntegrityAmbientOnly(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	other := initScope(t, app, "ot")
@@ -424,9 +428,9 @@ func TestStatusIntegrityAmbientOnly(t *testing.T) {
 	addTicket(t, other, "ot-bb22", "one", "done", "a0", "# One\n", true, "")
 	addTicket(t, other, "ot-bb22", "two", "done", "a1", "# Two\n", true, "")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	p := parsePulse(out)
 	if p["integrity"] != "ok" {
@@ -434,9 +438,9 @@ func TestStatusIntegrityAmbientOnly(t *testing.T) {
 	}
 
 	addTicket(t, dir, "wc-aa22", "dup", "todo", "a2", "# Dup\n", false, "")
-	out, _, err = run(t, app, "status", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status after ambient dup: %v", err)
+		t.Fatalf("pulse after ambient dup: %v", err)
 	}
 	p = parsePulse(out)
 	if p["integrity"] != "issues" {
@@ -444,7 +448,7 @@ func TestStatusIntegrityAmbientOnly(t *testing.T) {
 	}
 }
 
-func TestStatusIntegrityHardClasses(t *testing.T) {
+func TestPulseIntegrityHardClasses(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 
@@ -452,9 +456,9 @@ func TestStatusIntegrityHardClasses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "wc-aa22-x.md"), []byte(bad), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	if parsePulse(out)["integrity"] != "issues" {
 		t.Errorf("parse_error should flip integrity, got %q", parsePulse(out)["integrity"])
@@ -465,9 +469,9 @@ func TestStatusIntegrityHardClasses(t *testing.T) {
 
 	addTicket(t, dir, "wc-ab23", "a", "todo", "a0", "# A\n", false, "")
 	addTicket(t, dir, "wc-ac24", "b", "todo", "a0", "# B\n", false, "")
-	out, _, err = run(t, app, "status", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status equal_order: %v", err)
+		t.Fatalf("pulse equal_order: %v", err)
 	}
 	if parsePulse(out)["integrity"] != "issues" {
 		t.Errorf("equal_order should flip integrity, got %q", parsePulse(out)["integrity"])
@@ -480,9 +484,9 @@ func TestStatusIntegrityHardClasses(t *testing.T) {
 	}
 
 	addTicket(t, dir, "wc-ad25", "done", "done", "a1", "# Done\n", false, "")
-	out, _, err = run(t, app, "status", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status archive drift: %v", err)
+		t.Fatalf("pulse archive drift: %v", err)
 	}
 	if parsePulse(out)["integrity"] != "issues" {
 		t.Errorf("archive_terminal_at_root should flip integrity, got %q", parsePulse(out)["integrity"])
@@ -492,24 +496,24 @@ func TestStatusIntegrityHardClasses(t *testing.T) {
 	}
 
 	addTicket(t, dir, "wc-ae26", "todo", "todo", "a2", "# Todo\n", true, "")
-	out, _, err = run(t, app, "status", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status archive_non_terminal: %v", err)
+		t.Fatalf("pulse archive_non_terminal: %v", err)
 	}
 	if parsePulse(out)["integrity"] != "issues" {
 		t.Errorf("archive_non_terminal should flip integrity, got %q", parsePulse(out)["integrity"])
 	}
 }
 
-func TestStatusIntegrityIgnoresSoftSchemaWarn(t *testing.T) {
+func TestPulseIntegrityIgnoresSoftSchemaWarn(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	// Self-related is a soft doctor schema_warn class, not a post-reconcile integrity class.
 	addTicket(t, dir, "wc-aa22", "t", "todo", "a0", "# T\n", false, "related: [wc-aa22]\n")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	if parsePulse(out)["integrity"] != "ok" {
 		t.Errorf("soft schema_warn class alone must leave integrity ok, got %q", parsePulse(out)["integrity"])
@@ -525,7 +529,7 @@ func TestStatusIntegrityIgnoresSoftSchemaWarn(t *testing.T) {
 	}
 }
 
-func TestStatusTotalIncludesBacklogAndCustom(t *testing.T) {
+func TestPulseTotalIncludesBacklogAndCustom(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	cue := "name: \"wc\"\nautoCommit: false\nstatuses: {\n  polishing: {category: \"active\"}\n}\n"
@@ -535,9 +539,9 @@ func TestStatusTotalIncludesBacklogAndCustom(t *testing.T) {
 	addTicket(t, dir, "wc-aa22", "p", "polishing", "a0", "# P\n", false, "")
 	addTicket(t, dir, "wc-ab23", "b", "backlog", "a1", "# B\n", false, "")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	p := parsePulse(out)
 	if p["total"] != "2" {
@@ -555,7 +559,7 @@ func TestStatusTotalIncludesBacklogAndCustom(t *testing.T) {
 	}
 }
 
-func TestStatusClaimedSorted(t *testing.T) {
+func TestPulseClaimedSorted(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	// Higher order first on disk; claimed must sort (order, id).
@@ -563,16 +567,16 @@ func TestStatusClaimedSorted(t *testing.T) {
 	addTicket(t, dir, "wc-aa22", "early", "in-progress", "a0", "# Early\n", false, "")
 	addTicket(t, dir, "wc-ab23", "mid", "in-progress", "a1", "# Mid\n", false, "")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	if got := parsePulse(out)["claimed"]; got != "wc-aa22 wc-ab23 wc-zz99" {
 		t.Errorf("claimed sort = %q want order then id", got)
 	}
 }
 
-func TestStatusLensEmptiedNextExitsZero(t *testing.T) {
+func TestPulseLensEmptiedNextExitsZero(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	// Only backend-tagged todos; frontend lens empties the ready queue.
@@ -581,11 +585,11 @@ func TestStatusLensEmptiedNextExitsZero(t *testing.T) {
 		t.Fatalf("lens: %v", err)
 	}
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status lens-empty next must exit 0: %v", err)
+		t.Fatalf("pulse lens-empty next must exit 0: %v", err)
 	}
-	if keys := pulseKeys(out); !slicesEqual(keys, statusKeys) {
+	if keys := parsePulseKeys(out); !slicesEqual(keys, pulseKeys) {
 		t.Fatalf("full key block required, got %v", keys)
 	}
 	if parsePulse(out)["next"] != "" {
@@ -596,7 +600,7 @@ func TestStatusLensEmptiedNextExitsZero(t *testing.T) {
 	}
 }
 
-func TestStatusModeUnparseableIsPlainFiles(t *testing.T) {
+func TestPulseModeUnparseableIsPlainFiles(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "t", "todo", "a0", "# T\n", false, "")
@@ -605,9 +609,9 @@ func TestStatusModeUnparseableIsPlainFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, errOut, err := run(t, app, "status", "--scope", "wc")
+	out, errOut, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status under unusable config should still pulse: %v", err)
+		t.Fatalf("pulse under unusable config should still pulse: %v", err)
 	}
 	p := parsePulse(out)
 	if p["mode"] != "plain-files" {
@@ -621,7 +625,7 @@ func TestStatusModeUnparseableIsPlainFiles(t *testing.T) {
 	}
 }
 
-func TestStatusModeTkDrivenUncommittedZero(t *testing.T) {
+func TestPulseModeTkDrivenUncommittedZero(t *testing.T) {
 	requireGit(t)
 	app := newApp(t)
 	dir, _ := initGitScope(t, app, "wc", true)
@@ -631,9 +635,9 @@ func TestStatusModeTkDrivenUncommittedZero(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	p := parsePulse(out)
 	if p["mode"] != "tk-driven" {
@@ -644,7 +648,7 @@ func TestStatusModeTkDrivenUncommittedZero(t *testing.T) {
 	}
 }
 
-func TestStatusModeTkDrivenPlanned(t *testing.T) {
+func TestPulseModeTkDrivenPlanned(t *testing.T) {
 	app := newApp(t)
 	dir := filepath.Join(t.TempDir(), "wc")
 	if _, _, err := run(t, app, "scope", "init", dir, "--name", "wc", "--auto-commit"); err != nil {
@@ -652,9 +656,9 @@ func TestStatusModeTkDrivenPlanned(t *testing.T) {
 	}
 	addTicket(t, dir, "wc-aa22", "t", "todo", "a0", "# T\n", false, "")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	p := parsePulse(out)
 	if p["mode"] != "tk-driven" {
@@ -665,15 +669,15 @@ func TestStatusModeTkDrivenPlanned(t *testing.T) {
 	}
 }
 
-func TestStatusModeRepoDrivenDirtyCount(t *testing.T) {
+func TestPulseModeRepoDrivenDirtyCount(t *testing.T) {
 	requireGit(t)
 	app := newApp(t)
 	dir, _ := initGitScope(t, app, "rd", false)
 	addTicket(t, dir, "rd-aa22", "t", "todo", "a0", "# T\n", false, "")
 
-	out, _, err := run(t, app, "status", "--scope", "rd")
+	out, _, err := run(t, app, "pulse", "--scope", "rd")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
 	p := parsePulse(out)
 	if p["mode"] != "repo-driven" {
@@ -684,12 +688,12 @@ func TestStatusModeRepoDrivenDirtyCount(t *testing.T) {
 	}
 }
 
-func TestStatusResolvedSources(t *testing.T) {
+func TestPulseResolvedSources(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "t", "todo", "a0", "# T\n", false, "")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,7 +702,7 @@ func TestStatusResolvedSources(t *testing.T) {
 	}
 
 	t.Setenv("TK_SCOPE", "wc")
-	out, _, err = run(t, app, "status")
+	out, _, err = run(t, app, "pulse")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,9 +712,9 @@ func TestStatusResolvedSources(t *testing.T) {
 
 	t.Setenv("TK_SCOPE", "")
 	t.Chdir(dir)
-	out, _, err = run(t, app, "status")
+	out, _, err = run(t, app, "pulse")
 	if err != nil {
-		t.Fatalf("status via cwd: %v", err)
+		t.Fatalf("pulse via cwd: %v", err)
 	}
 	if parsePulse(out)["resolved"] != "cwd" {
 		t.Errorf("want cwd, got %q", parsePulse(out)["resolved"])

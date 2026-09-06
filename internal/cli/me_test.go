@@ -423,13 +423,13 @@ func TestMePulseKey(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "one", "todo", "a0", "# One\n", false, "")
 
-	out, _, err := run(t, app, "status", "--scope", "wc")
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status: %v", err)
+		t.Fatalf("pulse: %v", err)
 	}
-	keys := pulseKeys(out)
-	if !slicesEqual(keys, statusKeys) {
-		t.Fatalf("key order = %v want %v", keys, statusKeys)
+	keys := parsePulseKeys(out)
+	if !slicesEqual(keys, pulseKeys) {
+		t.Fatalf("key order = %v want %v", keys, pulseKeys)
 	}
 	lensIdx, meIdx := -1, -1
 	for i, k := range keys {
@@ -447,30 +447,30 @@ func TestMePulseKey(t *testing.T) {
 		t.Errorf("unset pulse me = %q want empty", parsePulse(out)["me"])
 	}
 
-	bare, _, err := run(t, app, "status", "me", "--scope", "wc")
+	bare, _, err := run(t, app, "pulse", "me", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status me unset: %v", err)
+		t.Fatalf("pulse me unset: %v", err)
 	}
 	if bare != "" {
-		t.Errorf("unset status me must be empty stdout, got %q", bare)
+		t.Errorf("unset pulse me must be empty stdout, got %q", bare)
 	}
 
 	if _, _, err := run(t, app, "me", "wc-ab2c", "--scope", "wc"); err != nil {
 		t.Fatalf("set: %v", err)
 	}
-	out, _, err = run(t, app, "status", "--scope", "wc")
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status after set: %v", err)
+		t.Fatalf("pulse after set: %v", err)
 	}
 	if parsePulse(out)["me"] != "wc-ab2c" {
 		t.Errorf("pulse me = %q want wc-ab2c", parsePulse(out)["me"])
 	}
-	bare, _, err = run(t, app, "status", "me", "--scope", "wc")
+	bare, _, err = run(t, app, "pulse", "me", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("status me: %v", err)
+		t.Fatalf("pulse me: %v", err)
 	}
 	if bare != "wc-ab2c\n" {
-		t.Errorf("status me = %q want wc-ab2c\\n", bare)
+		t.Errorf("pulse me = %q want wc-ab2c\\n", bare)
 	}
 	if strings.Contains(bare, "/") || strings.Contains(bare, "\t") {
 		t.Errorf("pulse must carry the full id, not a path: %q", bare)
@@ -531,12 +531,12 @@ func TestMeRenameClearsPointer(t *testing.T) {
 		t.Errorf("other scope pointer must be untouched, got %q", got)
 	}
 
-	out, _, err := run(t, app, "status", "me", "--scope", "core")
+	out, _, err := run(t, app, "pulse", "me", "--scope", "core")
 	if err != nil {
-		t.Fatalf("status me: %v", err)
+		t.Fatalf("pulse me: %v", err)
 	}
 	if out != "" {
-		t.Errorf("status me after rename must be empty, got %q", out)
+		t.Errorf("pulse me after rename must be empty, got %q", out)
 	}
 	if _, _, err := run(t, app, "get", "me", "--scope", "core"); ExitCodeFromError(err) == 0 {
 		t.Fatal("get me after rename must fail as unknown")

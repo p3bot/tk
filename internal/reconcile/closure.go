@@ -3,7 +3,7 @@ package reconcile
 import "github.com/p3bot/tk/internal/registry"
 
 // ReconcileClosure refreshes ambient plus transitive depends scopes
-// (single-pass aggregates). Shared by next, status, and claim-next.
+// (single-pass aggregates). Shared by next, pulse, and claim-next.
 func (r *Reconciler) ReconcileClosure(reg *registry.Registry, ambient, dir string, now int64) (*Result, []string, error) {
 	targets := map[string]string{ambient: dir}
 	done := map[string]bool{}

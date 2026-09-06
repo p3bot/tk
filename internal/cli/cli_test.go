@@ -217,7 +217,7 @@ func TestRootHelpGroups(t *testing.T) {
 			admin := helpSection(out, groupAdminTitle)
 
 			wantWork := []string{"create", "get", "edit", "mark", "order", "next"}
-			wantBoard := []string{"list", "status", "meta", "deps", "search", "query", "lens", "me", "note", "tags"}
+			wantBoard := []string{"list", "pulse", "meta", "deps", "search", "query", "lens", "me", "note", "tags"}
 			wantAdmin := []string{"scope", "sync", "doctor", "reindex", "skill"}
 			if got := commandsInSectionOrder(work); !slicesEqual(got, wantWork) {
 				t.Errorf("Work order = %v, want %v\n%s", got, wantWork, work)

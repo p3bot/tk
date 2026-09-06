@@ -1,7 +1,7 @@
 // Package scopefile holds scope-directory file policy shared by write verbs,
 // doctor, and sync: allowlist classification, dirty counting, and the per-scope
 // flock path. One definition so snapshot, uncommitted:, non_allowlist:, and
-// status stay on the same product rule.
+// pulse stay on the same product rule.
 package scopefile
 
 import (

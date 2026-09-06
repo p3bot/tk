@@ -52,7 +52,7 @@ const (
 	SyncDisabled = "sync_disabled:"
 
 	// Uncommitted marks a host-owned repo-driven scope with dirty allowlisted files
-	// (status pulse / bare doctor; write path stays quiet).
+	// (tk pulse / bare doctor; write path stays quiet).
 	Uncommitted = "uncommitted:"
 
 	// SyncNeeded marks a tk-driven scope whose durability still requires tk sync

@@ -70,7 +70,7 @@ WHERE scope = ? AND status = ? AND archived = 0 AND parse_error = 0
 ORDER BY order_key, id`, scope, status.Todo)
 }
 
-// ScopePulse is the SQL-backed status pulse for one scope (except next, which
+// ScopePulse is the SQL-backed pulse for one scope (except next, which
 // reuses NextCandidates plus the depends gate).
 type ScopePulse struct {
 	Total      int

@@ -77,7 +77,7 @@ func TestArityTooManyArguments(t *testing.T) {
 		{"deps extra", []string{"deps", "ab2c", "extra"}, "tk deps <id> [--scope S] [--transitive] [--tree]"},
 		{"forget extra", []string{"scope", "forget", "a", "b"}, "tk scope forget <name>"},
 		{"next extra", []string{"next", "ab2c"}, "tk next [--scope S] [--no-lens] [--claim]"},
-		{"status extra", []string{"status", "mode", "extra"}, "tk status [key] [--scope S]"},
+		{"pulse extra", []string{"pulse", "mode", "extra"}, "tk pulse [key] [--scope S]"},
 		{"create extra", []string{"create", "one", "todo", "three"}, "tk create <title> [status] [--scope S] [--tag T]..."},
 		{"reindex extra", []string{"reindex", "x"}, "tk reindex"},
 	}
@@ -93,6 +93,68 @@ func TestArityTooManyArguments(t *testing.T) {
 				t.Errorf("message = %q, want %q", msg, want)
 			}
 		})
+	}
+}
+
+func TestStatusIsNotACommand(t *testing.T) {
+	app := newApp(t)
+	want := `unknown command "status" for "tk"`
+	for _, args := range [][]string{{"status"}, {"status", "mode"}, {"status", "mode", "extra"}} {
+		out, _, err := run(t, app, args...)
+		if got := ExitCodeFromError(err); got != exitUsage {
+			t.Errorf("%v exit = %d want 2 (err=%v)", args, got, err)
+		}
+		if err == nil {
+			t.Errorf("%v: expected usage error", args)
+			continue
+		}
+		if err.Error() != want {
+			t.Errorf("%v message = %q, want %q", args, err.Error(), want)
+		}
+		if out != "" {
+			t.Errorf("%v must leave stdout empty, got %q", args, out)
+		}
+		if looksLikePulse(out) {
+			t.Errorf("%v must not run the pulse, got %q", args, out)
+		}
+	}
+
+	for _, args := range [][]string{{"status", "--scope", "wc"}, {"status", "mode", "--scope", "wc"}} {
+		out, _, err := run(t, app, args...)
+		if got := ExitCodeFromError(err); got != exitUsage {
+			t.Errorf("%v exit = %d want 2 (err=%v)", args, got, err)
+		}
+		if err == nil || !strings.Contains(err.Error(), "unknown flag: --scope") {
+			t.Errorf("%v want unknown flag --scope, got %v", args, err)
+		}
+		if looksLikePulse(out) {
+			t.Errorf("%v must not run the pulse, got %q", args, out)
+		}
+	}
+
+	out, _, err := run(t, app, "status", "--help")
+	if err != nil {
+		t.Fatalf("status --help: %v", err)
+	}
+	if looksLikePulse(out) {
+		t.Errorf("status --help must not run the pulse, got %q", out)
+	}
+	if !strings.Contains(out, groupBoardTitle) || !strings.Contains(out, "pulse") {
+		t.Errorf("status --help should be root help listing pulse, got:\n%s", out)
+	}
+}
+
+func TestMarkHelpPointsAtPulse(t *testing.T) {
+	app := newApp(t)
+	out, _, err := run(t, app, "mark", "--help")
+	if err != nil {
+		t.Fatalf("mark --help: %v", err)
+	}
+	if !strings.Contains(out, "`tk pulse`") {
+		t.Errorf("mark help must point at tk pulse, got:\n%s", out)
+	}
+	if strings.Contains(out, "`tk status`") {
+		t.Errorf("mark help must not point at tk status, got:\n%s", out)
 	}
 }
 

@@ -81,7 +81,7 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 		Items: []hubItem{
 			{
 				Title: "Integrity",
-				Blurb: "ok/issues per scope from the same checks as tk status: parse errors, duplicate ids, equal order keys, archive layout drift.",
+				Blurb: "ok/issues per scope from the same checks as tk pulse: parse errors, duplicate ids, equal order keys, archive layout drift.",
 				Ready: true,
 			},
 			{

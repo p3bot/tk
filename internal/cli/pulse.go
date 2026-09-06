@@ -16,8 +16,8 @@ import (
 	"github.com/p3bot/tk/internal/status"
 )
 
-// statusKeys is the locked stdout key order for tk status (pad + single tab).
-var statusKeys = []string{
+// pulseKeys is the locked stdout key order for tk pulse (pad + single tab).
+var pulseKeys = []string{
 	"scope",
 	"dir",
 	"resolved",
@@ -42,12 +42,12 @@ var statusKeys = []string{
 	"uncommitted",
 }
 
-// statusKeyWidth is the longest locked key (shared with tests).
-var statusKeyWidth = maxStatusKeyWidth()
+// pulseKeyWidth is the longest locked key (shared with tests).
+var pulseKeyWidth = maxPulseKeyWidth()
 
-func maxStatusKeyWidth() int {
+func maxPulseKeyWidth() int {
 	w := 0
-	for _, k := range statusKeys {
+	for _, k := range pulseKeys {
 		if n := len(k); n > w {
 			w = n
 		}
@@ -55,10 +55,10 @@ func maxStatusKeyWidth() int {
 	return w
 }
 
-func newStatusCmd(app *App) *cobra.Command {
+func newPulseCmd(app *App) *cobra.Command {
 	var scope string
 	cmd := &cobra.Command{
-		Use:   "status [key] [--scope S]",
+		Use:   "pulse [key] [--scope S]",
 		Short: "Scope pulse: key/value counts, next, claimed, integrity",
 		Long: "Print a pure-read orientation block for one scope as parse-stable key\\tvalue\n" +
 			"lines (no header). Keys are left-justified to a fixed column (longest key width)\n" +
@@ -120,15 +120,15 @@ func newStatusCmd(app *App) *cobra.Command {
 			if len(args) == 1 {
 				key = args[0]
 			}
-			return runStatus(app, c, scope, key)
+			return runPulse(app, c, scope, key)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope to pulse (defaults to ambient; wins over ambient)")
 	return cmd
 }
 
-func knownStatusKey(key string) bool {
-	for _, k := range statusKeys {
+func knownPulseKey(key string) bool {
+	for _, k := range pulseKeys {
 		if k == key {
 			return true
 		}
@@ -136,9 +136,9 @@ func knownStatusKey(key string) bool {
 	return false
 }
 
-func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
-	if key != "" && !knownStatusKey(key) {
-		return usageErrorf("unknown status key %q; known keys: %s", key, strings.Join(statusKeys, ", "))
+func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
+	if key != "" && !knownPulseKey(key) {
+		return usageErrorf("unknown pulse key %q; known keys: %s", key, strings.Join(pulseKeys, ", "))
 	}
 
 	e, err := app.openEngine(c)
@@ -172,7 +172,7 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 	lens := e.reg.Lens[scope]
 
 	root, hasRoot := scopefile.GitRoot(dir)
-	mode := statusMode(schema, res.ConfigErrs[scope] != nil, hasRoot)
+	mode := pulseMode(schema, res.ConfigErrs[scope] != nil, hasRoot)
 
 	noteSlug, err := effectiveNoteSlug(e, scope)
 	if err != nil {
@@ -245,14 +245,14 @@ func runStatus(app *App, c *cobra.Command, scopeFlag, key string) error {
 		}
 		return nil
 	}
-	for _, k := range statusKeys {
-		stdoutln(c, fmt.Sprintf("%-*s\t%s", statusKeyWidth, k, pulse[k]))
+	for _, k := range pulseKeys {
+		stdoutln(c, fmt.Sprintf("%-*s\t%s", pulseKeyWidth, k, pulse[k]))
 	}
 	return nil
 }
 
-// statusMode: unusable schema → plain-files (never guess repo-driven).
-func statusMode(schema *scopeconfig.Schema, configUnusable bool, hasRoot bool) string {
+// pulseMode: unusable schema → plain-files (never guess repo-driven).
+func pulseMode(schema *scopeconfig.Schema, configUnusable bool, hasRoot bool) string {
 	if configUnusable || schema == nil {
 		return scopeadmin.ModePlainFiles
 	}

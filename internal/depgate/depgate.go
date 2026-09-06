@@ -1,6 +1,6 @@
 // Package depgate is the in-memory depends gate and next picker shared by
 // tk and tkv. Waiting-on, Held, next eligibility, and next selection live
-// here so list, next, claim, status, and tkv cannot fork. Gating is Go, not
+// here so list, next, claim, pulse, and tkv cannot fork. Gating is Go, not
 // SQL; callers own reconcile closure and presentation.
 package depgate
 
@@ -182,7 +182,7 @@ func (g *Gate) schema(scope string) *scopeconfig.Schema {
 }
 
 // Selection is the next walk result. Callers own empty-queue policy
-// (tk next and claim refuse via EmptyQueueError; tk status emits next\t;
+// (tk next and claim refuse via EmptyQueueError; tk pulse emits next\t;
 // tkv shows no badge).
 type Selection struct {
 	Chosen           *index.Ticket

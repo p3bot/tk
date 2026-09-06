@@ -34,7 +34,7 @@ func newMarkCmd(app *App) *cobra.Command {
 			"tk-driven git-root with an upstream is a claim: one refresh of that root, re-check\n" +
 			"each named todo is still todo, write every member, then one push. A quarantined\n" +
 			"or duplicate-id ticket is refused with no writes.\n" +
-			"For a scope pulse (counts, next, integrity), use `tk status`.",
+			"For a scope pulse (counts, next, integrity), use `tk pulse`.",
 		Args: arity(1, -1, []string{"<status>", "<id>"}),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMark(app, c, args[0], args[1:], scope)

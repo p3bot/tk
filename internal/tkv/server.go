@@ -382,7 +382,7 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 	}
 	schema := s.rec.SchemaCached(selected, entry.Dir)
 	_, hasRoot := scopefile.GitRoot(entry.Dir)
-	c.Mode = statusMode(schema, schema == nil, hasRoot)
+	c.Mode = pulseMode(schema, schema == nil, hasRoot)
 	c.Lens = strings.Join(reg.Lens[selected], " ")
 	c.LensTags = append([]string(nil), reg.Lens[selected]...)
 	c.CanLens = resolve.CheckName(s.app.Ctx, selected, entry) == nil
@@ -423,7 +423,7 @@ func (s *Server) bindChrome(c *chrome, r *http.Request) {
 	}
 }
 
-func statusMode(schema *scopeconfig.Schema, configUnusable bool, hasRoot bool) string {
+func pulseMode(schema *scopeconfig.Schema, configUnusable bool, hasRoot bool) string {
 	if configUnusable || schema == nil {
 		return scopeadmin.ModePlainFiles
 	}

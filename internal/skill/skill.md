@@ -69,6 +69,7 @@ tk scope rebind <dir> --name <name> [--code-root <path>]            # Rewrite re
 tk scope forget <name>                                              # Unregister scope (registry, lens, and me only)
 tk scope list                                                       # List registered scopes (TSV)
 tk scope rename <old> <new>                                         # Rename scope end-to-end
+tk scope auto-commit [true|false] [--scope S]                       # Read or set git-root-wide autoCommit
 tk scope field list [--scope S]                                     # List custom fields: (name type required values)
 tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # Upsert field; full replace from flags (omit --required demotes)
 tk scope field unset <name> [--strip] [--scope S]                   # Remove field declaration; --strip also drops the key from all tickets
@@ -104,11 +105,11 @@ Board: `tk list` | `tk list --open` | `tk list --all` -> `tk tags` | `tk order` 
 
 Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:)
 
-Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `field list|set|unset`
+Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `auto-commit` | `field list|set|unset`
 
 Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
-  - Commands that self commit: mark, order, next --claim, meta set/add/rm, scope field set|unset, scope rename, repair
+  - Commands that self commit: mark, order, next --claim, meta set/add/rm, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
   - Create and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
 - repo-driven: host git commit/push (no `tk sync`)

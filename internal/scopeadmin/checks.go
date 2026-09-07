@@ -2,6 +2,7 @@ package scopeadmin
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/p3bot/tk/internal/gitroot"
 	"github.com/p3bot/tk/internal/pathutil"
@@ -50,6 +51,44 @@ func checkDirDisjoint(reg *registry.Registry, dir, exclude string) error {
 	return nil
 }
 
+// GitRootScope is one registered scope whose derived git-root was considered.
+type GitRootScope struct {
+	Name string
+	Dir  string
+}
+
+// GitRootScopes returns registered scopes whose gitroot.RepoRoot equals gitRoot,
+// sorted by name. Directories git cannot resolve drop out (gone dirs).
+func GitRootScopes(reg *registry.Registry, gitRoot string) []GitRootScope {
+	out, _ := gitRootScopes(reg, gitRoot, false)
+	return out
+}
+
+// GitRootScopesRefuseUnreachable is GitRootScopes, except a registered dir nested
+// under gitRoot whose RepoRoot cannot be derived is unreachable_scope.
+func GitRootScopesRefuseUnreachable(reg *registry.Registry, gitRoot string) ([]GitRootScope, error) {
+	return gitRootScopes(reg, gitRoot, true)
+}
+
+func gitRootScopes(reg *registry.Registry, gitRoot string, refuseUnreachable bool) ([]GitRootScope, error) {
+	var out []GitRootScope
+	for name, entry := range reg.Scopes {
+		sgr, sok := gitroot.RepoRoot(entry.Dir)
+		if sok {
+			if sgr == gitRoot {
+				out = append(out, GitRootScope{Name: name, Dir: entry.Dir})
+			}
+			continue
+		}
+		if refuseUnreachable && pathutil.UnderOrEqual(entry.Dir, gitRoot) {
+			return nil, fmt.Errorf("%s", token.Line(token.UnreachableScope,
+				fmt.Sprintf("%s: dir %s is not reachable", name, entry.Dir)))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
 // consensus is the autoCommit agreement among registered scopes sharing a git-root.
 type consensus struct {
 	hasGitRoot bool
@@ -67,19 +106,15 @@ func siblingConsensus(a *Admin, reg *registry.Registry, gitRoot string, inRepo b
 	if !inRepo {
 		return c, nil
 	}
-	for name, entry := range reg.Scopes {
-		if name == excludeName {
+	for _, s := range GitRootScopes(reg, gitRoot) {
+		if s.Name == excludeName {
 			continue
 		}
-		sgr, sok := gitroot.RepoRoot(entry.Dir)
-		if !sok || sgr != gitRoot {
-			continue
-		}
-		schema, err := scopeconfig.Load(a.ctx, entry.Dir)
+		schema, err := scopeconfig.Load(a.ctx, s.Dir)
 		if err != nil {
 			if _, isCfg := scopeconfig.AsConfigError(err); isCfg {
 				return c, fmt.Errorf("%s", token.Line(token.ConfigUnparseable,
-					fmt.Sprintf("sibling scope at %s sharing git-root %s has an unparseable tk.cue — fix it before registering here", entry.Dir, gitRoot)))
+					fmt.Sprintf("sibling scope at %s sharing git-root %s has an unparseable tk.cue — fix it before registering here", s.Dir, gitRoot)))
 			}
 			return c, err
 		}

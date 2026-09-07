@@ -63,6 +63,7 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"depends_open:",
 		"required_missing:",
 		"scope field",
+		"tk scope auto-commit [true|false] [--scope S]",
 		"[--strip]",
 		"Do not hand-edit fences to drop undeclared keys",
 		"tk repair` does not drop them",
@@ -131,6 +132,37 @@ func TestRequiredSectionsOnly(t *testing.T) {
 	want := len(skill.RequiredHeadings())
 	if count != want {
 		t.Fatalf("want %d ## sections, got %d", want, count)
+	}
+}
+
+func TestSkillListsScopeAutoCommit(t *testing.T) {
+	text := skill.Text()
+	if !strings.Contains(text, "tk scope auto-commit [true|false] [--scope S]") {
+		t.Error("skill Commands must list tk scope auto-commit")
+	}
+	manage := ""
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "Manage scopes:") {
+			manage = line
+			break
+		}
+	}
+	if manage == "" {
+		t.Error("skill must have a Manage scopes line")
+	} else if !strings.Contains(manage, "auto-commit") {
+		t.Errorf("skill Manage scopes must name auto-commit, got %q", manage)
+	}
+	if !strings.Contains(text, "scope auto-commit") {
+		t.Error("skill self-commit list must name scope auto-commit")
+	}
+	if !strings.Contains(text, "later mutators are repo-driven") {
+		t.Error("skill must teach the false-flip last-commit boundary")
+	}
+	if !strings.Contains(text, "allowlisted dirty") {
+		t.Error("skill must teach that false flip snapshots leftover allowlisted dirt")
+	}
+	if strings.Contains(text, "tk scope mode") {
+		t.Error("skill must not list a tk scope mode writer")
 	}
 }
 

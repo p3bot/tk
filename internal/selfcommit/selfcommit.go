@@ -39,6 +39,8 @@ func Commit(ctx context.Context, req Request) error {
 
 // CommitCore stages matchable paths and commits under the fixed message — no push.
 // Caller must hold the git-root commit lock. Byte-identical rewrite is a clean no-op.
+// A failed staged-check or commit unstages those paths so the index is not left
+// holding a write that did not land.
 func CommitCore(ctx context.Context, req Request) error {
 	paths := []string{req.NewPath}
 	if req.OldPath != "" && req.OldPath != req.NewPath && matchable(ctx, req.GitRoot, req.OldPath) {
@@ -47,17 +49,7 @@ func CommitCore(ctx context.Context, req Request) error {
 	if err := git.Add(ctx, req.GitRoot, paths); err != nil {
 		return err
 	}
-	staged, err := git.HasStagedChanges(ctx, req.GitRoot)
-	if err != nil {
-		return err
-	}
-	if !staged {
-		return nil
-	}
-	if err := git.Commit(ctx, req.GitRoot, req.Message); err != nil {
-		return fmt.Errorf("commit %s: %w", req.Message, err)
-	}
-	return nil
+	return commitStaged(ctx, req.GitRoot, req.Message, paths)
 }
 
 // BatchRequest is a multi-file self-commit: fixed message and every touched path.
@@ -81,7 +73,8 @@ func CommitPaths(ctx context.Context, req BatchRequest) error {
 }
 
 // CommitPathsCore stages every matchable path and commits — no push.
-// Caller must hold the git-root commit lock.
+// Caller must hold the git-root commit lock. A failed staged-check or commit
+// unstages those paths so the index is not left holding a write that did not land.
 func CommitPathsCore(ctx context.Context, req BatchRequest) error {
 	var stage []string
 	seen := map[string]bool{}
@@ -100,17 +93,30 @@ func CommitPathsCore(ctx context.Context, req BatchRequest) error {
 	if err := git.Add(ctx, req.GitRoot, stage); err != nil {
 		return err
 	}
-	staged, err := git.HasStagedChanges(ctx, req.GitRoot)
+	return commitStaged(ctx, req.GitRoot, req.Message, stage)
+}
+
+// commitStaged commits paths already in the index. Any error after add unstages
+// them. Byte-identical paths are a clean no-op.
+func commitStaged(ctx context.Context, gitRoot, message string, paths []string) error {
+	staged, err := git.HasStagedChanges(ctx, gitRoot, paths...)
 	if err != nil {
-		return err
+		return unstageAfter(ctx, gitRoot, paths, err)
 	}
 	if !staged {
 		return nil
 	}
-	if err := git.Commit(ctx, req.GitRoot, req.Message); err != nil {
-		return fmt.Errorf("commit %s: %w", req.Message, err)
+	if err := git.Commit(ctx, gitRoot, message, paths); err != nil {
+		return unstageAfter(ctx, gitRoot, paths, fmt.Errorf("commit %s: %w", message, err))
 	}
 	return nil
+}
+
+func unstageAfter(ctx context.Context, gitRoot string, paths []string, err error) error {
+	if uerr := git.Unstage(ctx, gitRoot, paths); uerr != nil {
+		return fmt.Errorf("%w (also failed to unstage: %w)", err, uerr)
+	}
+	return err
 }
 
 // matchable reports whether git add can name path: still present, or tracked (deletion).

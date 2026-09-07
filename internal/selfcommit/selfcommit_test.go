@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/testgit"
 )
@@ -167,5 +168,132 @@ func TestCommitNoOpOnIdenticalRewrite(t *testing.T) {
 	log := gitCmd(t, repo, "log", "--oneline")
 	if strings.Count(strings.TrimSpace(log), "\n") != 0 {
 		t.Errorf("no-op self-commit must not add a commit, log=%q", log)
+	}
+}
+
+func TestCommitPathsCoreUnstagesOnCommitFailure(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	state := t.TempDir()
+	repo := newRepo(t)
+	p := filepath.Join(repo, "wc", "tk.cue")
+	write(t, p, "autoCommit: false\n")
+	gitCmd(t, repo, "add", "wc/tk.cue")
+	gitCmd(t, repo, "commit", "-m", "seed")
+
+	hooks := filepath.Join(repo, ".git", "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "config", "core.hooksPath", hooks)
+	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	write(t, p, "autoCommit: true\n")
+	err := CommitPaths(ctx, BatchRequest{
+		StateDir: state, GitRoot: repo,
+		Message: "tk: scope auto-commit true",
+		Paths:   []string{p},
+	})
+	if err == nil {
+		t.Fatal("want commit failure")
+	}
+	staged, err := git.HasStagedChanges(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if staged {
+		t.Error("failed CommitPaths must not leave paths staged")
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "autoCommit: true\n" {
+		t.Errorf("working tree must keep the write, got %q", data)
+	}
+}
+
+func TestCommitCoreUnstagesOnCommitFailure(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	state := t.TempDir()
+	repo := newRepo(t)
+	p := filepath.Join(repo, "wc", "tk.cue")
+	write(t, p, "autoCommit: false\n")
+	gitCmd(t, repo, "add", "wc/tk.cue")
+	gitCmd(t, repo, "commit", "-m", "seed")
+
+	hooks := filepath.Join(repo, ".git", "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "config", "core.hooksPath", hooks)
+	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	write(t, p, "autoCommit: true\n")
+	err := Commit(ctx, Request{
+		StateDir: state, GitRoot: repo,
+		Message: "tk: scope auto-commit true",
+		NewPath: p,
+	})
+	if err == nil {
+		t.Fatal("want commit failure")
+	}
+	staged, err := git.HasStagedChanges(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if staged {
+		t.Error("failed Commit must not leave paths staged")
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "autoCommit: true\n" {
+		t.Errorf("working tree must keep the write, got %q", data)
+	}
+}
+
+func TestCommitPathsCoreLeavesUnrelatedStaged(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	state := t.TempDir()
+	repo := newRepo(t)
+	cue := filepath.Join(repo, "wc", "tk.cue")
+	host := filepath.Join(repo, "host.go")
+	write(t, cue, "autoCommit: false\n")
+	write(t, host, "package host\n")
+	gitCmd(t, repo, "add", "wc/tk.cue", "host.go")
+	gitCmd(t, repo, "commit", "-m", "seed")
+
+	write(t, cue, "autoCommit: true\n")
+	write(t, host, "package host\n// wip\n")
+	gitCmd(t, repo, "add", "host.go")
+
+	if err := CommitPaths(ctx, BatchRequest{
+		StateDir: state, GitRoot: repo,
+		Message: "tk: scope auto-commit true",
+		Paths:   []string{cue},
+	}); err != nil {
+		t.Fatalf("CommitPaths: %v", err)
+	}
+	names := gitCmd(t, repo, "show", "--name-only", "--pretty=format:", "HEAD")
+	if !strings.Contains(names, "tk.cue") {
+		t.Errorf("tk.cue must be in the commit, names:\n%s", names)
+	}
+	if strings.Contains(names, "host.go") {
+		t.Errorf("unrelated staged path must not ride the commit, names:\n%s", names)
+	}
+	staged, err := git.HasStagedChanges(ctx, repo, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !staged {
+		t.Error("unrelated path must stay staged")
 	}
 }

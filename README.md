@@ -57,6 +57,7 @@ tk scope rebind <dir> --name <name> [--code-root <path>]
 tk scope forget <name>
 tk scope list          # bare `tk scope` and `tk scopes` also run list
 tk scope rename <old> <new>
+tk scope auto-commit [true|false] [--scope S]  # read or set git-root-wide autoCommit
 tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields in tk.cue
 ```
 
@@ -73,6 +74,10 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
   where `mode` is `tk-driven`, `repo-driven`, `plain-files`, or `unknown`.
 - `rename` renames a scope end-to-end (registry, lens, note default, `tk.cue` name,
   ticket ids) and drops this machine's current-ticket pointer for that scope.
+- `auto-commit` prints the evaluated `autoCommit` bool, or rewrites it to
+  `true`/`false` for every registered scope that shares the dir's git-root
+  (already-that-value is ensure: exit 0, no rewrite). Mode labels stay derived;
+  a `false` set is the last tk-owned commit (allowlisted dirty paths ride it), then host git push if unpushed.
 - `field` reads and rewrites custom field declarations under `fields:` in the
   ambient scope's `tk.cue` (`list`, `set`, `unset`). Optional `required` is soft
   policy only (`required_missing:` on meta/mark; never a hard refuse).

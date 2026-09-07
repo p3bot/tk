@@ -13,6 +13,10 @@ func checkMidRebase(ctx context.Context, scope string, autoCommit bool, root str
 	return writeengine.CheckMidRebase(ctx, scope, autoCommit, root, hasRoot)
 }
 
+func checkGitRootMidRebase(ctx context.Context, scope, root string, hasRoot bool) error {
+	return writeengine.CheckGitRootMidRebase(ctx, scope, root, hasRoot)
+}
+
 func (e *engine) tkDrivenSyncNeeded(ctx context.Context, c *cobra.Command, dir, root string) {
 	if reason := writeengine.SyncNeededReason(ctx, e.app.StateDir, dir, root); reason != "" {
 		stderrln(c, token.Line(token.SyncNeeded, reason))

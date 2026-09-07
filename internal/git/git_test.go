@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/p3bot/tk/internal/testgit"
@@ -66,11 +67,108 @@ func TestAddCommitAndStagedChanges(t *testing.T) {
 	if !staged {
 		t.Error("the added path should be staged")
 	}
-	if err := Commit(ctx, repo, "tk: wc-ab2c -> todo"); err != nil {
+	if err := Commit(ctx, repo, "tk: wc-ab2c -> todo", []string{p}); err != nil {
 		t.Fatal(err)
 	}
 	if !Tracked(ctx, repo, p) {
 		t.Error("committed path must be tracked")
+	}
+}
+
+func TestUnstageDropsIndexKeepsWorktree(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	repo := newRepo(t)
+	p := filepath.Join(repo, "f")
+	write(t, p, "old\n")
+	if err := Add(ctx, repo, []string{p}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Commit(ctx, repo, "seed", []string{p}); err != nil {
+		t.Fatal(err)
+	}
+	write(t, p, "new\n")
+	if err := Add(ctx, repo, []string{p}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Unstage(ctx, repo, []string{p}); err != nil {
+		t.Fatalf("Unstage: %v", err)
+	}
+	staged, err := HasStagedChanges(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if staged {
+		t.Error("index must match HEAD after Unstage")
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "new\n" {
+		t.Errorf("working tree = %q, want new", data)
+	}
+}
+
+func TestUnstageEmptyRepoDropsStagedAdd(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	repo := newRepo(t)
+	p := filepath.Join(repo, "f")
+	write(t, p, "x\n")
+	if err := Add(ctx, repo, []string{p}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Unstage(ctx, repo, []string{p}); err != nil {
+		t.Fatalf("Unstage with no HEAD: %v", err)
+	}
+	staged, err := HasStagedChanges(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if staged {
+		t.Error("empty-repo Unstage must not leave the path staged")
+	}
+}
+
+func TestCommitPathspecLeavesOtherStaged(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	repo := newRepo(t)
+	keep := filepath.Join(repo, "keep")
+	other := filepath.Join(repo, "other")
+	write(t, keep, "seed\n")
+	if err := Add(ctx, repo, []string{keep}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Commit(ctx, repo, "seed", []string{keep}); err != nil {
+		t.Fatal(err)
+	}
+	write(t, keep, "tk\n")
+	write(t, other, "host\n")
+	if err := Add(ctx, repo, []string{keep, other}); err != nil {
+		t.Fatal(err)
+	}
+	ours, err := HasStagedChanges(ctx, repo, keep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ours {
+		t.Fatal("named path should be staged")
+	}
+	if err := Commit(ctx, repo, "tk only", []string{keep}); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	names := testgit.Combined(t, repo, "show", "--name-only", "--pretty=format:", "HEAD")
+	if !strings.Contains(names, "keep") || strings.Contains(names, "other") {
+		t.Errorf("commit must be keep only, names:\n%s", names)
+	}
+	staged, err := HasStagedChanges(ctx, repo, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !staged {
+		t.Error("unrelated path must stay staged")
 	}
 }
 

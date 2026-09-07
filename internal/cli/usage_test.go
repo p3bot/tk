@@ -80,6 +80,7 @@ func TestArityTooManyArguments(t *testing.T) {
 		{"pulse extra", []string{"pulse", "mode", "extra"}, "tk pulse [key] [--scope S]"},
 		{"create extra", []string{"create", "one", "todo", "three"}, "tk create <title> [status] [--scope S] [--tag T]..."},
 		{"reindex extra", []string{"reindex", "x"}, "tk reindex"},
+		{"auto-commit extra", []string{"scope", "auto-commit", "true", "false"}, "tk scope auto-commit [true|false] [--scope S]"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

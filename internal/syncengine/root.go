@@ -2,14 +2,13 @@ package syncengine
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/p3bot/tk/internal/flock"
 	"github.com/p3bot/tk/internal/git"
-	"github.com/p3bot/tk/internal/gitroot"
 	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/integrity"
+	"github.com/p3bot/tk/internal/scopeadmin"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/token"
@@ -145,13 +144,11 @@ func syncPreflight(deps Deps, r Reporter, root string) bool {
 }
 
 func siblingScopeNames(deps Deps, root string) []string {
-	var out []string
-	for name, entry := range deps.Reg.Scopes {
-		if sgr, ok := gitroot.RepoRoot(entry.Dir); ok && sgr == root {
-			out = append(out, name)
-		}
+	peers := scopeadmin.GitRootScopes(deps.Reg, root)
+	out := make([]string, len(peers))
+	for i, p := range peers {
+		out[i] = p.Name
 	}
-	sort.Strings(out)
 	return out
 }
 

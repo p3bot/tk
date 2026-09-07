@@ -109,8 +109,19 @@ func RefuseUnusable(res *reconcile.Result, scope, dir string) error {
 }
 
 // CheckMidRebase refuses auto-commit writes on a mid-rebase git-root (repo-granular).
+// Repo-driven mutators stay allowed: autoCommit false is a quiet no-op.
 func CheckMidRebase(ctx context.Context, scope string, autoCommit bool, root string, hasRoot bool) error {
-	if !autoCommit || !hasRoot {
+	if !autoCommit {
+		return nil
+	}
+	return CheckGitRootMidRebase(ctx, scope, root, hasRoot)
+}
+
+// CheckGitRootMidRebase refuses when the git-root is mid-rebase, regardless of
+// autoCommit. Callers that must not become tk-driven onto a paused rebase use
+// this instead of passing a fake true into CheckMidRebase.
+func CheckGitRootMidRebase(ctx context.Context, scope, root string, hasRoot bool) error {
+	if !hasRoot {
 		return nil
 	}
 	if !git.MidRebase(ctx, root) {

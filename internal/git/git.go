@@ -50,9 +50,27 @@ func Add(ctx context.Context, gitRoot string, paths []string) error {
 	return err
 }
 
-// Commit records the staged changes with the given fixed message. Never pushes.
-func Commit(ctx context.Context, gitRoot, message string) error {
-	_, err := run(ctx, gitRoot, "commit", "-m", message)
+// Unstage restores the index for paths from HEAD without touching the working tree.
+// An empty repo (no HEAD) drops the paths from the index so a failed first commit
+// does not leave them staged.
+func Unstage(ctx context.Context, gitRoot string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"reset", "-q", "HEAD", "--"}, paths...)
+	_, err := run(ctx, gitRoot, args...)
+	return err
+}
+
+// Commit records the given paths under the fixed message. Never pushes.
+// An empty path list is a no-op. The paths are a commit pathspec (--only), so
+// already-staged unrelated files stay staged and out of this commit.
+func Commit(ctx context.Context, gitRoot, message string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"commit", "-m", message, "--"}, paths...)
+	_, err := run(ctx, gitRoot, args...)
 	return err
 }
 
@@ -65,9 +83,15 @@ func Tracked(ctx context.Context, gitRoot, path string) bool {
 }
 
 // HasStagedChanges reports whether the index differs from HEAD.
-// Self-commit checks before committing so a byte-identical rewrite is a clean no-op.
-func HasStagedChanges(ctx context.Context, gitRoot string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--quiet")
+// If paths is non-empty, only those pathspecs are compared, so unrelated staged
+// files do not make a byte-identical rewrite look dirty.
+func HasStagedChanges(ctx context.Context, gitRoot string, paths ...string) (bool, error) {
+	args := []string{"diff", "--cached", "--quiet"}
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = gitRoot
 	err := cmd.Run()
 	if err == nil {

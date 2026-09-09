@@ -1295,7 +1295,7 @@ func TestPOSTMarkSoftRequiredMissing(t *testing.T) {
 func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
-	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [style]\n")
 	s := mustServer(t, app)
 
 	board := do(s, "/scope/wc").Body.String()
@@ -1348,6 +1348,12 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	}
 	if !strings.Contains(ins, `method="post" action="/scope/wc/meta"`) {
 		t.Fatalf("inspect missing meta form: %s", ins)
+	}
+	if !strings.Contains(ins, `name="op" value="remove"`) {
+		t.Fatalf("inspect must post op=remove: %s", ins)
+	}
+	if strings.Contains(ins, `name="op" value="rm"`) {
+		t.Fatalf("inspect still posts op=rm: %s", ins)
 	}
 	if !strings.Contains(ins, `method="post" action="/scope/wc/order"`) {
 		t.Fatalf("inspect missing order form: %s", ins)
@@ -2261,7 +2267,7 @@ func TestInspectMetaWrites(t *testing.T) {
 			t.Fatalf("missing tag_new banner: %s", body)
 		}
 
-		w = postMeta(s, "rm", "tags", "frontend")
+		w = postMeta(s, "remove", "tags", "frontend")
 		page = mustFollow(t, s, w)
 		raw := ticketBody(t, dir, "wc-ab2c")
 		if strings.Contains(raw, "frontend") || strings.Contains(raw, "tags:") {
@@ -2397,7 +2403,7 @@ func TestInspectMetaWrites(t *testing.T) {
 			t.Fatalf("inspect owners: %s", page.Body.String())
 		}
 
-		w = postMeta(s, "rm", "owners", "ada")
+		w = postMeta(s, "remove", "owners", "ada")
 		page = mustFollow(t, s, w)
 		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "owners:") {
 			t.Fatalf("owners still on file: %s", ticketBody(t, dir, "wc-ab2c"))
@@ -2492,7 +2498,7 @@ func TestInspectMetaWrites(t *testing.T) {
 			t.Fatalf("inspect links: %s", page.Body.String())
 		}
 
-		w = postMeta(s, "rm", "links", "https://example.com/a")
+		w = postMeta(s, "remove", "links", "https://example.com/a")
 		page = mustFollow(t, s, w)
 		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "links:") {
 			t.Fatalf("links still on file: %s", ticketBody(t, dir, "wc-ab2c"))
@@ -2502,7 +2508,22 @@ func TestInspectMetaWrites(t *testing.T) {
 		}
 	})
 
-	t.Run("blank add rm is 400", func(t *testing.T) {
+	t.Run("rm alias still removes", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [keep]\n")
+		s := mustServer(t, app)
+		w := postMeta(s, "rm", "tags", "keep")
+		page := mustFollow(t, s, w)
+		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "keep") {
+			t.Fatalf("rm alias did not remove: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if strings.Contains(page.Body.String(), `class="tag">keep</span>`) {
+			t.Fatalf("inspect still shows tag: %s", page.Body.String())
+		}
+	})
+
+	t.Run("blank add remove is 400", func(t *testing.T) {
 		app := newTestApp(t)
 		dir := initScope(t, app, "wc")
 		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [keep]\n")
@@ -2513,9 +2534,9 @@ func TestInspectMetaWrites(t *testing.T) {
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("blank add: want 400, got %d %s", w.Code, w.Body.String())
 		}
-		w = postMeta(s, "rm", "tags", "")
+		w = postMeta(s, "remove", "tags", "")
 		if w.Code != http.StatusBadRequest {
-			t.Fatalf("blank rm: want 400, got %d %s", w.Code, w.Body.String())
+			t.Fatalf("blank remove: want 400, got %d %s", w.Code, w.Body.String())
 		}
 		if ticketBody(t, dir, "wc-ab2c") != before {
 			t.Fatalf("blank write mutated: %s", ticketBody(t, dir, "wc-ab2c"))

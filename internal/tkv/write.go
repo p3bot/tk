@@ -246,7 +246,7 @@ func (s *Server) postMeta(w http.ResponseWriter, r *http.Request) error {
 		return errBadRequest("missing key")
 	}
 	value := strings.TrimSpace(r.FormValue("value"))
-	if (op == writeengine.MetaAdd || op == writeengine.MetaRm) && value == "" {
+	if (op == writeengine.MetaAdd || op == writeengine.MetaRemove) && value == "" {
 		return errBadRequest(fmt.Sprintf("meta %s value must be non-empty", op))
 	}
 
@@ -343,8 +343,8 @@ func parseMetaOp(raw string) (writeengine.MetaOp, error) {
 		return writeengine.MetaSet, nil
 	case "add":
 		return writeengine.MetaAdd, nil
-	case "rm":
-		return writeengine.MetaRm, nil
+	case "remove", "rm":
+		return writeengine.MetaRemove, nil
 	case "":
 		return 0, errBadRequest("missing op")
 	default:

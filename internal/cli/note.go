@@ -29,22 +29,23 @@ func newNoteCmd(app *App) *cobra.Command {
 		Aliases: []string{"notes"},
 		Short:   "Read and write committed scope notes",
 		Long: "Scope worklog documents at <scope-dir>/notes/<slug>.md. Bare `tk note` (or a\n" +
-			"slug / --name) prints the file bytes. Missing and empty files are empty stdout,\n" +
-			"exit 0. `list` prints addressable slugs, one per line, alphabetical.\n" +
+			"slug / --name) prints the file bytes. A missing file is non-zero with the path\n" +
+			"on stderr and empty stdout. An empty file is empty stdout, exit 0. `list` prints\n" +
+			"addressable slugs, one per line, alphabetical.\n" +
 			"`add` appends one line; `set` replaces the file (`-` reads stdin); `edit` opens\n" +
-			"$EDITOR; `delete` unlinks the default (`--name` is one-shot). `use` sets this\n" +
+			"$EDITOR; `remove` unlinks the default (`--name` is one-shot). `use` sets this\n" +
 			"machine's default slug. Omit --name and a positional slug to use that\n" +
 			"machine-local default (built-in `default` when unset). --name and a positional\n" +
 			"slug are one-shot selectors and never write the stored default.\n" +
 			"Personal slugs (`grant`, `alice`) with `default` as the shared pad are a\n" +
 			"convention, not a CLI rule.\n" +
 			"\n" +
-			"Writes never self-commit. On a tk-driven scope, add, set, and delete ride\n" +
+			"Writes never self-commit. On a tk-driven scope, add, set, and remove ride\n" +
 			"sync_needed: when the allowlist is dirty (same as create); edit does not.\n" +
 			"`use` is XDG-only and never emits sync_needed:. Durability is `tk sync` on a\n" +
 			"tk-driven scope, or a host commit on a repo-driven scope. Notes are not\n" +
 			"tickets: they are not indexed, not listed by `tk list`, and not taught in\n" +
-			"`tk skill`. Alias: notes.",
+			"`tk skill`.",
 		Args: maxArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runNoteCat(app, c, args, scope, name, c.Flags().Changed("name"))
@@ -57,7 +58,7 @@ func newNoteCmd(app *App) *cobra.Command {
 		newNoteAddCmd(app),
 		newNoteSetCmd(app),
 		newNoteEditCmd(app),
-		newNoteDeleteCmd(app),
+		newNoteRemoveCmd(app),
 		newNoteUseCmd(app),
 	)
 	return cmd
@@ -66,8 +67,9 @@ func newNoteCmd(app *App) *cobra.Command {
 func newNoteListCmd(app *App) *cobra.Command {
 	var scope string
 	cmd := &cobra.Command{
-		Use:   "list [--scope S]",
-		Short: "List addressable note slugs",
+		Use:     "list [--scope S]",
+		Aliases: []string{"ls"},
+		Short:   "List addressable note slugs",
 		Long: "Print addressable note slugs under notes/, one per line, alphabetical.\n" +
 			"Reserved verb names, invalid slugs, and nested paths are omitted (doctor owns\n" +
 			"that residue). A missing notes/ directory is empty stdout, exit 0.",
@@ -108,7 +110,7 @@ func newNoteSetCmd(app *App) *cobra.Command {
 		Short: "Replace a note's contents",
 		Long: "Replace the whole file with the joined arguments (one line) or, when `-` is\n" +
 			"the sole text operand, stdin. The file always ends with a newline. No text,\n" +
-			"an empty string, or empty stdin is usage (use delete to clear). Prints the\n" +
+			"an empty string, or empty stdin is usage (use remove to clear). Prints the\n" +
 			"cleaned absolute path. Never self-commits; a tk-driven scope may ride\n" +
 			"sync_needed: dirty. Durability is tk sync (tk-driven) or a host commit\n" +
 			"(repo-driven).",
@@ -143,11 +145,12 @@ func newNoteEditCmd(app *App) *cobra.Command {
 	return cmd
 }
 
-func newNoteDeleteCmd(app *App) *cobra.Command {
+func newNoteRemoveCmd(app *App) *cobra.Command {
 	var scope, name string
 	cmd := &cobra.Command{
-		Use:   "delete [--name slug]",
-		Short: "Remove a note file",
+		Use:     "remove [--name slug]",
+		Aliases: []string{"rm"},
+		Short:   "Remove a note file",
 		Long: "Unlink a regular note file. Omit --name to unlink this machine's default\n" +
 			"(built-in `default` when unset). --name is a one-shot selector and never\n" +
 			"writes the stored default. Missing is success and silent. An empty notes/\n" +
@@ -156,7 +159,7 @@ func newNoteDeleteCmd(app *App) *cobra.Command {
 			"commit (repo-driven).",
 		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
-			return runNoteDelete(app, c, scope, name, c.Flags().Changed("name"))
+			return runNoteRemove(app, c, scope, name, c.Flags().Changed("name"))
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient; wins over ambient)")
@@ -334,7 +337,7 @@ func runNoteEdit(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet
 	return printNotePath(c, path)
 }
 
-func runNoteDelete(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet bool) error {
+func runNoteRemove(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet bool) error {
 	n, err := openNote(app, c, scopeFlag)
 	if err != nil {
 		return err
@@ -455,7 +458,7 @@ func (n *noteScope) refuseMidRebase(ctx context.Context) error {
 	return checkMidRebase(ctx, n.scope, writeengine.SchemaAutoCommit(schema), root, hasRoot)
 }
 
-// maybeSyncNeeded: create-class hint after add/set/delete. Quiet when the schema
+// maybeSyncNeeded: create-class hint after add/set/remove. Quiet when the schema
 // is unusable or the scope is not tk-driven. Edit does not call this.
 func (n *noteScope) maybeSyncNeeded(c *cobra.Command) {
 	root, hasRoot := scopefile.GitRoot(n.dir)
@@ -561,7 +564,11 @@ func catNoteFile(c *cobra.Command, path string) error {
 	st, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			abs, absErr := absPath(path)
+			if absErr != nil {
+				abs = path
+			}
+			return fmt.Errorf("%s does not exist", abs)
 		}
 		return fmt.Errorf("stat %s: %w", path, err)
 	}

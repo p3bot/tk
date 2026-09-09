@@ -19,7 +19,7 @@ func newSkillCmd(app *App) *cobra.Command {
 		Aliases: []string{"skills"},
 		Short:   "Print the agent skill contract or manage installs",
 		Long: "Print the locked agent skill contract to stdout as agent-facing workflow\n" +
-			"markdown. No ambient scope is required. Alias: skills.\n\n" +
+			"markdown. No ambient scope is required.\n\n" +
 			"Subcommands install, list, and uninstall place or remove the skill under\n" +
 			"agent skills directories resolved via agentdex (no hardcoded product paths).",
 		Args: noArgs(),
@@ -58,8 +58,9 @@ func newSkillInstallCmd(app *App) *cobra.Command {
 func newSkillListCmd(app *App) *cobra.Command {
 	var local bool
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List installed skill copies for installed agents",
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List installed skill copies for installed agents",
 		Long: "Inventory existing tk/SKILL.md paths under candidates of installed\n" +
 			"agents that have a skills concept. No agent positionals. Paths print in\n" +
 			"alphabetical order. Empty inventory exits 0 with empty stdout and a stderr note.",

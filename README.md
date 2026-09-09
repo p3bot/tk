@@ -90,8 +90,8 @@ they are not part of the agent skill. Humans (or an agent that needs session
 context) use `tk note` (`notes` is an alias).
 
 ```sh
-tk note                              # print this machine's default note
-tk note [slug]                       # print notes/<slug>.md (one-shot)
+tk note                              # print this machine's default note (missing is an error)
+tk note [slug]                       # print notes/<slug>.md (one-shot; missing is an error)
 tk note --name <slug>                # same as tk note [slug]; never writes the default
 tk note list                         # addressable slugs, alphabetical
 tk note use                          # print the effective default slug
@@ -103,8 +103,8 @@ tk note add --name <slug> <text...>  # append one line to a named note
 tk note set <text...>                # replace the default
 tk note set --name <slug> -          # replace named from stdin
 tk note edit                         # $EDITOR on the default
-tk note delete                       # unlink the default
-tk note delete --name <slug>         # unlink named (one-shot)
+tk note remove                       # unlink the default
+tk note remove --name <slug>         # unlink named (one-shot)
 ```
 
 `use` is machine-local (XDG `note.cue`, keyed by scope name). Documents stay
@@ -114,14 +114,16 @@ committed under `notes/`; the pointer is not stored in `tk.cue`, `me.cue`, or
 slugs (`grant`, `alice`) with `default` as the shared pad are a convention,
 not a CLI rule.
 
-`add`, `set`, `edit`, and `delete` never self-commit. On a tk-driven scope,
-`add`, `set`, and `delete` ride `sync_needed: dirty` (same as `tk create`);
+`add`, `set`, `edit`, and `remove` never self-commit. On a tk-driven scope,
+`add`, `set`, and `remove` ride `sync_needed: dirty` (same as `tk create`);
 `edit` and `use` do not. Durability is `tk sync` on a tk-driven scope, or a host
 commit on a repo-driven scope. Slugs follow the
-existing ticket-slug grammar (`a-z0-9` and hyphens, 1–48). `list`, `add`,
-`set`, `edit`, `delete`, `help`, and `use` are reserved names and cannot be
-document slugs. `tk pulse note` prints the path of `notes/<effective-slug>.md`
-whether or not the file exists.
+existing ticket-slug grammar (`a-z0-9` and hyphens, 1–48). `list`, `ls`, `add`,
+`set`, `edit`, `remove`, `rm`, `help`, and `use` are reserved names and cannot be
+document slugs. A missing note on `tk note` / `tk note [slug]` is non-zero with
+the path on stderr and empty stdout; an empty file is empty stdout, exit 0.
+`tk pulse note` prints the path of `notes/<effective-slug>.md` whether or not
+the file exists.
 
 ## Output and exit codes
 

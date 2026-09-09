@@ -11,7 +11,7 @@ import (
 	"github.com/p3bot/tk/internal/scopeconfig"
 )
 
-// MetaOp is set, add, or rm.
+// MetaOp is set, add, or remove.
 type MetaOp int
 
 const (
@@ -19,8 +19,8 @@ const (
 	MetaSet MetaOp = iota
 	// MetaAdd appends one multi-value entry.
 	MetaAdd
-	// MetaRm removes one multi-value entry.
-	MetaRm
+	// MetaRemove removes one multi-value entry.
+	MetaRemove
 )
 
 func (op MetaOp) String() string {
@@ -29,8 +29,8 @@ func (op MetaOp) String() string {
 		return "set"
 	case MetaAdd:
 		return "add"
-	case MetaRm:
-		return "rm"
+	case MetaRemove:
+		return "remove"
 	default:
 		return "meta"
 	}
@@ -104,9 +104,9 @@ func Meta(deps Deps, in MetaInput) (Result, error) {
 	switch in.Op {
 	case MetaSet:
 		if class != MetaKeyScalar {
-			return out, &UsageError{Msg: fmt.Sprintf("key %q is multi-value; use meta add/rm, not set", key)}
+			return out, &UsageError{Msg: fmt.Sprintf("key %q is multi-value; use meta add/remove, not set", key)}
 		}
-	case MetaAdd, MetaRm:
+	case MetaAdd, MetaRemove:
 		if class != MetaKeyMulti {
 			return out, &UsageError{Msg: fmt.Sprintf("key %q is scalar; use meta set, not %s", key, in.Op)}
 		}
@@ -430,7 +430,7 @@ func mutateStringList(list []string, op MetaOp, value string, field scopeconfig.
 			}
 		}
 		return append(list, value), nil
-	case MetaRm:
+	case MetaRemove:
 		out := make([]string, 0, len(list))
 		removed := false
 		for _, e := range list {

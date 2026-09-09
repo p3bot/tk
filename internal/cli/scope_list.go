@@ -8,8 +8,9 @@ import (
 
 func newScopeListCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List every registered scope as parse-stable TSV",
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List every registered scope as parse-stable TSV",
 		Long: "Print one line per registered scope, sorted by name ascending:\n" +
 			"  <name>\\t<dir>\\t<root>\\t<mode>\n" +
 			"name/dir/root are pure registry reads (cleaned absolute paths); mode stats\n" +

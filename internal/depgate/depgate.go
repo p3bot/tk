@@ -27,7 +27,7 @@ type Deps struct {
 
 // Gate is the path-keyed board depends graph for a set of home scopes plus
 // resolved depend-target tickets. It is not the id-neighbourhood walker used
-// by tk deps.
+// by tk depends.
 type Gate struct {
 	rec     *reconcile.Reconciler
 	reg     *registry.Registry

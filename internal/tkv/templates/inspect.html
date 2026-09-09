@@ -62,7 +62,7 @@
     {{range .Tags}}
     <li>
       <span class="tag">{{.}}</span>
-      {{if $.CanMeta}}{{template "metaRm" ($.MetaRm "tags" .)}}{{end}}
+      {{if $.CanMeta}}{{template "metaRemove" ($.MetaRemove "tags" .)}}{{end}}
     </li>
     {{end}}
   </ul>
@@ -79,7 +79,7 @@
       {{range $field.Values}}
       <li>
         <span>{{.}}</span>
-        {{if and $.CanMeta $field.Writable}}{{template "metaRm" ($.MetaRm $field.Key .)}}{{end}}
+        {{if and $.CanMeta $field.Writable}}{{template "metaRemove" ($.MetaRemove $field.Key .)}}{{end}}
       </li>
       {{end}}
     </ul>
@@ -134,7 +134,7 @@
     {{range .Links}}
     <li>
       <a href="{{.}}">{{.}}</a>
-      {{if $.CanMeta}}{{template "metaRm" ($.MetaRm "links" .)}}{{end}}
+      {{if $.CanMeta}}{{template "metaRemove" ($.MetaRemove "links" .)}}{{end}}
     </li>
     {{end}}
   </ul>
@@ -177,10 +177,10 @@
 </form>
 {{end}}
 
-{{define "metaRm"}}
+{{define "metaRemove"}}
 <form class="write" method="post" action="/scope/{{.Scope}}/meta">
   <input type="hidden" name="id" value="{{.ID}}">
-  <input type="hidden" name="op" value="rm">
+  <input type="hidden" name="op" value="remove">
   <input type="hidden" name="key" value="{{.Key}}">
   <input type="hidden" name="value" value="{{.Value}}">
   <button type="submit" aria-label="Remove {{.Key}} {{.Value}}">Remove</button>
@@ -197,7 +197,7 @@
     {{else}}
       <a href="{{.Href}}">{{.ID}}</a> {{.Status}} {{.Title}}
     {{end}}
-    {{if and $.CanMeta .Owned}}{{template "metaRm" ($.MetaRm .ID)}}{{end}}
+    {{if and $.CanMeta .Owned}}{{template "metaRemove" ($.MetaRemove .ID)}}{{end}}
   </li>
   {{end}}
 </ul>

@@ -106,7 +106,7 @@ func newRootCmd(app *App) *cobra.Command {
 	list := newListCmd(app)
 	pulse := newPulseCmd(app)
 	meta := newMetaCmd(app)
-	deps := newDepsCmd(app)
+	depends := newDependsCmd(app)
 	search := newSearchCmd(app)
 	query := newQueryCmd(app)
 	lens := newLensCmd(app)
@@ -130,7 +130,7 @@ func newRootCmd(app *App) *cobra.Command {
 	list.GroupID = groupBoardID
 	pulse.GroupID = groupBoardID
 	meta.GroupID = groupBoardID
-	deps.GroupID = groupBoardID
+	depends.GroupID = groupBoardID
 	search.GroupID = groupBoardID
 	query.GroupID = groupBoardID
 	lens.GroupID = groupBoardID
@@ -147,7 +147,7 @@ func newRootCmd(app *App) *cobra.Command {
 
 	root.AddCommand(
 		create, get, edit, mark, orderCmd, next,
-		list, pulse, meta, deps, search, query, lens, me, note, tags,
+		list, pulse, meta, depends, search, query, lens, me, note, tags,
 		scope, sync, doctor, repairCmd, reindex, skill,
 	)
 	return root

@@ -35,8 +35,8 @@ description: >-
 - id, created: never invent or "repair"
 - status_conflict: not via meta; see Recovery
 - summary / scalar customs → tk meta set
-- depends, related, tags, links → tk meta add|rm
-- related write is one-way on the subject only (no mirror on the target); deps shows both directions
+- depends, related, tags, links → tk meta add|remove
+- related write is one-way on the subject only (no mirror on the target); tk depends shows both directions
 - custom fields: declare per scope under `fields:` in tk.cue (CLI: `tk scope field`); meta allowlists built-ins plus declared names only; optional `required: true` is soft-warn policy only
 - retire a custom key with `tk scope field unset <name> --strip`: declaration gone and the key gone from all tickets in the scope (including when the declaration was already removed). Without `--strip`, unset is declaration-only and tickets stay untouched. Do not hand-edit fences to drop undeclared keys; `tk repair` does not drop them
 
@@ -54,8 +54,8 @@ tk pulse [key] [--scope S]                                          # Scope puls
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
 tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key; soft required_missing: if gaps remain
 tk meta add <id> <key> <value> [--scope S]                          # Append multi-value frontmatter entry; soft required_missing: if gaps remain
-tk meta rm <id> <key> <value> [--scope S]                           # Remove multi-value frontmatter entry; soft required_missing: if gaps remain
-tk deps <id> [--scope S] [--transitive] [--tree]                    # Depends/related neighbourhood
+tk meta remove <id> <key> <value> [--scope S]                       # Remove multi-value frontmatter entry; soft required_missing: if gaps remain
+tk depends <id> [--scope S] [--transitive] [--tree]                 # Depends/related neighbourhood
 tk search <terms> [--scope S]                                       # FTS5 search titles and bodies
 tk query <sql>                                                      # Ad-hoc read-only SQL; schema unstable
 tk query --schema                                                   # Debug only — do not script against it
@@ -103,13 +103,13 @@ Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk ord
 
 Board: `tk list` | `tk list --open` | `tk list --all` -> `tk tags` | `tk order` | `tk lens` | `tk search`
 
-Dependencies: `tk deps <id>` -> `tk meta add|rm depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:)
+Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:)
 
 Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `auto-commit` | `field list|set|unset`
 
 Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
-  - Commands that self commit: mark, order, next --claim, meta set/add/rm, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
+  - Commands that self commit: mark, order, next --claim, meta set/add/remove, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
   - Create and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
 - repo-driven: host git commit/push (no `tk sync`)

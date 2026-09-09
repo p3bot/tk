@@ -14,15 +14,14 @@ func newSearchCmd(app *App) *cobra.Command {
 	var scope string
 	cmd := &cobra.Command{
 		Use:     "search <terms> [--scope S]",
-		Aliases: []string{"find"},
+		Aliases: []string{"find", "fd"},
 		Short:   "Full-text search over titles and bodies (FTS5, bm25)",
 		Long: "Search every scope's titles and bodies, machine-wide by default or bounded by\n" +
 			"--scope. Results are ranked bm25 (best first), tie-broken by full id, and\n" +
 			"include archived terminals and parse_error rows. One TSV line per hit:\n" +
 			"  <full-id>\\t<status>\\t<title>\\t<summary>\\t<absolute-path>\n" +
 			"A parse_error hit has an empty status but a filled path so repair stays\n" +
-			"discoverable. No lens, no status filter. Empty result exits 0. Pure read.\n" +
-			"Alias: find.",
+			"discoverable. No lens, no status filter. Empty result exits 0. Pure read.",
 		Args: anyArgs(),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runSearch(app, c, args, scope)

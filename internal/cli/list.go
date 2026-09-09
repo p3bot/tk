@@ -21,8 +21,9 @@ func newListCmd(app *App) *cobra.Command {
 		noLens bool
 	)
 	cmd := &cobra.Command{
-		Use:   "list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]",
-		Short: "Board / inventory for one scope as parse-stable TSV",
+		Use:     "list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]",
+		Aliases: []string{"ls"},
+		Short:   "Board / inventory for one scope as parse-stable TSV",
 		Long: "Print one scope's tickets, sorted (order, id), one TSV line each:\n" +
 			"  <full-id>\\t<status>\\t<title>\\t<waiting-on>\n" +
 			"Headerless TSV (no header row). Summary is not a list column — use\n" +

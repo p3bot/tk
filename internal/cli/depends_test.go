@@ -7,20 +7,20 @@ import (
 	"testing"
 )
 
-func TestDepsDoesNotDumpAllEdgesOrTickets(t *testing.T) {
-	body, err := os.ReadFile("deps.go")
+func TestDependsDoesNotDumpAllEdgesOrTickets(t *testing.T) {
+	body, err := os.ReadFile("depends.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	src := string(body)
 	for _, name := range []string{"AllTickets", "AllEdges", "EdgesFromPath"} {
 		if strings.Contains(src, name) {
-			t.Errorf("deps.go must not call %s", name)
+			t.Errorf("depends.go must not call %s", name)
 		}
 	}
 }
 
-func TestDepsCrossScopeOutboundAndInbound(t *testing.T) {
+func TestDependsCrossScopeOutboundAndInbound(t *testing.T) {
 	app := newApp(t)
 	up := initScope(t, app, "up")
 	wc := initScope(t, app, "wc")
@@ -45,7 +45,7 @@ func TestDepsCrossScopeOutboundAndInbound(t *testing.T) {
 	}
 }
 
-func TestDepsDanglingTargetIsUnresolved(t *testing.T) {
+func TestDependsDanglingTargetIsUnresolved(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "network", "todo", "a0", "# Network\n", false, "depends: [wc-zz99]\n")
@@ -62,7 +62,7 @@ func TestDepsDanglingTargetIsUnresolved(t *testing.T) {
 	}
 }
 
-func TestDepsRelatedBothDirectionsStayOutOfDepends(t *testing.T) {
+func TestDependsRelatedBothDirectionsStayOutOfDepends(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "network", "todo", "a0", "# Network\n", false, "related: [wc-de34]\n")
@@ -88,7 +88,7 @@ func TestDepsRelatedBothDirectionsStayOutOfDepends(t *testing.T) {
 	}
 }
 
-func TestDepsThreeCycleWarnsOnDefault(t *testing.T) {
+func TestDependsThreeCycleWarnsOnDefault(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-aa22", "one", "todo", "a0", "# One\n", false, "depends: [wc-bb33]\n")
@@ -121,7 +121,7 @@ func TestDepsThreeCycleWarnsOnDefault(t *testing.T) {
 	}
 }
 
-func TestDepsThreeScopeInboundTransitiveAndStaleNeighbour(t *testing.T) {
+func TestDependsThreeScopeInboundTransitiveAndStaleNeighbour(t *testing.T) {
 	app := newApp(t)
 	aa := initScope(t, app, "aa")
 	bb := initScope(t, app, "bb")
@@ -155,7 +155,7 @@ func TestDepsThreeScopeInboundTransitiveAndStaleNeighbour(t *testing.T) {
 	}
 }
 
-func TestDepsCrossScopeOutboundStaleNeighbour(t *testing.T) {
+func TestDependsCrossScopeOutboundStaleNeighbour(t *testing.T) {
 	app := newApp(t)
 	aa := initScope(t, app, "aa")
 	bb := initScope(t, app, "bb")

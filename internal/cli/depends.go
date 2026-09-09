@@ -10,25 +10,24 @@ import (
 	"github.com/p3bot/tk/internal/index"
 )
 
-func newDepsCmd(app *App) *cobra.Command {
+func newDependsCmd(app *App) *cobra.Command {
 	var (
 		scope      string
 		transitive bool
 		tree       bool
 	)
 	cmd := &cobra.Command{
-		Use:     "deps <id> [--scope S] [--transitive] [--tree]",
-		Aliases: []string{"depends", "dep"},
+		Use:     "depends <id> [--scope S] [--transitive] [--tree]",
+		Aliases: []string{"deps", "dep"},
 		Short:   "Show a ticket's edge neighbourhood (depends + related)",
 		Long: "Print three sections — depends on, is depended on by, related (both\n" +
 			"directions, non-gating) — each neighbour line carrying id, status, and a short\n" +
 			"label, with (none) for empty sides. --transitive expands depends both ways as\n" +
 			"a flat list; --tree pretty-prints the depends graph. Walks are cycle-safe and\n" +
-			"warn once (pointing at doctor) on a cycle. Pure read; never runs git.\n" +
-			"Aliases: depends, dep.",
+			"warn once (pointing at doctor) on a cycle. Pure read; never runs git.",
 		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
-			return runDeps(app, c, args[0], scope, transitive, tree)
+			return runDepends(app, c, args[0], scope, transitive, tree)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "ambient scope for a short id")
@@ -37,7 +36,7 @@ func newDepsCmd(app *App) *cobra.Command {
 	return cmd
 }
 
-func runDeps(app *App, c *cobra.Command, idArg, scope string, transitive, tree bool) error {
+func runDepends(app *App, c *cobra.Command, idArg, scope string, transitive, tree bool) error {
 	e, err := app.openEngine(c)
 	if err != nil {
 		return err
@@ -53,7 +52,7 @@ func runDeps(app *App, c *cobra.Command, idArg, scope string, transitive, tree b
 	}
 	subject := r.rows[0].ID
 
-	g, err := e.buildDepsGraph(subject, transitive, tree)
+	g, err := e.buildDependsGraph(subject, transitive, tree)
 	if err != nil {
 		return err
 	}
@@ -77,7 +76,7 @@ func runDeps(app *App, c *cobra.Command, idArg, scope string, transitive, tree b
 	return nil
 }
 
-type depsGraph struct {
+type dependsGraph struct {
 	outDep map[string][]string
 	inDep  map[string][]string
 	outRel map[string][]string
@@ -85,8 +84,8 @@ type depsGraph struct {
 	byID   map[string]*index.Ticket
 }
 
-func (e *engine) buildDepsGraph(subject string, transitive, tree bool) (*depsGraph, error) {
-	g := &depsGraph{
+func (e *engine) buildDependsGraph(subject string, transitive, tree bool) (*dependsGraph, error) {
+	g := &dependsGraph{
 		outDep: map[string][]string{}, inDep: map[string][]string{},
 		outRel: map[string][]string{}, inRel: map[string][]string{},
 		byID: map[string]*index.Ticket{},
@@ -126,7 +125,7 @@ func (e *engine) buildDepsGraph(subject string, transitive, tree bool) (*depsGra
 	return g, nil
 }
 
-func (g *depsGraph) addEdge(ed index.Edge) {
+func (g *dependsGraph) addEdge(ed index.Edge) {
 	if ed.Kind == index.EdgeDepends {
 		g.outDep[ed.FromID] = appendUnique(g.outDep[ed.FromID], ed.ToID)
 		g.inDep[ed.ToID] = appendUnique(g.inDep[ed.ToID], ed.FromID)
@@ -136,15 +135,15 @@ func (g *depsGraph) addEdge(ed index.Edge) {
 	g.inRel[ed.ToID] = appendUnique(g.inRel[ed.ToID], ed.FromID)
 }
 
-func (e *engine) expandOutboundDepends(g *depsGraph, subject string, seeds []string) error {
+func (e *engine) expandOutboundDepends(g *dependsGraph, subject string, seeds []string) error {
 	return e.expandDepends(g, subject, seeds, true)
 }
 
-func (e *engine) expandInboundDepends(g *depsGraph, subject string, seeds []string) error {
+func (e *engine) expandInboundDepends(g *dependsGraph, subject string, seeds []string) error {
 	return e.expandDepends(g, subject, seeds, false)
 }
 
-func (e *engine) expandDepends(g *depsGraph, subject string, seeds []string, outbound bool) error {
+func (e *engine) expandDepends(g *dependsGraph, subject string, seeds []string, outbound bool) error {
 	visited := map[string]bool{subject: true}
 	queue := make([]string, 0, len(seeds))
 	for _, id := range seeds {
@@ -188,7 +187,7 @@ func (e *engine) expandDepends(g *depsGraph, subject string, seeds []string, out
 	return nil
 }
 
-func (g *depsGraph) idsToPrint(subject string, transitive, tree bool) []string {
+func (g *dependsGraph) idsToPrint(subject string, transitive, tree bool) []string {
 	seen := map[string]bool{}
 	var ids []string
 	add := func(id string) {
@@ -226,7 +225,7 @@ func (g *depsGraph) idsToPrint(subject string, transitive, tree bool) []string {
 }
 
 // printSection always emits a title and (none) for empty sides so section structure is stable.
-func (g *depsGraph) printSection(c *cobra.Command, title string, ids []string) {
+func (g *dependsGraph) printSection(c *cobra.Command, title string, ids []string) {
 	stdoutln(c, title+":")
 	if len(ids) == 0 {
 		stdoutln(c, "  (none)")
@@ -240,7 +239,7 @@ func (g *depsGraph) printSection(c *cobra.Command, title string, ids []string) {
 }
 
 // neighbourLine annotates unresolved targets rather than dropping them.
-func (g *depsGraph) neighbourLine(id string) string {
+func (g *dependsGraph) neighbourLine(id string) string {
 	p, ok := g.byID[id]
 	if !ok {
 		return id + "\t(unresolved)"
@@ -256,7 +255,7 @@ func (g *depsGraph) neighbourLine(id string) string {
 	return id + "\t" + status + "\t" + label
 }
 
-func (g *depsGraph) relatedBoth(subject string) []string {
+func (g *dependsGraph) relatedBoth(subject string) []string {
 	var out []string
 	for _, id := range g.outRel[subject] {
 		out = appendUnique(out, id)
@@ -267,15 +266,15 @@ func (g *depsGraph) relatedBoth(subject string) []string {
 	return out
 }
 
-func (g *depsGraph) transitiveDepends(subject string) []string {
+func (g *dependsGraph) transitiveDepends(subject string) []string {
 	return g.reachable(subject, g.outDep)
 }
 
-func (g *depsGraph) transitiveDependedOnBy(subject string) []string {
+func (g *dependsGraph) transitiveDependedOnBy(subject string) []string {
 	return g.reachable(subject, g.inDep)
 }
 
-func (g *depsGraph) reachable(start string, adj map[string][]string) []string {
+func (g *dependsGraph) reachable(start string, adj map[string][]string) []string {
 	visited := map[string]bool{start: true}
 	var out []string
 	var walk func(string)
@@ -293,7 +292,7 @@ func (g *depsGraph) reachable(start string, adj map[string][]string) []string {
 	return out
 }
 
-func (g *depsGraph) subjectInCycle(subject string) bool {
+func (g *dependsGraph) subjectInCycle(subject string) bool {
 	visited := map[string]bool{}
 	var walk func(string) bool
 	walk = func(node string) bool {
@@ -315,7 +314,7 @@ func (g *depsGraph) subjectInCycle(subject string) bool {
 }
 
 // printTree stops a branch on revisit so a cycle cannot expand forever.
-func (g *depsGraph) printTree(c *cobra.Command, subject string) {
+func (g *dependsGraph) printTree(c *cobra.Command, subject string) {
 	stdoutln(c, "depends tree:")
 	stdoutln(c, "  "+g.neighbourLine(subject))
 	onPath := map[string]bool{subject: true}
@@ -323,7 +322,7 @@ func (g *depsGraph) printTree(c *cobra.Command, subject string) {
 	g.printSection(c, "related", g.relatedBoth(subject))
 }
 
-func (g *depsGraph) printTreeChildren(c *cobra.Command, node string, depth int, onPath map[string]bool) {
+func (g *dependsGraph) printTreeChildren(c *cobra.Command, node string, depth int, onPath map[string]bool) {
 	children := append([]string(nil), g.outDep[node]...)
 	sort.Strings(children)
 	indent := strings.Repeat("  ", depth)

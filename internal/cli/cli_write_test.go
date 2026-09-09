@@ -1085,11 +1085,17 @@ func TestMidRebaseRefusesWrites(t *testing.T) {
 	if _, _, err := run(t, app, "note", "set", "replaced", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Errorf("mid-rebase note set should refuse non-zero, got %v", err)
 	}
-	if _, _, err := run(t, app, "note", "delete", "--name", "default", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
-		t.Errorf("mid-rebase note delete should refuse non-zero, got %v", err)
+	if _, _, err := run(t, app, "note", "remove", "--name", "default", "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
+		t.Errorf("mid-rebase note remove should refuse non-zero, got %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "notes", "default.md")); !os.IsNotExist(err) {
 		t.Errorf("refused note add/set must not create the file, stat err=%v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes", "default.md"), []byte("pad\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	if _, _, err := run(t, app, "get", id); err != nil {
 		t.Errorf("reads must stay allowed mid-rebase, got %v", err)

@@ -366,30 +366,30 @@ func TestSearchAndDeps(t *testing.T) {
 		t.Errorf("find alias output differs from search:\nsearch=%q\nfind=%q", out, findOut)
 	}
 
-	out, _, err = run(t, app, "deps", "wc-de34")
+	out, _, err = run(t, app, "depends", "wc-de34")
 	if err != nil {
-		t.Fatalf("deps: %v", err)
+		t.Fatalf("depends: %v", err)
 	}
 	if !strings.Contains(out, "depends on:\n  wc-ab2c\ttodo\tNetwork redesign") {
-		t.Errorf("deps depends-on section wrong: %q", out)
+		t.Errorf("depends depends-on section wrong: %q", out)
 	}
 	if !strings.Contains(out, "related:\n  wc-ab2c") {
-		t.Errorf("deps related section wrong: %q", out)
+		t.Errorf("depends related section wrong: %q", out)
 	}
-	// depends and dep are aliases of deps.
-	for _, name := range []string{"depends", "dep"} {
+	// deps and dep are aliases of depends.
+	for _, name := range []string{"deps", "dep"} {
 		aliasOut, _, aliasErr := run(t, app, name, "wc-de34")
 		if aliasErr != nil {
 			t.Fatalf("%s alias: %v", name, aliasErr)
 		}
 		if aliasOut != out {
-			t.Errorf("%s alias output differs from deps", name)
+			t.Errorf("%s alias output differs from depends", name)
 		}
 	}
 
-	out, _, _ = run(t, app, "deps", "wc-ab2c")
+	out, _, _ = run(t, app, "depends", "wc-ab2c")
 	if !strings.Contains(out, "is depended on by:\n  wc-de34") {
-		t.Errorf("deps reverse section wrong: %q", out)
+		t.Errorf("depends reverse section wrong: %q", out)
 	}
 }
 

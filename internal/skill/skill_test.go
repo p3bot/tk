@@ -108,6 +108,32 @@ func TestSkillPulseCommand(t *testing.T) {
 	}
 }
 
+func TestSkillCanonicalVerbNames(t *testing.T) {
+	text := skill.Text()
+	for _, n := range []string{
+		"tk depends <id> [--scope S] [--transitive] [--tree]",
+		"tk meta remove <id> <key> <value> [--scope S]",
+		"tk meta add|remove",
+		"meta set/add/remove",
+		"tk depends shows both directions",
+	} {
+		if !strings.Contains(text, n) {
+			t.Errorf("skill missing canonical verb %q", n)
+		}
+	}
+	for _, bad := range []string{
+		"tk deps",
+		"tk meta rm",
+		"deps shows both directions",
+		"meta set/add/rm",
+		"meta add|rm",
+	} {
+		if strings.Contains(text, bad) {
+			t.Errorf("skill must not teach alias or short verb %q", bad)
+		}
+	}
+}
+
 func TestFileProtocolDoesNotTeachRejectedAuthoring(t *testing.T) {
 	text := skill.Text()
 	if strings.Contains(text, "tk body") {

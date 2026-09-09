@@ -22,25 +22,25 @@ func newMetaCmd(app *App) *cobra.Command {
 		Long: "Read and mutate ticket frontmatter without $EDITOR.\n\n" +
 			"  get  <id> [key]           full header or a single key value\n" +
 			"  set  <id> <key> <value>   scalar keys (summary, custom string/int/bool)\n" +
-			"  add  <id> <key> <value>   multi-value keys (depends, related, tags, links, custom strings)\n" +
-			"  rm   <id> <key> <value>   remove one multi-value entry (alias: remove)\n\n" +
+			"  add     <id> <key> <value>   multi-value keys (depends, related, tags, links, custom strings)\n" +
+			"  remove  <id> <key> <value>   remove one multi-value entry (alias: rm)\n\n" +
 			"Full get prints title, path, whole-file lines/words/characters, a blank line,\n" +
 			"and the raw frontmatter interior (never the body). Single-key get prints only\n" +
 			"the value (multi-value: one entry per line). A trailing value of - reads the\n" +
 			"value from stdin (one optional final newline stripped).\n\n" +
-			"meta set refuses multi-value keys; meta add/rm refuse scalars. id, status, order,\n" +
+			"meta set refuses multi-value keys; meta add/remove refuse scalars. id, status, order,\n" +
 			"created, and status_conflict are immutable via meta (use mark / order where\n" +
 			"they apply). depends add enforces write-time integrity: self → depends_self:;\n" +
 			"same-scope missing → depends_dangling:; cross-scope unregistered/absent →\n" +
 			"depends_unresolvable: (hard refuse, no write). related is soft (no existence\n" +
 			"check). Short ids on depends/related normalise to full ids in the subject scope.\n" +
-			"After a successful set|add|rm, missing or empty scope-required custom fields\n" +
+			"After a successful set|add|remove, missing or empty scope-required custom fields\n" +
 			"emit required_missing: on stderr (soft; exit 0). Key aliases: tag → tags,\n" +
 			"link → links (wire keys stay plural).",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return usageErrorf("unknown meta subcommand %q; run `tk meta --help` for get, set, add, rm", args[0])
+				return usageErrorf("unknown meta subcommand %q; run `tk meta --help` for get, set, add, remove", args[0])
 			}
 			return c.Help()
 		},
@@ -49,7 +49,7 @@ func newMetaCmd(app *App) *cobra.Command {
 		newMetaGetCmd(app),
 		newMetaSetCmd(app),
 		newMetaAddCmd(app),
-		newMetaRmCmd(app),
+		newMetaRemoveCmd(app),
 	)
 	return cmd
 }
@@ -92,7 +92,7 @@ func newMetaSetCmd(app *App) *cobra.Command {
 		Short: "Set a scalar frontmatter key (summary or custom string/int/bool)",
 		Long: "Rewrite one scalar frontmatter key. Legal keys: summary and custom fields of\n" +
 			"type string, int, or bool. Empty value omits the key (clear). Multi-value keys\n" +
-			"(depends, related, tags/tag, links/link, custom strings) require meta add/rm.\n" +
+			"(depends, related, tags/tag, links/link, custom strings) require meta add/remove.\n" +
 			"Value - reads stdin (optional final newline stripped). Embedded newlines are\n" +
 			"usage exit 2. Prints the absolute ticket path on success.",
 		Args: exactArgs("<id>", "<key>", "<value>"),
@@ -129,11 +129,11 @@ func newMetaAddCmd(app *App) *cobra.Command {
 	return cmd
 }
 
-func newMetaRmCmd(app *App) *cobra.Command {
+func newMetaRemoveCmd(app *App) *cobra.Command {
 	var scope string
 	cmd := &cobra.Command{
-		Use:     "rm <id> <key> <value> [--scope S]",
-		Aliases: []string{"remove"},
+		Use:     "remove <id> <key> <value> [--scope S]",
+		Aliases: []string{"rm"},
 		Short:   "Remove one entry from a multi-value frontmatter key",
 		Long: "Remove one matching entry from a multi-value key if present (idempotent when\n" +
 			"absent). Legal keys: depends, related, tags (alias: tag), links (alias: link),\n" +
@@ -142,7 +142,7 @@ func newMetaRmCmd(app *App) *cobra.Command {
 			"before compare. Value - reads stdin. Prints the absolute ticket path on success.",
 		Args: exactArgs("<id>", "<key>", "<value>"),
 		RunE: func(c *cobra.Command, args []string) error {
-			return runMetaMutate(app, c, writeengine.MetaRm, args[0], args[1], args[2], scope)
+			return runMetaMutate(app, c, writeengine.MetaRemove, args[0], args[1], args[2], scope)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "ambient scope for a short id")

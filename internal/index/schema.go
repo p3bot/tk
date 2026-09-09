@@ -81,7 +81,7 @@ const SchemaText = `tk index schema (version 6)
 
 NOT A STABLE API: the index is a derived cache, rebuilt on any schema_version
 bump, and may reshape between releases with no migration. Do not script against
-it — agents use tk deps / list / search / next / get / meta instead.
+it — agents use tk depends / list / search / next / get / meta instead.
 
 tickets(path, scope, id, short_id, status, order_key, title, summary, created,
          custom, status_conflict, archived, parse_error, parse_msg,

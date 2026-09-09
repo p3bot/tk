@@ -25,7 +25,7 @@ func newCreateCmd(app *App) *cobra.Command {
 			"  <id> scaffolded with frontmatter\n" +
 			"Each board-new tag also emits (soft; exit 0):\n" +
 			"  tag_new: \"<t>\" is new to this scope\n" +
-			"Post-create tag edits remain meta add|rm. create reserves the id and never\n" +
+			"Post-create tag edits remain meta add|remove. create reserves the id and never\n" +
 			"self-commits in any mode; git durability is the next tk sync (auto-commit) or\n" +
 			"host commit.",
 		Args: rangeArgs(1, 2, "<title>"),

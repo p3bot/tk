@@ -58,17 +58,35 @@ func assertUsageEmpty(t *testing.T, out string, err error) {
 	}
 }
 
-func TestNoteMissingCatAndList(t *testing.T) {
-	app := newApp(t)
-	initScope(t, app, "wc")
-
-	out, _, err := run(t, app, "note", "--scope", "wc")
-	if err != nil {
-		t.Fatalf("missing cat: %v", err)
+func assertNoteMissing(t *testing.T, out string, err error, wantPath string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("missing note must fail")
+	}
+	if ExitCodeFromError(err) != exitFailure {
+		t.Fatalf("exit = %d want %d (err=%v)", ExitCodeFromError(err), exitFailure, err)
 	}
 	if out != "" {
-		t.Errorf("missing cat must be empty stdout, got %q", out)
+		t.Errorf("missing cat must leave stdout empty, got %q", out)
 	}
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("missing cat: %v", err)
+	}
+	if !strings.Contains(err.Error(), wantPath) {
+		t.Errorf("missing cat should name %s, got %v", wantPath, err)
+	}
+}
+
+func TestNoteMissingCatAndList(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+
+	out, _, err := run(t, app, "note", "--scope", "wc")
+	assertNoteMissing(t, out, err, defaultNotePath(dir))
+
+	out, _, err = run(t, app, "note", "foo", "--scope", "wc")
+	assertNoteMissing(t, out, err, namedNotePath(dir, "foo"))
+
 	out, _, err = run(t, app, "note", "list", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("missing list: %v", err)
@@ -76,9 +94,23 @@ func TestNoteMissingCatAndList(t *testing.T) {
 	if out != "" {
 		t.Errorf("missing list must be empty stdout, got %q", out)
 	}
+
+	if err := os.MkdirAll(filepath.Join(dir, scopefile.NoteDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(defaultNotePath(dir), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err = run(t, app, "note", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("empty file: %v", err)
+	}
+	if out != "" {
+		t.Errorf("empty file must be empty stdout, got %q", out)
+	}
 }
 
-func TestNoteAddAppendDeleteDefault(t *testing.T) {
+func TestNoteAddAppendRemoveDefault(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 
@@ -113,23 +145,18 @@ func TestNoteAddAppendDeleteDefault(t *testing.T) {
 		t.Errorf("cat after two adds = %q", out)
 	}
 
-	out, errOut, err = run(t, app, "note", "delete", "--scope", "wc")
+	out, errOut, err = run(t, app, "note", "remove", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("delete: %v stderr=%q", err, errOut)
+		t.Fatalf("remove: %v stderr=%q", err, errOut)
 	}
 	if out != "" {
-		t.Errorf("delete must print nothing, got %q", out)
+		t.Errorf("remove must print nothing, got %q", out)
 	}
 	if strings.Contains(errOut, token.SyncNeeded) {
-		t.Errorf("delete must not emit sync_needed:, got %q", errOut)
+		t.Errorf("remove must not emit sync_needed:, got %q", errOut)
 	}
 	out, _, err = run(t, app, "note", "--scope", "wc")
-	if err != nil {
-		t.Fatalf("cat after delete: %v", err)
-	}
-	if out != "" {
-		t.Errorf("cat after delete must be empty, got %q", out)
-	}
+	assertNoteMissing(t, out, err, wantPath)
 	if _, err := os.Stat(wantPath); !os.IsNotExist(err) {
 		t.Errorf("default note file should be gone, stat err=%v", err)
 	}
@@ -270,16 +297,16 @@ func TestNoteSetReplaceAndStdin(t *testing.T) {
 	assertUsageEmpty(t, out, err)
 }
 
-func TestNoteDeleteMissingIsSuccess(t *testing.T) {
+func TestNoteRemoveMissingIsSuccess(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 
-	out, _, err := run(t, app, "note", "delete", "--scope", "wc")
+	out, _, err := run(t, app, "note", "remove", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("delete missing: %v", err)
+		t.Fatalf("remove missing: %v", err)
 	}
 	if out != "" {
-		t.Errorf("delete missing must be silent, got %q", out)
+		t.Errorf("remove missing must be silent, got %q", out)
 	}
 }
 
@@ -287,7 +314,7 @@ func TestNoteReservedNamesAreUsage(t *testing.T) {
 	app := newApp(t)
 	initScope(t, app, "wc")
 
-	for _, name := range []string{"list", "add", "set", "edit", "delete", "help", "use"} {
+	for _, name := range []string{"list", "ls", "add", "set", "edit", "remove", "rm", "help", "use"} {
 		out, _, err := run(t, app, "note", "--name", name, "--scope", "wc")
 		assertUsageEmpty(t, out, err)
 	}
@@ -298,6 +325,44 @@ func TestNoteReservedNamesAreUsage(t *testing.T) {
 	}
 	if out != "" {
 		t.Errorf("list of empty notes = %q", out)
+	}
+
+	out, _, err = run(t, app, "note", "ls", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("ls alias: %v", err)
+	}
+	if out != "" {
+		t.Errorf("ls of empty notes = %q", out)
+	}
+}
+
+func TestNoteRmAliasUnlinks(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	if _, _, err := run(t, app, "note", "add", "keep me", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+	path := defaultNotePath(dir)
+
+	out, _, err := run(t, app, "note", "rm", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("note rm: %v", err)
+	}
+	if out != "" {
+		t.Errorf("note rm must print nothing, got %q", out)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Errorf("note rm should unlink, stat err=%v", statErr)
+	}
+
+	if _, _, err := run(t, app, "note", "add", "again", "--scope", "wc"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, app, "note", "remove", "--scope", "wc"); err != nil {
+		t.Fatalf("note remove: %v", err)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Errorf("note remove should unlink, stat err=%v", statErr)
 	}
 }
 
@@ -409,7 +474,7 @@ func TestNoteEditWriteAndQuitWithoutWrite(t *testing.T) {
 		t.Errorf("cat after edit = %q", got)
 	}
 
-	if _, _, err := run(t, app, "note", "delete", "--name", "default", "--scope", "wc"); err != nil {
+	if _, _, err := run(t, app, "note", "remove", "--name", "default", "--scope", "wc"); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("EDITOR", "true")
@@ -533,8 +598,10 @@ func TestNoteNotesAliasParity(t *testing.T) {
 
 	primary, pErrOut, pErr := run(t, app, "note", "--scope", "wc")
 	alias, aErrOut, aErr := run(t, app, "notes", "--scope", "wc")
-	if pErr != nil || aErr != nil {
-		t.Fatalf("missing cat: note=%v notes=%v", pErr, aErr)
+	assertNoteMissing(t, primary, pErr, defaultNotePath(dir))
+	assertNoteMissing(t, alias, aErr, defaultNotePath(dir))
+	if (pErr == nil) != (aErr == nil) || (pErr != nil && aErr != nil && pErr.Error() != aErr.Error()) {
+		t.Errorf("notes missing cat != note: err %v/%v", pErr, aErr)
 	}
 	if alias != primary || aErrOut != pErrOut {
 		t.Errorf("notes cat != note: out %q/%q errOut %q/%q", alias, primary, aErrOut, pErrOut)
@@ -585,8 +652,8 @@ func TestNoteNotesAliasParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("notes --help: %v", err)
 	}
-	if !strings.Contains(help, "Alias: notes.") {
-		t.Errorf("help must name the notes alias, got:\n%s", help)
+	if !strings.Contains(help, "note, notes") {
+		t.Errorf("help must list the notes alias, got:\n%s", help)
 	}
 }
 
@@ -639,11 +706,11 @@ func TestNoteWritesDoNotSelfCommit(t *testing.T) {
 	} else if strings.Contains(errOut, token.SyncNeeded) {
 		t.Errorf("edit must not emit sync_needed:, got %q", errOut)
 	}
-	if _, errOut, err := run(t, app, "note", "delete", "--name", "decisions", "--scope", "wc"); err != nil {
-		t.Fatalf("delete: %v", err)
+	if _, errOut, err := run(t, app, "note", "remove", "--name", "decisions", "--scope", "wc"); err != nil {
+		t.Fatalf("remove: %v", err)
 	} else if strings.Contains(errOut, token.SyncNeeded) {
-		// Untracked add+delete leaves the tree clean; no hint.
-		t.Errorf("delete of an untracked note must not invent sync_needed:, got %q", errOut)
+		// Untracked add+remove leaves the tree clean; no hint.
+		t.Errorf("remove of an untracked note must not invent sync_needed:, got %q", errOut)
 	}
 	if got := gitIn(t, repo, "rev-parse", "HEAD"); got != head {
 		t.Errorf("writers must not commit, HEAD %s -> %s", head, got)
@@ -655,15 +722,15 @@ func TestNoteWritesDoNotSelfCommit(t *testing.T) {
 	runGit(t, repo, "add", "-A")
 	runGit(t, repo, "commit", "-m", "track note")
 	head = gitIn(t, repo, "rev-parse", "HEAD")
-	_, errOut, err = run(t, app, "note", "delete", "--name", "decisions", "--scope", "wc")
+	_, errOut, err = run(t, app, "note", "remove", "--name", "decisions", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("delete tracked: %v", err)
+		t.Fatalf("remove tracked: %v", err)
 	}
 	if !strings.Contains(errOut, token.SyncNeeded+" dirty") {
-		t.Errorf("tk-driven delete of a tracked note should ride sync_needed: dirty, got %q", errOut)
+		t.Errorf("tk-driven remove of a tracked note should ride sync_needed: dirty, got %q", errOut)
 	}
 	if got := gitIn(t, repo, "rev-parse", "HEAD"); got != head {
-		t.Errorf("delete must not commit, HEAD %s -> %s", head, got)
+		t.Errorf("remove must not commit, HEAD %s -> %s", head, got)
 	}
 }
 
@@ -812,7 +879,7 @@ func TestNoteIgnoresUnparseableCue(t *testing.T) {
 	}
 }
 
-func TestNoteLastDeleteRemovesEmptyDir(t *testing.T) {
+func TestNoteLastRemoveRemovesEmptyDir(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	if _, _, err := run(t, app, "note", "add", "--name", "keep", "x", "--scope", "wc"); err != nil {
@@ -821,17 +888,17 @@ func TestNoteLastDeleteRemovesEmptyDir(t *testing.T) {
 	if _, _, err := run(t, app, "note", "add", "y", "--scope", "wc"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := run(t, app, "note", "delete", "--name", "default", "--scope", "wc"); err != nil {
+	if _, _, err := run(t, app, "note", "remove", "--name", "default", "--scope", "wc"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, scopefile.NoteDir)); err != nil {
 		t.Fatalf("notes/ should remain while keep.md exists: %v", err)
 	}
-	if _, _, err := run(t, app, "note", "delete", "--name", "keep", "--scope", "wc"); err != nil {
+	if _, _, err := run(t, app, "note", "remove", "--name", "keep", "--scope", "wc"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, scopefile.NoteDir)); !os.IsNotExist(err) {
-		t.Errorf("last delete should rmdir notes/, stat err=%v", err)
+		t.Errorf("last remove should rmdir notes/, stat err=%v", err)
 	}
 }
 
@@ -862,11 +929,11 @@ func TestNoteCleanupDoesNotUnlinkNotesSymlink(t *testing.T) {
 		t.Fatalf("store file should remain: %v", err)
 	}
 
-	if _, _, err := run(t, app, "note", "delete", "--name", "default", "--scope", "wc"); err != nil {
-		t.Fatalf("delete missing: %v", err)
+	if _, _, err := run(t, app, "note", "remove", "--name", "default", "--scope", "wc"); err != nil {
+		t.Fatalf("remove missing: %v", err)
 	}
 	if _, err := os.Lstat(notes); err != nil {
-		t.Fatalf("notes symlink should remain after delete of a missing default: %v", err)
+		t.Fatalf("notes symlink should remain after remove of a missing default: %v", err)
 	}
 }
 
@@ -1153,7 +1220,7 @@ func TestNoteUseReservedAndInvalidAreUsage(t *testing.T) {
 	}
 }
 
-func TestNoteUseDeleteLeavesPointer(t *testing.T) {
+func TestNoteUseRemoveLeavesPointer(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	if _, _, err := run(t, app, "note", "use", "grant", "--scope", "wc"); err != nil {
@@ -1169,24 +1236,19 @@ func TestNoteUseDeleteLeavesPointer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, _, err := run(t, app, "note", "delete", "--scope", "wc")
+	out, _, err := run(t, app, "note", "remove", "--scope", "wc")
 	if err != nil {
-		t.Fatalf("delete: %v", err)
+		t.Fatalf("remove: %v", err)
 	}
 	if out != "" {
-		t.Errorf("delete must print nothing, got %q", out)
+		t.Errorf("remove must print nothing, got %q", out)
 	}
 	if loadNoteMap(t, app)["wc"] != "grant" {
-		t.Errorf("delete must leave the pointer, stored = %q", loadNoteMap(t, app)["wc"])
+		t.Errorf("remove must leave the pointer, stored = %q", loadNoteMap(t, app)["wc"])
 	}
 
 	out, _, err = run(t, app, "note", "--scope", "wc")
-	if err != nil {
-		t.Fatalf("cat after delete: %v", err)
-	}
-	if out != "" {
-		t.Errorf("missing in-use file must be empty stdout, got %q", out)
-	}
+	assertNoteMissing(t, out, err, namedNotePath(dir, "grant"))
 
 	out, _, err = run(t, app, "note", "list", "--scope", "wc")
 	if err != nil {
@@ -1209,14 +1271,14 @@ func TestNoteUseDeleteLeavesPointer(t *testing.T) {
 		t.Errorf("default.md = %q want pad\\n", got)
 	}
 
-	if _, _, err := run(t, app, "note", "delete", "--name", "default", "--scope", "wc"); err != nil {
-		t.Fatalf("named delete of default: %v", err)
+	if _, _, err := run(t, app, "note", "remove", "--name", "default", "--scope", "wc"); err != nil {
+		t.Fatalf("named remove of default: %v", err)
 	}
 	if _, err := os.Stat(defaultNotePath(dir)); !os.IsNotExist(err) {
 		t.Errorf("--name default should unlink default.md, stat err=%v", err)
 	}
 	if loadNoteMap(t, app)["wc"] != "grant" {
-		t.Errorf("one-shot delete must leave the pointer, stored = %q", loadNoteMap(t, app)["wc"])
+		t.Errorf("one-shot remove must leave the pointer, stored = %q", loadNoteMap(t, app)["wc"])
 	}
 	got, err = os.ReadFile(namedNotePath(dir, "shared"))
 	if err != nil {
@@ -1314,7 +1376,7 @@ func TestNoteUseNotesAlias(t *testing.T) {
 
 func TestNoteUseCorruptStore(t *testing.T) {
 	app := newApp(t)
-	initScope(t, app, "wc")
+	dir := initScope(t, app, "wc")
 
 	if err := os.WriteFile(filepath.Join(app.ConfigDir, "note.cue"), []byte("note: {{{ broken"), 0o644); err != nil {
 		t.Fatal(err)
@@ -1352,12 +1414,7 @@ func TestNoteUseCorruptStore(t *testing.T) {
 		t.Errorf("pulse error must name note.cue, got %v", err)
 	}
 	out, _, err := run(t, app, "note", "--name", "shared", "--scope", "wc")
-	if err != nil {
-		t.Fatalf("one-shot must not resolve the stored default: %v", err)
-	}
-	if out != "" {
-		t.Errorf("missing shared cat = %q", out)
-	}
+	assertNoteMissing(t, out, err, namedNotePath(dir, "shared"))
 	if loadNoteMap(t, app)["wc"] != "Grant" {
 		t.Errorf("resolve error must not rewrite XDG, stored = %q", loadNoteMap(t, app)["wc"])
 	}
@@ -1391,6 +1448,7 @@ func TestNoteUseHelpAndSkill(t *testing.T) {
 		"one-shot",
 		"convention",
 		"use",
+		"missing file is non-zero",
 	} {
 		if !strings.Contains(help, want) {
 			t.Errorf("note Long should mention %q, got:\n%s", want, help)
@@ -1419,18 +1477,18 @@ func TestNoteUseHelpAndSkill(t *testing.T) {
 	if strings.Contains(pulseHelp, "notes/default.md, whether") {
 		t.Error("pulse Long must not hard-code notes/default.md as the only path")
 	}
-	if strings.Contains(help, "except on delete") || strings.Contains(help, "requires --name") {
-		t.Errorf("note Long must not require --name on delete, got:\n%s", help)
+	if strings.Contains(help, "requires --name") {
+		t.Errorf("note Long must not require --name on remove, got:\n%s", help)
 	}
-	deleteHelp, _, err := run(t, app, "note", "delete", "--help")
+	removeHelp, _, err := run(t, app, "note", "remove", "--help")
 	if err != nil {
-		t.Fatalf("note delete --help: %v", err)
+		t.Fatalf("note remove --help: %v", err)
 	}
-	if !strings.Contains(deleteHelp, "Omit --name") {
-		t.Errorf("delete Long should say omit --name, got:\n%s", deleteHelp)
+	if !strings.Contains(removeHelp, "Omit --name") {
+		t.Errorf("remove Long should say omit --name, got:\n%s", removeHelp)
 	}
-	if strings.Contains(deleteHelp, "required") {
-		t.Errorf("delete help must not say --name is required, got:\n%s", deleteHelp)
+	if strings.Contains(removeHelp, "required") {
+		t.Errorf("remove help must not say --name is required, got:\n%s", removeHelp)
 	}
 
 	skill, _, err := run(t, app, "skill")

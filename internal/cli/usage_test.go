@@ -34,13 +34,16 @@ func TestArityUsageMessages(t *testing.T) {
 		missing string
 		usage   string
 	}{
-		{"deps none", []string{"deps"}, "missing <id>", "tk deps <id> [--scope S] [--transitive] [--tree]"},
+		{"depends none", []string{"depends"}, "missing <id>", "tk depends <id> [--scope S] [--transitive] [--tree]"},
+		{"deps alias none", []string{"deps"}, "missing <id>", "tk depends <id> [--scope S] [--transitive] [--tree]"},
 		{"get none", []string{"get"}, "missing <id>", "tk get <id> [--content] [--scope S]"},
 		{"mark none", []string{"mark"}, "missing <status> <id>", "tk mark <status> <id> [id...] [--scope S]"},
 		{"mark one", []string{"mark", "todo"}, "missing <id>", "tk mark <status> <id> [id...] [--scope S]"},
 		{"create none", []string{"create"}, "missing <title>", "tk create <title> [status] [--scope S] [--tag T]..."},
 		{"meta set none", []string{"meta", "set"}, "missing <id> <key> <value>", "tk meta set <id> <key> <value> [--scope S]"},
 		{"meta set two", []string{"meta", "set", "ab2c", "summary"}, "missing <value>", "tk meta set <id> <key> <value> [--scope S]"},
+		{"meta remove none", []string{"meta", "remove"}, "missing <id> <key> <value>", "tk meta remove <id> <key> <value> [--scope S]"},
+		{"meta rm alias none", []string{"meta", "rm"}, "missing <id> <key> <value>", "tk meta remove <id> <key> <value> [--scope S]"},
 		{"forget none", []string{"scope", "forget"}, "missing <name>", "tk scope forget <name>"},
 		{"rename one", []string{"scope", "rename", "old"}, "missing <new>", "tk scope rename <old> <new>"},
 		{"note add none", []string{"note", "add"}, "missing <text...>", "tk note add [--name slug] <text...>"},
@@ -74,7 +77,7 @@ func TestArityTooManyArguments(t *testing.T) {
 		args  []string
 		usage string
 	}{
-		{"deps extra", []string{"deps", "ab2c", "extra"}, "tk deps <id> [--scope S] [--transitive] [--tree]"},
+		{"depends extra", []string{"depends", "ab2c", "extra"}, "tk depends <id> [--scope S] [--transitive] [--tree]"},
 		{"forget extra", []string{"scope", "forget", "a", "b"}, "tk scope forget <name>"},
 		{"next extra", []string{"next", "ab2c"}, "tk next [--scope S] [--no-lens] [--claim]"},
 		{"pulse extra", []string{"pulse", "mode", "extra"}, "tk pulse [key] [--scope S]"},
@@ -188,7 +191,7 @@ func TestUnknownCommandKeptForParents(t *testing.T) {
 
 func TestFlagErrorIncludesUsage(t *testing.T) {
 	app := newApp(t)
-	_, _, err := run(t, app, "deps", "--bogus")
+	_, _, err := run(t, app, "depends", "--bogus")
 	if got := ExitCodeFromError(err); got != exitUsage {
 		t.Fatalf("exit code = %d want %d (err=%v)", got, exitUsage, err)
 	}
@@ -196,21 +199,21 @@ func TestFlagErrorIncludesUsage(t *testing.T) {
 	if !strings.HasPrefix(msg, "unknown flag: --bogus\n") {
 		t.Errorf("message %q, want cobra flag error first", msg)
 	}
-	if !strings.Contains(msg, "usage: tk deps <id> [--scope S] [--transitive] [--tree]") {
+	if !strings.Contains(msg, "usage: tk depends <id> [--scope S] [--transitive] [--tree]") {
 		t.Errorf("message %q, want usage line", msg)
 	}
 }
 
 func TestArityPrintedError(t *testing.T) {
 	app := newApp(t)
-	_, _, err := run(t, app, "deps")
+	_, _, err := run(t, app, "depends")
 	if err == nil {
 		t.Fatal("expected usage error")
 	}
 	var buf strings.Builder
 	fprintError(&buf, err, true)
 	got := buf.String()
-	want := ansiRed + "error:" + ansiReset + " missing <id>\nusage: tk deps <id> [--scope S] [--transitive] [--tree]\n"
+	want := ansiRed + "error:" + ansiReset + " missing <id>\nusage: tk depends <id> [--scope S] [--transitive] [--tree]\n"
 	if got != want {
 		t.Errorf("printed %q, want %q", got, want)
 	}

@@ -53,8 +53,9 @@ func newScopeFieldCmd(app *App) *cobra.Command {
 func newScopeFieldListCmd(app *App) *cobra.Command {
 	var scope string
 	cmd := &cobra.Command{
-		Use:   "list [--scope S]",
-		Short: "List custom field declarations for the ambient scope",
+		Use:     "list [--scope S]",
+		Aliases: []string{"ls"},
+		Short:   "List custom field declarations for the ambient scope",
 		Long: "Print one TSV line per declared custom field, sorted by name:\n" +
 			"  <name>\\t<type>\\t<required>\\t<values>\n" +
 			"required is true or false. values is a JSON array when the field has an enum\n" +

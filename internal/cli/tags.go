@@ -15,7 +15,7 @@ func newTagsCmd(app *App) *cobra.Command {
 			"reconcile. Full-scope inventory: includes archive and all statuses; ignores\n" +
 			"the active lens and list's default board-status filter. Empty set prints\n" +
 			"nothing and exits 0. Read-only inventory — not a mutator; tag a ticket with\n" +
-			"meta add|rm. Alias: tag.",
+			"meta add|remove.",
 		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runTags(app, c, scope)

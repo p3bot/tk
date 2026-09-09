@@ -66,7 +66,7 @@ const NoteDefaultSlug = "default"
 // command (help) and must never be a document.
 func IsReservedNoteName(name string) bool {
 	switch name {
-	case "list", "add", "set", "edit", "delete", "help", "use":
+	case "list", "ls", "add", "set", "edit", "remove", "rm", "help", "use":
 		return true
 	default:
 		return false

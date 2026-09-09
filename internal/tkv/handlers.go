@@ -470,7 +470,7 @@ type metaAddView struct {
 	Scope, ID, Key, Placeholder string
 }
 
-type metaRmView struct {
+type metaRemoveView struct {
 	Scope, ID, Key, Value string
 }
 
@@ -482,8 +482,8 @@ func (p inspectPage) MetaAdd(key, placeholder string) metaAddView {
 	return metaAddView{Scope: p.Chrome.Selected, ID: p.ID, Key: key, Placeholder: placeholder}
 }
 
-func (p inspectPage) MetaRm(key, value string) metaRmView {
-	return metaRmView{Scope: p.Chrome.Selected, ID: p.ID, Key: key, Value: value}
+func (p inspectPage) MetaRemove(key, value string) metaRemoveView {
+	return metaRemoveView{Scope: p.Chrome.Selected, ID: p.ID, Key: key, Value: value}
 }
 
 func (p inspectPage) MetaSet(key string) metaSetView {
@@ -500,8 +500,8 @@ func (v neighbourListView) MetaAdd() metaAddView {
 	return metaAddView{Scope: v.Scope, ID: v.ID, Key: v.Key, Placeholder: v.Placeholder}
 }
 
-func (v neighbourListView) MetaRm(id string) metaRmView {
-	return metaRmView{Scope: v.Scope, ID: v.ID, Key: v.Key, Value: id}
+func (v neighbourListView) MetaRemove(id string) metaRemoveView {
+	return metaRemoveView{Scope: v.Scope, ID: v.ID, Key: v.Key, Value: id}
 }
 
 func (p inspectPage) neighbourList(key, placeholder string, items []neighbour, writable bool) neighbourListView {

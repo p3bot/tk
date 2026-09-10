@@ -22,6 +22,18 @@
   </article>
 {{end}}
 </section>
+{{if .Diagnose}}
+<section class="diagnose" aria-label="diagnose">
+<h2>diagnose</h2>
+{{if .Lines}}
+<ul class="diagnose-lines">
+{{range .Lines}}<li><code>{{.}}</code></li>{{end}}
+</ul>
+{{else}}
+<p class="hub-status">No integrity issues found.</p>
+{{end}}
+</section>
+{{end}}
 {{if .Rows}}
 <h2>scopes</h2>
 <table class="overview">

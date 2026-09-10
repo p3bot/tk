@@ -938,7 +938,7 @@ func TestPrimaryNav(t *testing.T) {
 		{"/scope/wc", "Board"},
 		{"/search", ""},
 		{"/graphs", "Graphs"},
-		{"/maintenance", "Maintenance"},
+		{"/doctor", "Doctor"},
 	}
 	for _, c := range cases {
 		w := do(s, c.path)
@@ -949,7 +949,7 @@ func TestPrimaryNav(t *testing.T) {
 		if strings.Contains(body, ">Overview</a>") || strings.Contains(body, ">Search</a>") {
 			t.Errorf("%s still has Overview or Search in primary nav", c.path)
 		}
-		for _, label := range []string{"Board", "Graphs", "Maintenance"} {
+		for _, label := range []string{"Board", "Graphs", "Doctor"} {
 			if !strings.Contains(body, ">"+label+"</a>") {
 				t.Errorf("%s missing primary nav %s", c.path, label)
 			}
@@ -997,13 +997,19 @@ func TestPrimaryNav(t *testing.T) {
 	if !strings.Contains(graphs, "Depends") || !strings.Contains(graphs, `href="/graphs/depends"`) {
 		t.Errorf("graphs hub: %s", graphs)
 	}
-	maint := do(s, "/maintenance").Body.String()
-	if !strings.Contains(maint, "integrity") || !strings.Contains(maint, "wc") {
-		t.Errorf("maintenance hub: %s", maint)
+	doc := do(s, "/doctor").Body.String()
+	if !strings.Contains(doc, "integrity") || !strings.Contains(doc, "wc") {
+		t.Errorf("doctor hub: %s", doc)
+	}
+	if !strings.Contains(doc, "No integrity issues found.") {
+		t.Errorf("clean doctor should show explicit ok: %s", doc)
+	}
+	if strings.Contains(doc, "Maintenance") || strings.Contains(doc, "/maintenance") {
+		t.Errorf("doctor still names maintenance: %s", doc)
 	}
 
 	board := do(s, "/scope/wc").Body.String()
-	if !strings.Contains(board, `href="/graphs?scope=wc"`) || !strings.Contains(board, `href="/maintenance?scope=wc"`) {
+	if !strings.Contains(board, `href="/graphs?scope=wc"`) || !strings.Contains(board, `href="/doctor?scope=wc"`) {
 		t.Errorf("board should carry scope onto machine pages: %s", board)
 	}
 	kept := do(s, "/graphs?scope=wc")

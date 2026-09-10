@@ -32,7 +32,7 @@ func (s *Server) postChromeSync(w http.ResponseWriter, r *http.Request) error {
 	return s.runSync(w, r, name, false)
 }
 
-func (s *Server) postMaintenanceSync(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) postDoctorSync(w http.ResponseWriter, r *http.Request) error {
 	if err := r.ParseForm(); err != nil {
 		return errBadRequest("malformed form")
 	}
@@ -52,7 +52,7 @@ func (s *Server) runSync(w http.ResponseWriter, r *http.Request, name string, al
 	)
 	if all {
 		in.AllRegistered = true
-		loc = "/maintenance"
+		loc = "/doctor"
 	} else {
 		entry, ok := deps.Reg.Scopes[name]
 		if !ok {

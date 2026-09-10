@@ -197,7 +197,7 @@ func TestGETDoesNotWrite(t *testing.T) {
 	before := ticketBody(t, dir, "wc-ab2c")
 	setLens(t, app, "wc", []string{"frontend"})
 	beforeLens := lensFile(t, app)
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/maintenance/sync"} {
+	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/doctor", "/doctor/sync", "/doctor/reindex"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))
@@ -2000,7 +2000,7 @@ func TestValidLensReturn(t *testing.T) {
 		{"/search?scope=wc&q=..", "wc", true},
 		{"/graphs?scope=wc", "wc", true},
 		{"/graphs/depends?scope=wc", "wc", true},
-		{"/maintenance?scope=wc", "wc", true},
+		{"/doctor?scope=wc", "wc", true},
 		{"/scope/wc/ab2c", "wc", true},
 		{"/scope/wc/../bb", "wc", false},
 		{"/scope/wc/%2e%2e/bb", "wc", false},
@@ -2068,7 +2068,7 @@ func TestPOSTLensUnknownTagBannerOnNonBoard(t *testing.T) {
 	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [frontend]\n")
 	s := mustServer(t, app)
 
-	for _, ret := range []string{"/search?scope=wc", "/graphs?scope=wc", "/maintenance?scope=wc"} {
+	for _, ret := range []string{"/search?scope=wc", "/graphs?scope=wc", "/doctor?scope=wc"} {
 		w := doPost(s, "/scope/wc/lens", url.Values{
 			"tag":    {"ghost"},
 			"return": {ret},

@@ -139,7 +139,7 @@ func validLensReturn(loc, name string) bool {
 	}
 	p := path.Clean(u.Path)
 	switch p {
-	case "/search", "/graphs", "/graphs/depends", "/maintenance":
+	case "/search", "/graphs", "/graphs/depends", "/doctor":
 		return true
 	case "/scope/" + name:
 		return true

@@ -139,15 +139,19 @@ func (s *Server) reopen() error {
 	if err != nil {
 		return err
 	}
-	ctx := s.app.cue()
-	rec := reconcile.New(db, ctx)
+	return s.installLocked(db, reconcile.New(db, s.app.cue()))
+}
+
+func (s *Server) installLocked(db *index.DB, rec *reconcile.Reconciler) error {
+	if s.cur == nil {
+		_ = db.Close()
+		return &httpError{status: http.StatusInternalServerError, message: "index is closed"}
+	}
 	old := s.cur
 	s.db = db
 	s.rec = rec
 	s.cur = &indexHandle{db: db, rec: rec, n: 1}
-	if old != nil {
-		_ = s.dropLocked(old)
-	}
+	_ = s.dropLocked(old)
 	return nil
 }
 
@@ -163,7 +167,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /search", s.wrap(s.search))
 	mux.HandleFunc("GET /graphs", s.wrap(s.graphs))
 	mux.HandleFunc("GET /graphs/depends", s.wrap(s.dependsGraph))
-	mux.HandleFunc("GET /maintenance", s.wrap(s.maintenance))
+	mux.HandleFunc("GET /doctor", s.wrap(s.doctor))
 	mux.HandleFunc("GET /scope/{name}", s.wrap(s.kanban))
 	mux.HandleFunc("GET /scope/{name}/{id}", s.wrap(s.inspect))
 	mux.HandleFunc("POST /scope/{name}/mark", s.wrapEngine(s.postMark))
@@ -175,7 +179,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /scope/{name}/lens/clear", s.wrapEngine(s.postLensClear))
 	mux.HandleFunc("POST /scope/{name}/sync", s.wrapEngine(s.postChromeSync))
 	mux.HandleFunc("POST /sync", s.wrapEngine(s.postUnscopedSync))
-	mux.HandleFunc("POST /maintenance/sync", s.wrapEngine(s.postMaintenanceSync))
+	mux.HandleFunc("POST /doctor/sync", s.wrapEngine(s.postDoctorSync))
+	mux.HandleFunc("POST /doctor/reindex", s.wrapEngine(s.postDoctorReindex))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Frame-Options", "DENY")
 		mux.ServeHTTP(w, r)
@@ -238,10 +243,10 @@ func errBadRequest(msg string) error {
 }
 
 const (
-	navBoard       = "board"
-	navSearch      = "search"
-	navGraphs      = "graphs"
-	navMaintenance = "maintenance"
+	navBoard  = "board"
+	navSearch = "search"
+	navGraphs = "graphs"
+	navDoctor = "doctor"
 )
 
 type chrome struct {
@@ -290,7 +295,7 @@ func (c chrome) BoardHref() string { return "/" }
 
 func (c chrome) GraphsHref() string { return c.sectionHref("/graphs") }
 
-func (c chrome) MaintenanceHref() string { return c.sectionHref("/maintenance") }
+func (c chrome) DoctorHref() string { return c.sectionHref("/doctor") }
 
 func (c chrome) sectionHref(path string) string {
 	if c.Selected == "" {
@@ -505,8 +510,8 @@ func sectionFromPath(p string) string {
 		return navSearch
 	case strings.HasPrefix(p, "/graphs"):
 		return navGraphs
-	case strings.HasPrefix(p, "/maintenance"):
-		return navMaintenance
+	case strings.HasPrefix(p, "/doctor"):
+		return navDoctor
 	case strings.HasPrefix(p, "/scope/"):
 		return navBoard
 	default:

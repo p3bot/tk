@@ -82,12 +82,12 @@ func TestChromeSyncHiddenWithoutSelectedOrAutoCommit(t *testing.T) {
 		t.Fatalf("chrome Sync missing disable-on-submit: %s", driven)
 	}
 
-	maint := do(s, "/maintenance").Body.String()
-	if !strings.Contains(maint, `method="post" action="/maintenance/sync"`) {
-		t.Fatalf("maintenance missing Sync all: %s", maint)
+	doc := do(s, "/doctor").Body.String()
+	if !strings.Contains(doc, `method="post" action="/doctor/sync"`) {
+		t.Fatalf("doctor missing Sync all: %s", doc)
 	}
-	if strings.Contains(maint, "tk sync,") || strings.Contains(maint, "tk sync)") {
-		t.Fatalf("maintenance still says sync stays on the CLI: %s", maint)
+	if strings.Contains(doc, "tk sync,") || strings.Contains(doc, "tk sync)") {
+		t.Fatalf("doctor still says sync stays on the CLI: %s", doc)
 	}
 }
 
@@ -193,7 +193,7 @@ func TestGETDoesNotSync(t *testing.T) {
 	s := mustServer(t, app)
 
 	before := porcelain(t, repo)
-	for _, path := range []string{"/", "/scope/wc", "/maintenance", "/sync", "/scope/wc/sync", "/maintenance/sync"} {
+	for _, path := range []string{"/", "/scope/wc", "/doctor", "/sync", "/scope/wc/sync", "/doctor/sync"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a sync: %s", path, w.Header().Get("Location"))
@@ -204,7 +204,7 @@ func TestGETDoesNotSync(t *testing.T) {
 	}
 }
 
-func TestMaintenanceSyncAllIsolatesPerRoot(t *testing.T) {
+func TestDoctorSyncAllIsolatesPerRoot(t *testing.T) {
 	app := newTestApp(t)
 	goodDir, goodRepo := initDrivenScope(t, app, "aa")
 	pushOrigin(t, goodRepo)
@@ -218,12 +218,12 @@ func TestMaintenanceSyncAllIsolatesPerRoot(t *testing.T) {
 	}
 
 	s := mustServer(t, app)
-	w := doPost(s, "/maintenance/sync", url.Values{})
+	w := doPost(s, "/doctor/sync", url.Values{})
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
 	}
 	loc := w.Header().Get("Location")
-	if loc != "/maintenance" {
+	if loc != "/doctor" {
 		t.Fatalf("Location = %q", loc)
 	}
 	if hit := noticeKeysInLocation(loc); len(hit) > 0 {
@@ -332,9 +332,9 @@ func TestPOSTSyncRefusesForeignOrigin(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("chrome foreign origin: want 403, got %d %s", w.Code, w.Body.String())
 	}
-	w = doPostHeader(s, "/maintenance/sync", url.Values{}, http.Header{"Sec-Fetch-Site": {"cross-site"}})
+	w = doPostHeader(s, "/doctor/sync", url.Values{}, http.Header{"Sec-Fetch-Site": {"cross-site"}})
 	if w.Code != http.StatusForbidden {
-		t.Fatalf("maintenance cross-site: want 403, got %d %s", w.Code, w.Body.String())
+		t.Fatalf("doctor cross-site: want 403, got %d %s", w.Code, w.Body.String())
 	}
 	if porcelain(t, repo) == "" {
 		t.Fatal("foreign origin must not sync")
@@ -441,7 +441,7 @@ func TestSyncNoticesConsumedOnReturnGET(t *testing.T) {
 	}
 }
 
-func TestChromeSyncFormOnInspectAndMaintenanceWhenDriven(t *testing.T) {
+func TestChromeSyncFormOnInspectAndDoctorWhenDriven(t *testing.T) {
 	app := newTestApp(t)
 	dir, _ := initDrivenScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
@@ -451,12 +451,12 @@ func TestChromeSyncFormOnInspectAndMaintenanceWhenDriven(t *testing.T) {
 	if !strings.Contains(ins, `action="/scope/wc/sync"`) {
 		t.Fatalf("inspect missing chrome Sync: %s", ins)
 	}
-	maint := do(s, "/maintenance?scope=wc").Body.String()
-	if !strings.Contains(maint, `action="/scope/wc/sync"`) {
-		t.Fatalf("maintenance with selected tk-driven scope missing chrome Sync: %s", maint)
+	doc := do(s, "/doctor?scope=wc").Body.String()
+	if !strings.Contains(doc, `action="/scope/wc/sync"`) {
+		t.Fatalf("doctor with selected tk-driven scope missing chrome Sync: %s", doc)
 	}
-	if !strings.Contains(maint, `action="/maintenance/sync"`) {
-		t.Fatalf("maintenance missing Sync all next to chrome Sync: %s", maint)
+	if !strings.Contains(doc, `action="/doctor/sync"`) {
+		t.Fatalf("doctor missing Sync all next to chrome Sync: %s", doc)
 	}
 }
 

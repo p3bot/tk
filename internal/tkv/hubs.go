@@ -2,14 +2,23 @@ package tkv
 
 import (
 	"net/http"
+
+	"cuelang.org/go/cue/cuecontext"
+
+	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/integrity"
+	"github.com/p3bot/tk/internal/reconcile"
+	"github.com/p3bot/tk/internal/registry"
 )
 
 type hubPage struct {
-	Title  string
-	Chrome chrome
-	Lead   string
-	Items  []hubItem
-	Rows   []overviewRow
+	Title    string
+	Chrome   chrome
+	Lead     string
+	Diagnose bool
+	Lines    []string
+	Items    []hubItem
+	Rows     []overviewRow
 }
 
 type hubItem struct {
@@ -52,7 +61,7 @@ func (s *Server) graphs(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) doctor(w http.ResponseWriter, r *http.Request) error {
 	reg, err := s.loadRegistry()
 	if err != nil {
 		return err
@@ -61,11 +70,26 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ch, err := s.pageChrome(reg, registeredScope(reg, r.URL.Query().Get("scope")), "", navMaintenance, r)
+	ch, err := s.pageChrome(reg, registeredScope(reg, r.URL.Query().Get("scope")), "", navDoctor, r)
 	if err != nil {
 		return err
 	}
 	names := scopeNames(reg)
+	stateDir, err := s.app.stateDir()
+	if err != nil {
+		return err
+	}
+	lines, err := integrity.Diagnose(integrity.Deps{
+		Ctx:      r.Context(),
+		Cue:      s.app.cue(),
+		StateDir: stateDir,
+		Reg:      reg,
+		DB:       s.db,
+		Rec:      s.rec,
+	}, names, res)
+	if err != nil {
+		return err
+	}
 	rows := make([]overviewRow, 0, len(names))
 	for _, name := range names {
 		row, err := s.overviewRow(reg, res, name)
@@ -75,26 +99,78 @@ func (s *Server) maintenance(w http.ResponseWriter, r *http.Request) error {
 		rows = append(rows, row)
 	}
 	return s.render(w, "hub", hubPage{
-		Title:  "maintenance",
-		Chrome: ch,
-		Lead:   "Health for every registered scope. Sync all is on this page. Repairs, index rebuild, and scope admin stay on the tk CLI (tk doctor, tk repair, tk reindex, tk scope).",
+		Title:    "doctor",
+		Chrome:   ch,
+		Lead:     "Diagnose every registered scope with the same integrity tokens as tk doctor. Reindex rebuilds the machine-wide index from files. Sync all is on this page. Repairs stay on the CLI (tk repair).",
+		Diagnose: true,
+		Lines:    lines,
 		Items: []hubItem{
 			{
-				Title: "Integrity",
-				Blurb: "ok/issues per scope from the same checks as tk pulse: parse errors, duplicate ids, equal order keys, archive layout drift.",
+				Title: "Diagnose",
+				Blurb: "Integrity tokens for every registered scope, the same classes as tk doctor. The scope selected in the header does not hide the others.",
 				Ready: true,
+			},
+			{
+				Title:      "Reindex",
+				Blurb:      "Drop the derived SQLite index and refill it from every registered scope's ticket files. Does not mutate tickets, tk.cue, the registry, or git.",
+				PostAction: "/doctor/reindex",
+				PostLabel:  "Reindex",
 			},
 			{
 				Title:      "Sync all",
 				Blurb:      "Snapshot, fetch, integrate, and push every auto-commit git-root. One root's failure does not skip the others. Same as tk sync --all.",
-				PostAction: "/maintenance/sync",
+				PostAction: "/doctor/sync",
 				PostLabel:  "Sync all",
-			},
-			{
-				Title: "More",
-				Blurb: "Doctor and scope registration will get surfaces here later. They will call the same Go functions tk uses — never a tk subprocess.",
 			},
 		},
 		Rows: rows,
 	})
+}
+
+func (s *Server) postDoctorReindex(w http.ResponseWriter, r *http.Request) error {
+	if err := r.ParseForm(); err != nil {
+		return errBadRequest("malformed form")
+	}
+	stateDir, err := s.app.stateDir()
+	if err != nil {
+		return err
+	}
+	configDir, err := s.app.configDir()
+	if err != nil {
+		return err
+	}
+	cueCtx := cuecontext.New()
+	reg, err := registry.NewStore(cueCtx, configDir).Load()
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cur == nil || s.db == nil {
+		return &httpError{status: http.StatusInternalServerError, message: "index is closed"}
+	}
+	// DROP TABLE is file-wide; extra pins are in-flight writes on this file.
+	if s.cur.n > 1 {
+		return errUnavailable("index is busy; retry shortly")
+	}
+
+	db, err := index.Open(stateDir)
+	if err != nil {
+		return err
+	}
+	if err := db.Rebuild(); err != nil {
+		_ = db.Close()
+		return err
+	}
+	rec := reconcile.New(db, cueCtx)
+	if _, err := rec.Reconcile(allTargets(reg), registeredSet(reg), nowNS()); err != nil {
+		_ = db.Close()
+		return err
+	}
+	if err := s.installLocked(db, rec); err != nil {
+		return err
+	}
+	http.Redirect(w, r, "/doctor", http.StatusSeeOther)
+	return nil
 }

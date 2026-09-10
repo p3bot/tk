@@ -26,7 +26,7 @@
     <nav class="primary" aria-label="sections">
       <a href="{{.Chrome.BoardHref}}"{{if eq .Chrome.Section "board"}} class="current"{{end}}>Board</a>
       <a href="{{.Chrome.GraphsHref}}"{{if eq .Chrome.Section "graphs"}} class="current"{{end}}>Graphs</a>
-      <a href="{{.Chrome.MaintenanceHref}}"{{if eq .Chrome.Section "maintenance"}} class="current"{{end}}>Maintenance</a>
+      <a href="{{.Chrome.DoctorHref}}"{{if eq .Chrome.Section "doctor"}} class="current"{{end}}>Doctor</a>
     </nav>
     <form class="search" action="/search" method="get">
       <input type="search" name="q" placeholder="search" value="{{.Chrome.Query}}" aria-label="search">

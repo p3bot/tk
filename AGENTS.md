@@ -91,7 +91,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `reconcile` — git-free read-through that brings the index up to date from the files
   - `git` — the external-git wrapper; full read/integrate/push surface (fetch, rebase,
     stage enumeration and reads, blob merge, author date, push, unpushed count)
-  - `gitstate` — per-git-root XDG ops state (`sync.lock`, `last-push-error` read/write/clear)
+  - `gitstate` — per-git-root XDG ops state (`sync.lock`, `last-push-error` read/write/clear), mid-rebase refuse, and `sync_needed:` reason
   - `selfcommit` — the single reusable self-commit step for auto-commit scopes
   - `rewrite` — the shared multi-file rewrite durability engine
   - `repair` — deterministic integrity repairs (collision pick via `collision`, re-space, archive move)

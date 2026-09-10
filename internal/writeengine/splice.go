@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/p3bot/tk/internal/frontmatter"
+	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/title"
 )
 
@@ -77,7 +78,7 @@ func Splice(deps Deps, in SpliceInput) (Result, error) {
 	out.OldStatus = p.Status
 	out.NewStatus = p.Status
 	if sess.AutoCommit && sess.HasRoot {
-		out.SyncNeeded = SyncNeededReason(ctxOf(deps), deps.StateDir, in.Dir, sess.Root)
+		out.SyncNeeded = gitstate.SyncNeededReason(ctxOf(deps), deps.StateDir, in.Dir, sess.Root)
 	}
 	abs, err := absPath(p.Path)
 	if err != nil {

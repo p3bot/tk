@@ -77,13 +77,11 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-func (e *env) input(name string) Input {
-	sel := Selector{}
-	if name != "" {
-		sel.Name = name
-		sel.NameSet = true
+func (e *env) input(slug string) Input {
+	if slug == "" {
+		slug = scopefile.NoteDefaultSlug
 	}
-	return Input{Scope: e.name, Dir: e.dir, Selector: sel}
+	return Input{Scope: e.name, Dir: e.dir, Slug: slug}
 }
 
 func defaultPath(dir string) string {
@@ -97,16 +95,13 @@ func namedPath(dir, name string) string {
 func TestReadMissingEmptyAndNamed(t *testing.T) {
 	e := newPlainEnv(t)
 
-	res, err := Read(e.deps, e.input(""), true)
-	if err != nil {
+	_, err := Read(e.input(""))
+	var miss *MissingError
+	if !errors.As(err, &miss) {
 		t.Fatalf("missing default: %v", err)
 	}
-	if len(res.Body) != 0 {
-		t.Errorf("missing default body = %q", res.Body)
-	}
 
-	_, err = Read(e.deps, e.input("foo"), false)
-	var miss *MissingError
+	_, err = Read(e.input("foo"))
 	if !errors.As(err, &miss) {
 		t.Fatalf("named missing: %v", err)
 	}
@@ -115,7 +110,7 @@ func TestReadMissingEmptyAndNamed(t *testing.T) {
 	}
 
 	writeFile(t, defaultPath(e.dir), "")
-	res, err = Read(e.deps, e.input(""), true)
+	res, err := Read(e.input(""))
 	if err != nil {
 		t.Fatalf("empty file: %v", err)
 	}
@@ -124,7 +119,7 @@ func TestReadMissingEmptyAndNamed(t *testing.T) {
 	}
 
 	writeFile(t, namedPath(e.dir, "decisions"), "hello\n")
-	res, err = Read(e.deps, e.input("decisions"), false)
+	res, err = Read(e.input("decisions"))
 	if err != nil {
 		t.Fatalf("named cat: %v", err)
 	}
@@ -136,22 +131,34 @@ func TestReadMissingEmptyAndNamed(t *testing.T) {
 	}
 }
 
-func TestReadNonRegular(t *testing.T) {
+func TestRefuseNonRegular(t *testing.T) {
 	e := newPlainEnv(t)
 	if err := os.MkdirAll(defaultPath(e.dir), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Read(e.deps, e.input(""), true)
 	var nr *NonRegularError
+	_, err := Read(e.input(""))
 	if !errors.As(err, &nr) {
 		t.Fatalf("directory cat: %v", err)
+	}
+	_, err = Set(e.deps, e.input(""), []byte("x"))
+	if !errors.As(err, &nr) {
+		t.Fatalf("directory set: %v", err)
+	}
+	_, err = Add(e.deps, e.input(""), "x")
+	if !errors.As(err, &nr) {
+		t.Fatalf("directory add: %v", err)
+	}
+	_, err = Delete(e.deps, e.input(""))
+	if !errors.As(err, &nr) {
+		t.Fatalf("directory delete: %v", err)
 	}
 }
 
 func TestListAddressable(t *testing.T) {
 	e := newPlainEnv(t)
 
-	got, err := List(e.dir)
+	got, err := List(e.name, e.dir)
 	if err != nil {
 		t.Fatalf("missing list: %v", err)
 	}
@@ -171,7 +178,7 @@ func TestListAddressable(t *testing.T) {
 	writeFile(t, namedPath(e.dir, "list"), "residue\n")
 	writeFile(t, namedPath(e.dir, "Not A Slug"), "bad\n")
 
-	got, err = List(e.dir)
+	got, err = List(e.name, e.dir)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -350,18 +357,23 @@ func TestEffectiveSlugInvalidStored(t *testing.T) {
 }
 
 func TestRequireDirUnreachable(t *testing.T) {
-	err := RequireDir("wc", filepath.Join(t.TempDir(), "missing"))
+	missing := filepath.Join(t.TempDir(), "missing")
+	err := RequireDir("wc", missing)
 	if err == nil {
 		t.Fatal("expected unreachable")
 	}
 	if !strings.Contains(err.Error(), token.UnreachableScope) {
 		t.Errorf("want unreachable_scope:, got %v", err)
 	}
+	_, err = List("wc", missing)
+	if err == nil || !strings.Contains(err.Error(), token.UnreachableScope) {
+		t.Errorf("list of missing dir: %v", err)
+	}
 }
 
 func TestPrepareAndFinishEdit(t *testing.T) {
 	e := newPlainEnv(t)
-	res, err := PrepareEdit(e.deps, e.input("scratch"))
+	res, err := PrepareEdit(e.input("scratch"))
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -378,7 +390,7 @@ func TestPrepareAndFinishEdit(t *testing.T) {
 		t.Errorf("empty notes/ should be removed, stat err=%v", err)
 	}
 
-	res, err = PrepareEdit(e.deps, e.input(""))
+	res, err = PrepareEdit(e.input(""))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -33,16 +33,6 @@ type UnusableError struct {
 
 func (e *UnusableError) Error() string { return e.Line }
 
-// MidRebaseError refuses auto-commit writes on a mid-rebase git-root.
-type MidRebaseError struct {
-	Scope, Root, Where string
-}
-
-func (e *MidRebaseError) Error() string {
-	return fmt.Sprintf("%s is mid-sync-conflict in shared repo %s — resolve %s then run tk sync",
-		e.Scope, e.Root, e.Where)
-}
-
 // DuplicateError is duplicate_id: refuse (no write).
 type DuplicateError struct {
 	ID    string

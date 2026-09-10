@@ -194,8 +194,16 @@ func runNoteCat(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 		return err
 	}
 	defer n.close()
-	res, err := notes.Read(n.deps(c), n.input(positional, nameFlag, nameSet), positional == "" && !nameSet)
+	in, err := n.resolve(c, positional, nameFlag, nameSet)
 	if err != nil {
+		return mapNotesErr(err)
+	}
+	res, err := notes.Read(in)
+	if err != nil {
+		var miss *notes.MissingError
+		if errors.As(err, &miss) && positional == "" && !nameSet {
+			return nil
+		}
 		return mapNotesErr(err)
 	}
 	_, err = c.OutOrStdout().Write(res.Body)
@@ -208,7 +216,7 @@ func runNoteList(app *App, c *cobra.Command, scopeFlag string) error {
 		return err
 	}
 	defer n.close()
-	slugs, err := notes.List(n.dir)
+	slugs, err := notes.List(n.scope, n.dir)
 	if err != nil {
 		return err
 	}
@@ -228,7 +236,11 @@ func runNoteAdd(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 		return err
 	}
 	defer n.close()
-	res, err := notes.Add(n.deps(c), n.input("", nameFlag, nameSet), text)
+	in, err := n.resolve(c, "", nameFlag, nameSet)
+	if err != nil {
+		return mapNotesErr(err)
+	}
+	res, err := notes.Add(n.deps(c), in, text)
 	return emitNoteWrite(c, res, err)
 }
 
@@ -245,7 +257,11 @@ func runNoteSet(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 		return err
 	}
 	defer n.close()
-	res, err := notes.Set(n.deps(c), n.input("", nameFlag, nameSet), payload)
+	in, err := n.resolve(c, "", nameFlag, nameSet)
+	if err != nil {
+		return mapNotesErr(err)
+	}
+	res, err := notes.Set(n.deps(c), in, payload)
 	return emitNoteWrite(c, res, err)
 }
 
@@ -259,7 +275,11 @@ func runNoteEdit(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet
 		return err
 	}
 	defer n.close()
-	res, err := notes.PrepareEdit(n.deps(c), n.input("", nameFlag, nameSet))
+	in, err := n.resolve(c, "", nameFlag, nameSet)
+	if err != nil {
+		return mapNotesErr(err)
+	}
+	res, err := notes.PrepareEdit(in)
 	if err != nil {
 		return mapNotesErr(err)
 	}
@@ -280,7 +300,11 @@ func runNoteRemove(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameS
 		return err
 	}
 	defer n.close()
-	res, err := notes.Delete(n.deps(c), n.input("", nameFlag, nameSet))
+	in, err := n.resolve(c, "", nameFlag, nameSet)
+	if err != nil {
+		return mapNotesErr(err)
+	}
+	res, err := notes.Delete(n.deps(c), in)
 	if err != nil {
 		return mapNotesErr(err)
 	}
@@ -330,16 +354,16 @@ func (n *noteScope) deps(c *cobra.Command) notes.Deps {
 	return n.e.notesDeps(c.Context())
 }
 
-func (n *noteScope) input(positional, nameFlag string, nameSet bool) notes.Input {
-	return notes.Input{
-		Scope: n.scope,
-		Dir:   n.dir,
-		Selector: notes.Selector{
-			Positional: positional,
-			Name:       nameFlag,
-			NameSet:    nameSet,
-		},
+func (n *noteScope) resolve(c *cobra.Command, positional, nameFlag string, nameSet bool) (notes.Input, error) {
+	slug, err := notes.ResolveName(n.deps(c), n.scope, notes.Selector{
+		Positional: positional,
+		Name:       nameFlag,
+		NameSet:    nameSet,
+	})
+	if err != nil {
+		return notes.Input{}, err
 	}
+	return notes.Input{Scope: n.scope, Dir: n.dir, Slug: slug}, nil
 }
 
 func openNote(app *App, c *cobra.Command, scopeFlag string) (*noteScope, error) {

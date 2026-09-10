@@ -1,7 +1,6 @@
 package writeengine
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/git"
+	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/testgit"
 	"github.com/p3bot/tk/internal/token"
 )
@@ -95,7 +95,7 @@ func TestMidRebaseRefusesMarkAndClaim(t *testing.T) {
 	}
 
 	_, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "done"})
-	var mid *MidRebaseError
+	var mid *gitstate.MidRebaseError
 	if !errors.As(err, &mid) {
 		t.Fatalf("mark: want mid-rebase, got %v", err)
 	}
@@ -109,24 +109,6 @@ func TestMidRebaseRefusesMarkAndClaim(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "status: todo") {
 		t.Errorf("must not write, got %s", data)
-	}
-}
-
-func TestCheckGitRootMidRebaseIgnoresAutoCommit(t *testing.T) {
-	if !git.Available() {
-		t.Skip("git not on PATH")
-	}
-	_, repo := initAutoCommitRepo(t, "wc")
-	if err := os.MkdirAll(filepath.Join(repo, ".git", "rebase-merge"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	if err := CheckMidRebase(ctx, "wc", false, repo, true); err != nil {
-		t.Fatalf("CheckMidRebase with autoCommit false must stay quiet, got %v", err)
-	}
-	var mid *MidRebaseError
-	if err := CheckGitRootMidRebase(ctx, "wc", repo, true); !errors.As(err, &mid) {
-		t.Fatalf("CheckGitRootMidRebase must refuse, got %v", err)
 	}
 }
 

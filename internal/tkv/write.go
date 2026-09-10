@@ -12,6 +12,7 @@ import (
 	"cuelang.org/go/cue/cuecontext"
 
 	"github.com/p3bot/tk/internal/depgate"
+	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
@@ -585,7 +586,7 @@ func mapWriteError(res writeengine.Result, err error) error {
 	if errors.As(err, &un) {
 		return errUnavailable(un.Error())
 	}
-	var mid *writeengine.MidRebaseError
+	var mid *gitstate.MidRebaseError
 	if errors.As(err, &mid) {
 		return errConflict(mid.Error())
 	}

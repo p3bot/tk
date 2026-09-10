@@ -11,12 +11,13 @@ import (
 
 	"cuelang.org/go/cue"
 
+	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/pathutil"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
+	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/token"
-	"github.com/p3bot/tk/internal/writeengine"
 )
 
 const noteFileMode = 0o644
@@ -32,17 +33,18 @@ type Deps struct {
 }
 
 // Selector is a one-shot slug choice: positional, --name, or the stored default.
+// Resolve it at the edge with ResolveName; file operations take Input.Slug.
 type Selector struct {
 	Positional string
 	Name       string
 	NameSet    bool
 }
 
-// Input is one note file operation. Identity (ambient / --scope) stays at the edge.
+// Input is one note file operation after identity is resolved at the edge.
 type Input struct {
-	Scope    string
-	Dir      string
-	Selector Selector
+	Scope string
+	Dir   string
+	Slug  string
 }
 
 // Result is the structured outcome of a note operation. Path is empty when the
@@ -52,7 +54,6 @@ type Result struct {
 	Path       string
 	Slug       string
 	Body       []byte
-	Slugs      []string
 	SyncNeeded string
 }
 
@@ -166,7 +167,7 @@ func (d Deps) refuseMidRebase(scope, dir string) error {
 	if cfgErr != nil {
 		return nil
 	}
-	return writeengine.CheckMidRebase(d.ctx(), scope, writeengine.SchemaAutoCommit(schema), root, hasRoot)
+	return gitstate.CheckMidRebase(d.ctx(), scope, scopeconfig.SchemaAutoCommit(schema), root, hasRoot)
 }
 
 func (d Deps) syncNeeded(scope, dir string) string {
@@ -175,10 +176,10 @@ func (d Deps) syncNeeded(scope, dir string) string {
 		return ""
 	}
 	schema, cfgErr := d.Rec.SchemaOrError(scope, dir)
-	if cfgErr != nil || !writeengine.SchemaAutoCommit(schema) {
+	if cfgErr != nil || !scopeconfig.SchemaAutoCommit(schema) {
 		return ""
 	}
-	return writeengine.SyncNeededReason(d.ctx(), d.StateDir, dir, root)
+	return gitstate.SyncNeededReason(d.ctx(), d.StateDir, dir, root)
 }
 
 func resultPath(path, slug string) (Result, error) {

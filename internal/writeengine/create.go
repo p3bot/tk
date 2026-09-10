@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/p3bot/tk/internal/frontmatter"
+	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/order"
@@ -118,7 +119,7 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 		out.ArchiveNote = fmt.Sprintf("note: %s scaffolded under archive/ — a terminal create is not git-durable until tk sync (auto-commit) or a host commit", fullID)
 	}
 	if sess.AutoCommit && sess.HasRoot {
-		out.SyncNeeded = SyncNeededReason(ctxOf(deps), deps.StateDir, in.Dir, sess.Root)
+		out.SyncNeeded = gitstate.SyncNeededReason(ctxOf(deps), deps.StateDir, in.Dir, sess.Root)
 	}
 	out.TagNew = newTagValues(tags, preWriteTags)
 

@@ -1,7 +1,8 @@
 // Package gitstate manages per-git-root operational state in machine-local XDG
 // state — never under <git-root>/.git/. Each auto-commit git-root has a directory
 // keyed by SHA-256 of the cleaned, symlink-resolved absolute path, holding
-// sync.lock and last-push-error.
+// sync.lock and last-push-error. Mid-rebase write refuse and the sync_needed:
+// reason catalogue live here so ticket writes and notes share one definition.
 package gitstate
 
 import (

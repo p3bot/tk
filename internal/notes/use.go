@@ -1,11 +1,8 @@
 package notes
 
 import (
-	"fmt"
-
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/scopefile"
-	"github.com/p3bot/tk/internal/slug"
 	"github.com/p3bot/tk/internal/xdg"
 )
 
@@ -33,16 +30,14 @@ func Use(deps Deps, in UseInput) (Result, error) {
 		}
 		return Result{Slug: name}, nil
 	}
-	if scopefile.IsReservedNoteName(in.Slug) {
-		return Result{}, &UsageError{Msg: fmt.Sprintf("%q is a reserved note name", in.Slug)}
-	}
-	if !slug.Valid(in.Slug) {
-		return Result{}, &UsageError{Msg: fmt.Sprintf("%q is not a valid note slug", in.Slug)}
-	}
-	if err := writePointer(deps, in.Scope, in.Slug); err != nil {
+	name, err := SelectName(in.Slug, "", false, scopefile.NoteDefaultSlug)
+	if err != nil {
 		return Result{}, err
 	}
-	return Result{Slug: in.Slug}, nil
+	if err := writePointer(deps, in.Scope, name); err != nil {
+		return Result{}, err
+	}
+	return Result{Slug: name}, nil
 }
 
 // writePointer: machine-global flock spans load-modify-write. Built-in default deletes the key.

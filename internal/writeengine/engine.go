@@ -17,7 +17,6 @@ import (
 	"github.com/p3bot/tk/internal/pathutil"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
-	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/syncengine"
 )
 
@@ -126,12 +125,6 @@ func (r Result) Tickets() []Member {
 		DependsOpen:     r.DependsOpen,
 		RequiredMissing: r.RequiredMissing,
 	}}
-}
-
-// SchemaAutoCommit reports whether the schema enables tk-driven self-commit.
-// A nil schema is false; writers refuse unusable config first.
-func SchemaAutoCommit(s *scopeconfig.Schema) bool {
-	return s != nil && s.AutoCommit
 }
 
 func nowNS() int64 { return time.Now().UnixNano() }

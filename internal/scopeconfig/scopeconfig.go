@@ -61,6 +61,12 @@ func (s *Schema) CustomStatuses() map[string]status.Category {
 	return s.Statuses
 }
 
+// SchemaAutoCommit reports whether the schema enables tk-driven self-commit.
+// A nil schema is false.
+func SchemaAutoCommit(s *Schema) bool {
+	return s != nil && s.AutoCommit
+}
+
 // ConfigError marks a tk.cue that cannot be trusted (absent, uncompilable, or schema-invalid).
 type ConfigError struct {
 	Dir    string

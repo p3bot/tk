@@ -5,7 +5,9 @@ import (
 
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/git"
+	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/selfcommit"
 	"github.com/p3bot/tk/internal/status"
@@ -61,16 +63,16 @@ func runNetworkClaim(deps Deps, r Reporter, scope, dir string, underLock network
 	r = reporterOrNop(r)
 	ctx := ctxOf(deps)
 	schema, _ := deps.Rec.SchemaOrError(scope, dir)
-	autoCommit := SchemaAutoCommit(schema)
+	autoCommit := scopeconfig.SchemaAutoCommit(schema)
 	root, hasRoot := scopefile.GitRoot(dir)
 	network := autoCommit && hasRoot && git.HasUpstream(ctx, root)
 
 	attachNeeded := func(out *Result) {
-		out.SyncNeeded = SyncNeededReason(ctx, deps.StateDir, dir, root)
+		out.SyncNeeded = gitstate.SyncNeededReason(ctx, deps.StateDir, dir, root)
 	}
 
 	if network {
-		if err := CheckMidRebase(ctx, scope, autoCommit, root, hasRoot); err != nil {
+		if err := gitstate.CheckMidRebase(ctx, scope, autoCommit, root, hasRoot); err != nil {
 			return Result{}, err
 		}
 		sd := syncDeps(deps)
@@ -129,7 +131,7 @@ func claimNextUnderLock(deps Deps, in ClaimInput, autoCommit bool, root string, 
 	if err := RefuseUnusable(res, in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
-	if err := CheckMidRebase(ctxOf(deps), in.Scope, autoCommit, root, hasRoot); err != nil {
+	if err := gitstate.CheckMidRebase(ctxOf(deps), in.Scope, autoCommit, root, hasRoot); err != nil {
 		return Result{}, err
 	}
 
@@ -178,7 +180,7 @@ func claimMarksUnderLock(deps Deps, in claimMarksInput, autoCommit bool, root st
 	if err := RefuseUnusable(res, in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
-	if err := CheckMidRebase(ctxOf(deps), in.Scope, autoCommit, root, hasRoot); err != nil {
+	if err := gitstate.CheckMidRebase(ctxOf(deps), in.Scope, autoCommit, root, hasRoot); err != nil {
 		return Result{}, err
 	}
 

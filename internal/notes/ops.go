@@ -14,7 +14,10 @@ import (
 // List returns addressable note slugs under notes/, alphabetical. A missing
 // notes/ directory is empty success. Reserved names, invalid slugs, nested
 // paths, and non-regular entries are omitted.
-func List(dir string) ([]string, error) {
+func List(scope, dir string) ([]string, error) {
+	if err := RequireDir(scope, dir); err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(filepath.Join(dir, scopefile.NoteDir))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -52,19 +55,14 @@ func dirEntryRegular(e os.DirEntry) bool {
 	return mode.IsRegular()
 }
 
-// Read cats a note file. missingOK (bare default, no --name) treats a missing
-// path as empty success. A named missing slug is MissingError. Empty files are
-// empty success. Non-regular files refuse.
-func Read(deps Deps, in Input, missingOK bool) (Result, error) {
+// Read cats a note file. A missing path is MissingError. Empty files are empty
+// success. Non-regular files refuse. Bare-default-as-empty is CLI policy.
+func Read(in Input) (Result, error) {
 	if err := RequireDir(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
-	name, err := ResolveName(deps, in.Scope, in.Selector)
-	if err != nil {
-		return Result{}, err
-	}
-	path := scopefile.NoteFile(in.Dir, name)
-	out, err := resultPath(path, name)
+	path := scopefile.NoteFile(in.Dir, in.Slug)
+	out, err := resultPath(path, in.Slug)
 	if err != nil {
 		return Result{}, err
 	}
@@ -72,9 +70,6 @@ func Read(deps Deps, in Input, missingOK bool) (Result, error) {
 	st, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if missingOK {
-				return out, nil
-			}
 			return Result{}, &MissingError{Path: out.Path}
 		}
 		return Result{}, fmt.Errorf("stat %s: %w", path, err)
@@ -157,11 +152,7 @@ func Delete(deps Deps, in Input) (Result, error) {
 	if err := RequireDir(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
-	name, err := ResolveName(deps, in.Scope, in.Selector)
-	if err != nil {
-		return Result{}, err
-	}
-	path := scopefile.NoteFile(in.Dir, name)
+	path := scopefile.NoteFile(in.Dir, in.Slug)
 	removed := false
 	if err := withLock(in.Dir, func() error {
 		if err := deps.refuseMidRebase(in.Scope, in.Dir); err != nil {
@@ -187,7 +178,7 @@ func Delete(deps Deps, in Input) (Result, error) {
 	}); err != nil {
 		return Result{}, err
 	}
-	out := Result{Slug: name}
+	out := Result{Slug: in.Slug}
 	if removed {
 		out.SyncNeeded = deps.syncNeeded(in.Scope, in.Dir)
 	}
@@ -198,11 +189,7 @@ func mutate(deps Deps, in Input, fn func(path string) error) (Result, error) {
 	if err := RequireDir(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
-	name, err := ResolveName(deps, in.Scope, in.Selector)
-	if err != nil {
-		return Result{}, err
-	}
-	path := scopefile.NoteFile(in.Dir, name)
+	path := scopefile.NoteFile(in.Dir, in.Slug)
 	if err := withLock(in.Dir, func() error {
 		if err := deps.refuseMidRebase(in.Scope, in.Dir); err != nil {
 			return err
@@ -211,7 +198,7 @@ func mutate(deps Deps, in Input, fn func(path string) error) (Result, error) {
 	}); err != nil {
 		return Result{}, err
 	}
-	out, err := resultPath(path, name)
+	out, err := resultPath(path, in.Slug)
 	if err != nil {
 		return Result{}, err
 	}
@@ -221,15 +208,11 @@ func mutate(deps Deps, in Input, fn func(path string) error) (Result, error) {
 
 // PrepareEdit creates notes/ if needed and refuses a non-regular path. It does
 // not create the file and does not refuse mid-rebase.
-func PrepareEdit(deps Deps, in Input) (Result, error) {
+func PrepareEdit(in Input) (Result, error) {
 	if err := RequireDir(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
-	name, err := ResolveName(deps, in.Scope, in.Selector)
-	if err != nil {
-		return Result{}, err
-	}
-	path := scopefile.NoteFile(in.Dir, name)
+	path := scopefile.NoteFile(in.Dir, in.Slug)
 	notesDir := filepath.Join(in.Dir, scopefile.NoteDir)
 	if err := withLock(in.Dir, func() error {
 		if err := os.MkdirAll(notesDir, 0o755); err != nil {
@@ -239,7 +222,7 @@ func PrepareEdit(deps Deps, in Input) (Result, error) {
 	}); err != nil {
 		return Result{}, err
 	}
-	return resultPath(path, name)
+	return resultPath(path, in.Slug)
 }
 
 // FinishEdit removes a zero-byte file left by the editor and an empty notes/.

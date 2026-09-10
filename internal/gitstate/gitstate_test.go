@@ -1,9 +1,14 @@
 package gitstate
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/p3bot/tk/internal/git"
+	"github.com/p3bot/tk/internal/testgit"
 )
 
 func TestKeyStableAndHex(t *testing.T) {
@@ -109,5 +114,25 @@ func TestWriteAndClearLastPushError(t *testing.T) {
 	}
 	if err := ClearLastPushError(state, repo); err != nil {
 		t.Errorf("clearing an absent marker must be idempotent: %v", err)
+	}
+}
+
+func TestCheckGitRootMidRebaseIgnoresAutoCommit(t *testing.T) {
+	if !git.Available() {
+		t.Skip("git not on PATH")
+	}
+	testgit.Hermetic(t)
+	repo := t.TempDir()
+	testgit.Run(t, repo, "init", "-b", "main")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "rebase-merge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := CheckMidRebase(ctx, "wc", false, repo, true); err != nil {
+		t.Fatalf("CheckMidRebase with autoCommit false must stay quiet, got %v", err)
+	}
+	var mid *MidRebaseError
+	if err := CheckGitRootMidRebase(ctx, "wc", repo, true); !errors.As(err, &mid) {
+		t.Fatalf("CheckGitRootMidRebase must refuse, got %v", err)
 	}
 }

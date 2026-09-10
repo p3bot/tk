@@ -1,26 +1,16 @@
 package cli
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/p3bot/tk/internal/atomicfile"
-	"github.com/p3bot/tk/internal/registry"
-	"github.com/p3bot/tk/internal/scopefile"
-	"github.com/p3bot/tk/internal/slug"
+	"github.com/p3bot/tk/internal/notes"
 	"github.com/p3bot/tk/internal/token"
-	"github.com/p3bot/tk/internal/writeengine"
-	"github.com/p3bot/tk/internal/xdg"
 )
-
-const noteFileMode = 0o644
 
 func newNoteCmd(app *App) *cobra.Command {
 	var scope, name string
@@ -204,12 +194,12 @@ func runNoteCat(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 		return err
 	}
 	defer n.close()
-	name, err := resolveSelectedNoteName(n, positional, nameFlag, nameSet)
+	res, err := notes.Read(n.deps(c), n.input(positional, nameFlag, nameSet), positional == "" && !nameSet)
 	if err != nil {
-		return err
+		return mapNotesErr(err)
 	}
-	missingOK := positional == "" && !nameSet
-	return catNoteFile(c, n.path(name), missingOK)
+	_, err = c.OutOrStdout().Write(res.Body)
+	return err
 }
 
 func runNoteList(app *App, c *cobra.Command, scopeFlag string) error {
@@ -218,8 +208,7 @@ func runNoteList(app *App, c *cobra.Command, scopeFlag string) error {
 		return err
 	}
 	defer n.close()
-
-	slugs, err := listNoteSlugs(n.dir)
+	slugs, err := notes.List(n.dir)
 	if err != nil {
 		return err
 	}
@@ -239,37 +228,8 @@ func runNoteAdd(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 		return err
 	}
 	defer n.close()
-	name, err := resolveSelectedNoteName(n, "", nameFlag, nameSet)
-	if err != nil {
-		return err
-	}
-	path := n.path(name)
-	if err := withNoteLock(n.dir, func() error {
-		if err := n.refuseMidRebase(c.Context()); err != nil {
-			return err
-		}
-		if err := refuseNonRegularNote(path); err != nil {
-			return err
-		}
-		existing, err := os.ReadFile(path)
-		if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("read %s: %w", path, err)
-		}
-		var buf []byte
-		if len(existing) > 0 {
-			buf = existing
-			if existing[len(existing)-1] != '\n' {
-				buf = append(buf, '\n')
-			}
-		}
-		buf = append(buf, text...)
-		buf = append(buf, '\n')
-		return atomicfile.Write(path, buf, noteFileMode)
-	}); err != nil {
-		return err
-	}
-	n.maybeSyncNeeded(c)
-	return printNotePath(c, path)
+	res, err := notes.Add(n.deps(c), n.input("", nameFlag, nameSet), text)
+	return emitNoteWrite(c, res, err)
 }
 
 func runNoteSet(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag string, nameSet bool) error {
@@ -277,29 +237,16 @@ func runNoteSet(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 	if err != nil {
 		return err
 	}
+	if len(payload) == 0 {
+		return usageErrorf("set needs non-empty text")
+	}
 	n, err := openNote(app, c, scopeFlag)
 	if err != nil {
 		return err
 	}
 	defer n.close()
-	name, err := resolveSelectedNoteName(n, "", nameFlag, nameSet)
-	if err != nil {
-		return err
-	}
-	path := n.path(name)
-	if err := withNoteLock(n.dir, func() error {
-		if err := n.refuseMidRebase(c.Context()); err != nil {
-			return err
-		}
-		if err := refuseNonRegularNote(path); err != nil {
-			return err
-		}
-		return atomicfile.Write(path, payload, noteFileMode)
-	}); err != nil {
-		return err
-	}
-	n.maybeSyncNeeded(c)
-	return printNotePath(c, path)
+	res, err := notes.Set(n.deps(c), n.input("", nameFlag, nameSet), payload)
+	return emitNoteWrite(c, res, err)
 }
 
 func runNoteEdit(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet bool) error {
@@ -312,31 +259,19 @@ func runNoteEdit(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet
 		return err
 	}
 	defer n.close()
-	name, err := resolveSelectedNoteName(n, "", nameFlag, nameSet)
+	res, err := notes.PrepareEdit(n.deps(c), n.input("", nameFlag, nameSet))
 	if err != nil {
-		return err
+		return mapNotesErr(err)
 	}
-	path := n.path(name)
-	notesDir := filepath.Join(n.dir, scopefile.NoteDir)
-	if err := withNoteLock(n.dir, func() error {
-		if err := os.MkdirAll(notesDir, 0o755); err != nil {
-			return fmt.Errorf("create notes dir: %w", err)
-		}
-		return refuseNonRegularNote(path)
-	}); err != nil {
-		return err
-	}
-
-	edErr := runEditor(fields, path)
-	if err := withNoteLock(n.dir, func() error {
-		return cleanupEmptyNote(n.dir, path)
-	}); err != nil && edErr == nil {
+	edErr := runEditor(fields, res.Path)
+	if err := notes.FinishEdit(n.dir, res.Path); err != nil && edErr == nil {
 		return err
 	}
 	if edErr != nil {
 		return edErr
 	}
-	return printNotePath(c, path)
+	stdoutln(c, res.Path)
+	return nil
 }
 
 func runNoteRemove(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameSet bool) error {
@@ -345,39 +280,11 @@ func runNoteRemove(app *App, c *cobra.Command, scopeFlag, nameFlag string, nameS
 		return err
 	}
 	defer n.close()
-	name, err := resolveSelectedNoteName(n, "", nameFlag, nameSet)
+	res, err := notes.Delete(n.deps(c), n.input("", nameFlag, nameSet))
 	if err != nil {
-		return err
+		return mapNotesErr(err)
 	}
-	path := n.path(name)
-	removed := false
-	if err := withNoteLock(n.dir, func() error {
-		if err := n.refuseMidRebase(c.Context()); err != nil {
-			return err
-		}
-		st, err := os.Lstat(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				rmdirNotesIfEmpty(n.dir)
-				return nil
-			}
-			return fmt.Errorf("stat %s: %w", path, err)
-		}
-		if !st.Mode().IsRegular() {
-			return fmt.Errorf("%s is not a regular file", path)
-		}
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("remove %s: %w", path, err)
-		}
-		rmdirNotesIfEmpty(n.dir)
-		removed = true
-		return nil
-	}); err != nil {
-		return err
-	}
-	if removed {
-		n.maybeSyncNeeded(c)
-	}
+	emitNoteSyncNeeded(c, res)
 	return nil
 }
 
@@ -396,28 +303,19 @@ func runNoteUse(app *App, c *cobra.Command, args []string, scopeFlag string, cle
 	if err != nil {
 		return err
 	}
-	scope := resolved.Name
 
-	switch {
-	case clearUse:
-		return e.writeNote(scope, "")
-	case len(args) == 0:
-		name, err := effectiveNoteSlug(e, scope)
-		if err != nil {
-			return err
-		}
-		stdoutln(c, name)
-		return nil
-	default:
-		name := args[0]
-		if scopefile.IsReservedNoteName(name) {
-			return usageErrorf("%q is a reserved note name", name)
-		}
-		if !slug.Valid(name) {
-			return usageErrorf("%q is not a valid note slug", name)
-		}
-		return e.writeNote(scope, name)
+	in := notes.UseInput{Scope: resolved.Name, Clear: clearUse}
+	if !clearUse && len(args) == 1 {
+		in.Slug = args[0]
 	}
+	res, err := notes.Use(e.notesDeps(c.Context()), in)
+	if err != nil {
+		return mapNotesErr(err)
+	}
+	if !clearUse && len(args) == 0 {
+		stdoutln(c, res.Slug)
+	}
+	return nil
 }
 
 type noteScope struct {
@@ -428,8 +326,20 @@ type noteScope struct {
 
 func (n *noteScope) close() { n.e.close() }
 
-func (n *noteScope) path(name string) string {
-	return scopefile.NoteFile(n.dir, name)
+func (n *noteScope) deps(c *cobra.Command) notes.Deps {
+	return n.e.notesDeps(c.Context())
+}
+
+func (n *noteScope) input(positional, nameFlag string, nameSet bool) notes.Input {
+	return notes.Input{
+		Scope: n.scope,
+		Dir:   n.dir,
+		Selector: notes.Selector{
+			Positional: positional,
+			Name:       nameFlag,
+			NameSet:    nameSet,
+		},
+	}
 }
 
 func openNote(app *App, c *cobra.Command, scopeFlag string) (*noteScope, error) {
@@ -442,191 +352,11 @@ func openNote(app *App, c *cobra.Command, scopeFlag string) (*noteScope, error) 
 		e.close()
 		return nil, err
 	}
-	if err := requireScopeDir(resolved.Name, resolved.Entry.Dir); err != nil {
+	if err := notes.RequireDir(resolved.Name, resolved.Entry.Dir); err != nil {
 		e.close()
 		return nil, err
 	}
 	return &noteScope{e: e, scope: resolved.Name, dir: resolved.Entry.Dir}, nil
-}
-
-// refuseMidRebase: create-class fence. Quiet when the schema is unusable
-// (notes stay usable) or the scope is not tk-driven. Edit does not call this.
-func (n *noteScope) refuseMidRebase(ctx context.Context) error {
-	root, hasRoot := scopefile.GitRoot(n.dir)
-	schema, cfgErr := n.e.rec.SchemaOrError(n.scope, n.dir)
-	if cfgErr != nil {
-		return nil
-	}
-	return checkMidRebase(ctx, n.scope, writeengine.SchemaAutoCommit(schema), root, hasRoot)
-}
-
-// maybeSyncNeeded: create-class hint after add/set/remove. Quiet when the schema
-// is unusable or the scope is not tk-driven. Edit does not call this.
-func (n *noteScope) maybeSyncNeeded(c *cobra.Command) {
-	root, hasRoot := scopefile.GitRoot(n.dir)
-	if !hasRoot {
-		return
-	}
-	schema, cfgErr := n.e.rec.SchemaOrError(n.scope, n.dir)
-	if cfgErr != nil || !writeengine.SchemaAutoCommit(schema) {
-		return
-	}
-	n.e.tkDrivenSyncNeeded(c.Context(), c, n.dir, root)
-}
-
-func requireScopeDir(scope, dir string) error {
-	st, err := os.Lstat(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("%s", token.Line(token.UnreachableScope,
-				fmt.Sprintf("%s: dir %s is not reachable", scope, dir)))
-		}
-		return fmt.Errorf("stat %s: %w", dir, err)
-	}
-	if !st.IsDir() {
-		return fmt.Errorf("%s", token.Line(token.UnreachableScope,
-			fmt.Sprintf("%s: dir %s is not reachable", scope, dir)))
-	}
-	return nil
-}
-
-func resolveSelectedNoteName(n *noteScope, positional, nameFlag string, nameSet bool) (string, error) {
-	fallback := scopefile.NoteDefaultSlug
-	if positional == "" && !nameSet {
-		var err error
-		fallback, err = effectiveNoteSlug(n.e, n.scope)
-		if err != nil {
-			return "", err
-		}
-	}
-	return selectNoteName(positional, nameFlag, nameSet, fallback)
-}
-
-func effectiveNoteSlug(e *engine, scope string) (string, error) {
-	var stored string
-	var ok bool
-	if e.reg != nil {
-		stored, ok = e.reg.Note[scope]
-	}
-	if !ok || stored == scopefile.NoteDefaultSlug {
-		return scopefile.NoteDefaultSlug, nil
-	}
-	if !scopefile.IsAddressableNoteSlug(stored) {
-		return "", fmt.Errorf("%s stores %q for scope %q — not an addressable note slug",
-			filepath.Join(e.app.ConfigDir, "note.cue"), stored, scope)
-	}
-	return stored, nil
-}
-
-// writeNote: machine-global flock spans load-modify-write. Built-in default deletes the key.
-func (e *engine) writeNote(scope, name string) error {
-	lock, err := xdg.AcquireConfigLock(e.app.ConfigDir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = lock.Release() }()
-
-	store := registry.NewStore(e.app.Ctx, e.app.ConfigDir)
-	reg, err := store.Load()
-	if err != nil {
-		return err
-	}
-	if reg.Note == nil {
-		reg.Note = map[string]string{}
-	}
-	if name == "" || name == scopefile.NoteDefaultSlug {
-		delete(reg.Note, scope)
-	} else {
-		reg.Note[scope] = name
-	}
-	return store.WriteNote(reg.Note)
-}
-
-func selectNoteName(positional, nameFlag string, nameSet bool, fallback string) (string, error) {
-	if positional != "" && nameSet {
-		return "", usageErrorf("use a positional slug or --name, not both")
-	}
-	name := fallback
-	switch {
-	case positional != "":
-		name = positional
-	case nameSet:
-		name = nameFlag
-	}
-	if scopefile.IsReservedNoteName(name) {
-		return "", usageErrorf("%q is a reserved note name", name)
-	}
-	if !slug.Valid(name) {
-		return "", usageErrorf("%q is not a valid note slug", name)
-	}
-	return name, nil
-}
-
-func catNoteFile(c *cobra.Command, path string, missingOK bool) error {
-	st, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if missingOK {
-				return nil
-			}
-			abs, absErr := absPath(path)
-			if absErr != nil {
-				abs = path
-			}
-			return fmt.Errorf("%s does not exist", abs)
-		}
-		return fmt.Errorf("stat %s: %w", path, err)
-	}
-	if !st.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file", path)
-	}
-	if st.Size() == 0 {
-		return nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", path, err)
-	}
-	_, err = c.OutOrStdout().Write(data)
-	return err
-}
-
-func listNoteSlugs(dir string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(dir, scopefile.NoteDir))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("read notes dir: %w", err)
-	}
-	var slugs []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		stem, ok := strings.CutSuffix(e.Name(), ".md")
-		if !ok || !scopefile.IsAddressableNoteSlug(stem) {
-			continue
-		}
-		if !dirEntryRegular(e) {
-			continue
-		}
-		slugs = append(slugs, stem)
-	}
-	sort.Strings(slugs)
-	return slugs, nil
-}
-
-func dirEntryRegular(e os.DirEntry) bool {
-	mode := e.Type()
-	if mode == 0 {
-		info, err := e.Info()
-		if err != nil {
-			return false
-		}
-		return info.Mode().IsRegular()
-	}
-	return mode.IsRegular()
 }
 
 func noteSetPayload(c *cobra.Command, args []string) ([]byte, error) {
@@ -635,79 +365,35 @@ func noteSetPayload(c *cobra.Command, args []string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read stdin: %w", err)
 		}
-		if len(data) == 0 {
-			return nil, usageErrorf("set needs non-empty text")
-		}
-		if data[len(data)-1] != '\n' {
-			data = append(data, '\n')
-		}
 		return data, nil
 	}
-	text := strings.Join(args, " ")
-	if text == "" {
-		return nil, usageErrorf("set needs non-empty text")
-	}
-	if !strings.HasSuffix(text, "\n") {
-		text += "\n"
-	}
-	return []byte(text), nil
+	return []byte(strings.Join(args, " ")), nil
 }
 
-func printNotePath(c *cobra.Command, path string) error {
-	abs, err := absPath(path)
+func emitNoteWrite(c *cobra.Command, res notes.Result, err error) error {
 	if err != nil {
-		return err
+		return mapNotesErr(err)
 	}
-	stdoutln(c, abs)
+	if res.Path != "" {
+		stdoutln(c, res.Path)
+	}
+	emitNoteSyncNeeded(c, res)
 	return nil
 }
 
-func withNoteLock(dir string, fn func() error) error {
-	lock, err := scopefile.AcquireLock(dir)
-	if err != nil {
-		return err
+func emitNoteSyncNeeded(c *cobra.Command, res notes.Result) {
+	if res.SyncNeeded != "" {
+		stderrln(c, token.Line(token.SyncNeeded, res.SyncNeeded))
 	}
-	defer func() { _ = lock.Release() }()
-	return fn()
 }
 
-func refuseNonRegularNote(path string) error {
-	st, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("stat %s: %w", path, err)
+func mapNotesErr(err error) error {
+	if err == nil {
+		return nil
 	}
-	if !st.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file", path)
+	var use *notes.UsageError
+	if errors.As(err, &use) {
+		return usageErrorf("%s", use.Msg)
 	}
-	return nil
-}
-
-func cleanupEmptyNote(dir, path string) error {
-	st, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			rmdirNotesIfEmpty(dir)
-			return nil
-		}
-		return fmt.Errorf("stat %s: %w", path, err)
-	}
-	if st.Mode().IsRegular() && st.Size() == 0 {
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("remove empty %s: %w", path, err)
-		}
-	}
-	rmdirNotesIfEmpty(dir)
-	return nil
-}
-
-func rmdirNotesIfEmpty(dir string) {
-	p := filepath.Join(dir, scopefile.NoteDir)
-	st, err := os.Lstat(p)
-	if err != nil || !st.IsDir() {
-		return
-	}
-	_ = os.Remove(p)
+	return err
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/notes"
 	"github.com/p3bot/tk/internal/scopeadmin"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
@@ -174,7 +175,7 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 	root, hasRoot := scopefile.GitRoot(dir)
 	mode := pulseMode(schema, res.ConfigErrs[scope] != nil, hasRoot)
 
-	noteSlug, err := effectiveNoteSlug(e, scope)
+	noteSlug, err := notes.EffectiveSlug(e.reg, e.app.ConfigDir, scope)
 	if err != nil {
 		return err
 	}

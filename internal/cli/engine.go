@@ -11,6 +11,7 @@ import (
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/notes"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/resolve"
@@ -64,6 +65,17 @@ func (e *engine) writeDeps(ctx context.Context) writeengine.Deps {
 		Reg:      e.reg,
 		DB:       e.db,
 		Rec:      e.rec,
+	}
+}
+
+func (e *engine) notesDeps(ctx context.Context) notes.Deps {
+	return notes.Deps{
+		Ctx:       ctx,
+		Cue:       e.app.Ctx,
+		StateDir:  e.app.StateDir,
+		ConfigDir: e.app.ConfigDir,
+		Reg:       e.reg,
+		Rec:       e.rec,
 	}
 }
 

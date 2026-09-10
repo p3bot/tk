@@ -85,6 +85,15 @@ func (e *NoLongerTodoError) Error() string {
 	return fmt.Sprintf("%s is no longer todo (status is %s) — not claimed", e.ID, e.Status)
 }
 
+// ClobberError is a stale inspect predicate: the file changed, no write.
+type ClobberError struct {
+	ID string
+}
+
+func (e *ClobberError) Error() string {
+	return fmt.Sprintf("%s changed since this form was rendered — reload and save again", e.ID)
+}
+
 // UsageError is argv-class policy the CLI adapter maps to exit 2.
 type UsageError struct {
 	Msg string

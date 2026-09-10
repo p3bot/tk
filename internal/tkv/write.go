@@ -306,6 +306,43 @@ func (s *Server) postOrder(w http.ResponseWriter, r *http.Request) error {
 	return s.finishWrite(w, r, res, err)
 }
 
+func (s *Server) postBody(w http.ResponseWriter, r *http.Request) error {
+	if err := r.ParseForm(); err != nil {
+		return errBadRequest("malformed form")
+	}
+	name := r.PathValue("name")
+	if !id.IsScopeName(name) {
+		return errNotFound("unknown scope")
+	}
+	lu, err := lookupFromArg(r.FormValue("id"))
+	if err != nil {
+		return err
+	}
+	if lu.ByFull && id.ScopeOfFullID(lu.Arg) != name {
+		return errNotFound(fmt.Sprintf("ticket %q does not belong to scope %q", lu.Arg, name))
+	}
+
+	sess, release, err := s.beginWrite(r.Context(), name)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	res, err := writeengine.Splice(sess.deps, writeengine.SpliceInput{
+		Scope:  name,
+		Dir:    sess.dir,
+		Lookup: lu,
+		Title:  r.FormValue("title"),
+		Body:   r.FormValue("body"),
+		Base:   strings.TrimSpace(r.FormValue("base")),
+	})
+	if err != nil {
+		return mapWriteError(res, err)
+	}
+	http.Redirect(w, r, appendNotices(inspectHref(res.ID), res), http.StatusSeeOther)
+	return nil
+}
+
 func destFromForm(r *http.Request) (writeengine.Dest, error) {
 	var d writeengine.Dest
 	switch v := strings.TrimSpace(r.FormValue("dest")); v {
@@ -539,6 +576,10 @@ func mapWriteError(res writeengine.Result, err error) error {
 	var pe *writeengine.ParseQuarantineError
 	if errors.As(err, &pe) {
 		return errConflict(pe.Error())
+	}
+	var cl *writeengine.ClobberError
+	if errors.As(err, &cl) {
+		return errConflict(cl.Error())
 	}
 	var un *writeengine.UnusableError
 	if errors.As(err, &un) {

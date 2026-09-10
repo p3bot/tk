@@ -20,6 +20,7 @@ import (
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
 	"github.com/p3bot/tk/internal/testgit"
+	"github.com/p3bot/tk/internal/title"
 	"github.com/p3bot/tk/internal/token"
 	"github.com/p3bot/tk/internal/writeengine"
 )
@@ -197,13 +198,13 @@ func TestGETDoesNotWrite(t *testing.T) {
 	before := ticketBody(t, dir, "wc-ab2c")
 	setLens(t, app, "wc", []string{"frontend"})
 	beforeLens := lensFile(t, app)
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/doctor", "/doctor/sync", "/doctor/reindex"} {
+	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/body", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/doctor", "/doctor/sync", "/doctor/reindex"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))
 		}
 	}
-	// GET /scope/{name}/mark, /claim, /create, /meta, and /order collide with inspect {id}; they must 404, not hit POST.
+	// GET /scope/{name}/mark, /claim, /create, /meta, /order, and /body collide with inspect {id}; they must 404, not hit POST.
 	if code := do(s, "/scope/wc/mark").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/mark = %d, want inspect 404", code)
 	}
@@ -218,6 +219,9 @@ func TestGETDoesNotWrite(t *testing.T) {
 	}
 	if code := do(s, "/scope/wc/order").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/order = %d, want inspect 404", code)
+	}
+	if code := do(s, "/scope/wc/body").Code; code != http.StatusNotFound {
+		t.Fatalf("GET /scope/wc/body = %d, want inspect 404", code)
 	}
 	head := httptest.NewRequest(http.MethodHead, "/scope/wc/ab2c", nil)
 	hw := httptest.NewRecorder()
@@ -1094,6 +1098,7 @@ func TestMapWriteErrorCreateMetaOrderClasses(t *testing.T) {
 		{"depends unresolvable", &writeengine.DependsUnresolvableError{ID: "wc-ab2c", Target: "zz-aa22"}, http.StatusConflict},
 		{"neighbour order", &writeengine.NeighbourOrderError{Arg: "wc-de34"}, http.StatusConflict},
 		{"no legal order", &writeengine.NoLegalOrderError{ID: "wc-ab2c", Err: order.ErrEqualKeys}, http.StatusConflict},
+		{"clobber", &writeengine.ClobberError{ID: "wc-ab2c"}, http.StatusConflict},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1358,6 +1363,12 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if !strings.Contains(ins, `method="post" action="/scope/wc/order"`) {
 		t.Fatalf("inspect missing order form: %s", ins)
 	}
+	if !strings.Contains(ins, `method="post" action="/scope/wc/body"`) {
+		t.Fatalf("inspect missing body form: %s", ins)
+	}
+	if !strings.Contains(ins, `name="title" required`) || !strings.Contains(ins, `<textarea name="body"`) {
+		t.Fatalf("inspect body form missing title/body: %s", ins)
+	}
 	if !strings.Contains(ins, `name="dest" value="first"`) || !strings.Contains(ins, `name="dest" value="last"`) {
 		t.Fatalf("inspect missing board first/last: %s", ins)
 	}
@@ -1419,7 +1430,7 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 			t.Fatalf("unusable schema must still offer chrome lens: %s", board)
 		}
 		ins := do(s, "/scope/wc/ab2c").Body.String()
-		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) {
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) || strings.Contains(ins, `action="/scope/wc/body"`) {
 			t.Fatalf("inspect still offers ticket writes: %s", ins)
 		}
 		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
@@ -1445,13 +1456,249 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 			t.Fatalf("parse-quarantined board must still offer create: %s", board)
 		}
 		ins := do(s, "/scope/wc/abcd").Body.String()
-		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) {
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) || strings.Contains(ins, `action="/scope/wc/body"`) || strings.Contains(ins, `<textarea`) {
 			t.Fatalf("inspect still offers ticket writes: %s", ins)
 		}
 		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
 			t.Fatalf("parse-error inspect must still offer chrome lens: %s", ins)
 		}
 	})
+}
+
+func inspectBase(t *testing.T, page string) string {
+	t.Helper()
+	const needle = `name="base" value="`
+	i := strings.Index(page, needle)
+	if i < 0 {
+		t.Fatalf("missing base in %s", page)
+	}
+	rest := page[i+len(needle):]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		t.Fatal("unterminated base")
+	}
+	return rest[:end]
+}
+
+// textareaBrowserValue is the body field a browser would submit: inner HTML,
+// unescaped, then the WHATWG rule that a leading LF after the start tag is
+// not part of the value.
+func textareaBrowserValue(t *testing.T, page string) string {
+	t.Helper()
+	const open = `<textarea name="body" rows="16">`
+	i := strings.Index(page, open)
+	if i < 0 {
+		t.Fatalf("missing body textarea: %s", page)
+	}
+	rest := page[i+len(open):]
+	j := strings.Index(rest, "</textarea>")
+	if j < 0 {
+		t.Fatal("unclosed body textarea")
+	}
+	raw := html.UnescapeString(rest[:j])
+	return strings.TrimPrefix(raw, "\n")
+}
+
+func inspectTitle(t *testing.T, page string) string {
+	t.Helper()
+	const needle = `name="title" required value="`
+	i := strings.Index(page, needle)
+	if i < 0 {
+		t.Fatalf("missing title field: %s", page)
+	}
+	rest := page[i+len(needle):]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		t.Fatal("unterminated title")
+	}
+	return html.UnescapeString(rest[:end])
+}
+
+func TestInspectEditFormMatchesDisk(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n\nhello\n", false, "")
+	s := mustServer(t, app)
+	ins := do(s, "/scope/wc/ab2c")
+	if ins.Code != http.StatusOK {
+		t.Fatalf("GET inspect = %d %s", ins.Code, ins.Body.String())
+	}
+	page := ins.Body.String()
+	_, body, ok := frontmatter.Split([]byte(ticketBody(t, dir, "wc-ab2c")))
+	if !ok {
+		t.Fatal("fixture fence")
+	}
+	heading, rest := title.SplitH1(body)
+	if inspectTitle(t, page) != heading {
+		t.Fatalf("title field = %q, want H1 %q", inspectTitle(t, page), heading)
+	}
+	if textareaBrowserValue(t, page) != string(rest) {
+		t.Fatalf("body field = %q, want post-H1 %q", textareaBrowserValue(t, page), rest)
+	}
+}
+
+func TestPOSTBodySavesAndReloadsGoldmark(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\nhello **file**\n", false, "foo: bar\n")
+	s := mustServer(t, app)
+
+	ins := do(s, "/scope/wc/ab2c")
+	if ins.Code != http.StatusOK {
+		t.Fatalf("GET inspect = %d %s", ins.Code, ins.Body.String())
+	}
+	base := inspectBase(t, ins.Body.String())
+	before := ticketBody(t, dir, "wc-ab2c")
+	interior, _, ok := frontmatter.Split([]byte(before))
+	if !ok {
+		t.Fatal("fixture fence")
+	}
+
+	w := doPost(s, "/scope/wc/body", url.Values{
+		"id":    {"wc-ab2c"},
+		"title": {"Renamed title"},
+		"body":  {"new **markdown**\n"},
+		"base":  {base},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if !strings.HasPrefix(loc, inspectHref("wc-ab2c")) {
+		t.Fatalf("location = %s", loc)
+	}
+	page := mustFollow(t, s, w)
+	body := page.Body.String()
+	if !strings.Contains(body, "<h1>Renamed title</h1>") {
+		t.Fatalf("inspect missing new H1: %s", body)
+	}
+	if !strings.Contains(body, "<strong>markdown</strong>") {
+		t.Fatalf("inspect missing goldmark body: %s", body)
+	}
+
+	got := ticketBody(t, dir, "wc-ab2c")
+	gotInterior, gotBody, ok := frontmatter.Split([]byte(got))
+	if !ok {
+		t.Fatal("written fence")
+	}
+	if string(gotInterior) != string(interior) {
+		t.Fatalf("fence changed:\n%s\n---\n%s", interior, gotInterior)
+	}
+	if string(gotBody) != "# Renamed title\nnew **markdown**\n" {
+		t.Fatalf("body = %q", gotBody)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "wc-ab2c-work.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("H1 change renamed file: %v", matches)
+	}
+}
+
+func TestPOSTBodyStaleBaseIs409(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\nhello\n", false, "")
+	s := mustServer(t, app)
+	base := inspectBase(t, do(s, "/scope/wc/ab2c").Body.String())
+	before := ticketBody(t, dir, "wc-ab2c")
+	if err := os.WriteFile(filepath.Join(dir, "wc-ab2c-work.md"), []byte(before+"changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	w := doPost(s, "/scope/wc/body", url.Values{
+		"id":    {"wc-ab2c"},
+		"title": {"Work"},
+		"body":  {"clobber"},
+		"base":  {base},
+	})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("want 409, got %d %s", w.Code, w.Body.String())
+	}
+	got := ticketBody(t, dir, "wc-ab2c")
+	if got != before+"changed\n" {
+		t.Fatalf("stale POST wrote: %s", got)
+	}
+}
+
+func TestPOSTBodyCRLFStoredAsLF(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\nhello\n", false, "")
+	s := mustServer(t, app)
+	base := inspectBase(t, do(s, "/scope/wc/ab2c").Body.String())
+
+	w := doPost(s, "/scope/wc/body", url.Values{
+		"id":    {"wc-ab2c"},
+		"title": {"Work"},
+		"body":  {"a\r\nb\rc\n"},
+		"base":  {base},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	got := ticketBody(t, dir, "wc-ab2c")
+	if strings.Contains(got, "\r") {
+		t.Fatalf("CR on disk: %q", got)
+	}
+	if !strings.HasSuffix(got, "# Work\na\nb\nc\n") {
+		t.Fatalf("body = %q", got)
+	}
+}
+
+func TestPOSTBodyNeverSelfCommits(t *testing.T) {
+	app := newTestApp(t)
+	dir, repo := initDrivenScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+	pushOrigin(t, repo)
+	before := testgit.Combined(t, repo, "rev-parse", "HEAD")
+	s := mustServer(t, app)
+	base := inspectBase(t, do(s, "/scope/wc/ab2c").Body.String())
+
+	w := doPost(s, "/scope/wc/body", url.Values{
+		"id":    {"wc-ab2c"},
+		"title": {"Work"},
+		"body":  {"edited\n"},
+		"base":  {base},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if !strings.Contains(loc, "sync_needed=") {
+		t.Fatalf("location missing sync_needed: %s", loc)
+	}
+	after := testgit.Combined(t, repo, "rev-parse", "HEAD")
+	if after != before {
+		t.Fatalf("body save self-committed: %s -> %s", before, after)
+	}
+	page := do(s, loc)
+	if !strings.Contains(page.Body.String(), "sync_needed:") {
+		t.Fatalf("banner: %s", page.Body.String())
+	}
+}
+
+func TestPOSTBodyEmptyTitleIs400(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+	s := mustServer(t, app)
+	base := inspectBase(t, do(s, "/scope/wc/ab2c").Body.String())
+	before := ticketBody(t, dir, "wc-ab2c")
+
+	w := doPost(s, "/scope/wc/body", url.Values{
+		"id":    {"wc-ab2c"},
+		"title": {"  "},
+		"body":  {"x"},
+		"base":  {base},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d %s", w.Code, w.Body.String())
+	}
+	if ticketBody(t, dir, "wc-ab2c") != before {
+		t.Fatal("empty title wrote")
+	}
 }
 
 func TestPOSTWriteRefusesForeignOrigin(t *testing.T) {
@@ -1483,6 +1730,19 @@ func TestPOSTWriteRefusesForeignOrigin(t *testing.T) {
 	}
 	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") {
 		t.Fatalf("must not write: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+
+	w = doPostHeader(s, "/scope/wc/body", url.Values{
+		"id":    {"wc-ab2c"},
+		"title": {"Hacked"},
+		"body":  {"nope"},
+		"base":  {"0:dead"},
+	}, http.Header{"Origin": {"https://evil.example"}})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("body foreign origin: want 403, got %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "Hacked") {
+		t.Fatalf("body foreign origin wrote: %s", ticketBody(t, dir, "wc-ab2c"))
 	}
 
 	w = doPostHeader(s, "/scope/wc/meta", url.Values{

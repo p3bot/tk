@@ -833,8 +833,14 @@ func TestGoldmarkDoesNotRenderRawHTML(t *testing.T) {
 	if !strings.Contains(got, "<strong>bold</strong>") {
 		t.Fatalf("expected goldmark strong: %s", got)
 	}
-	if strings.Contains(got, "<script") || strings.Contains(got, "onerror") {
-		t.Fatalf("raw HTML leaked: %s", got)
+	if strings.Contains(got, "<script>") || strings.Contains(got, "<script ") {
+		t.Fatalf("raw script leaked: %s", got)
+	}
+	if strings.Contains(got, `<img src=x`) {
+		t.Fatalf("raw img leaked: %s", got)
+	}
+	if !strings.Contains(got, "&lt;script&gt;alert(1)&lt;/script&gt;") {
+		t.Fatalf("editor must show escaped source, not omit it: %s", got)
 	}
 }
 

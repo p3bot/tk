@@ -7,7 +7,6 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 
@@ -22,6 +21,8 @@ import (
 	"github.com/p3bot/tk/internal/scopeadmin"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
+	"github.com/p3bot/tk/internal/title"
+	"github.com/p3bot/tk/internal/writeengine"
 )
 
 type overviewPage struct {
@@ -454,6 +455,10 @@ type inspectPage struct {
 	CanClaim     bool
 	CanMeta      bool
 	CanOrder     bool
+	CanEdit      bool
+	Base         string
+	EditTitle    string
+	EditBody     string
 	MarkStatuses []string
 }
 
@@ -620,10 +625,10 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 	out.CanMeta = writable
 	out.CanOrder = writable
 
-	raw, err := os.ReadFile(p.Path)
+	raw, key, err := writeengine.FileSnapshot(p.Path)
 	if err != nil {
 		if out.ParseMsg == "" {
-			out.ParseMsg = fmt.Sprintf("read %s: %v", p.Path, err)
+			out.ParseMsg = err.Error()
 		}
 	} else {
 		interior, body, present := frontmatter.Split(raw)
@@ -643,6 +648,13 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 				return inspectPage{}, err
 			}
 			out.Body = html
+			if writable && present {
+				heading, rest := title.SplitH1(body)
+				out.CanEdit = true
+				out.Base = key
+				out.EditTitle = heading
+				out.EditBody = string(rest)
+			}
 		}
 	}
 

@@ -24,8 +24,8 @@ import (
 const ticketFileMode = 0o644
 
 // Session is a held scope flock after post-lock reconcile and unusable refuse.
-// Verb functions run policy then CompleteState (except create, which never
-// self-commits). Release is idempotent.
+// Verb functions run policy then CompleteState (except create and splice, which
+// never self-commit). Release is idempotent.
 type Session struct {
 	deps       Deps
 	lock       *flock.Lock

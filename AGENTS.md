@@ -27,7 +27,7 @@ Commands, Ticket files, Identifiers, Workflows; structure and hot-path guidance
 tests; no design-doc dependency) plus agentdex-backed `skill install`/`list`/
 `uninstall` (paths from the agent catalog; no hardcoded product skills dirs);
 and `tkv` — a human-facing localhost dashboard (`cmd/tkv`) for overview, kanban,
-inspect, search, depends graph, and doctor (diagnose plus reindex), with mark, claim, create, meta, and order writes
+inspect, search, depends graph, and doctor (diagnose plus reindex), with mark, claim, create, meta, order, and inspect H1+body writes
 through the same engine as `tk`, chrome set/clear of the machine-local tag
 lens, and chrome/doctor `tk sync` (agents keep using `tk`).
 

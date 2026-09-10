@@ -9,3 +9,11 @@ func inspectHref(fullID string) string {
 	}
 	return "/scope/" + scope + "/" + fullID
 }
+
+func notesListHref(scope string) string {
+	return "/scope/" + scope + "/notes"
+}
+
+func noteHref(scope, slug string) string {
+	return "/scope/" + scope + "/notes/" + slug
+}

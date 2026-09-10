@@ -1,11 +1,18 @@
 package notes
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/p3bot/tk/internal/atomicfile"
 	"github.com/p3bot/tk/internal/scopefile"
@@ -131,6 +138,15 @@ func Set(deps Deps, in Input, payload []byte) (Result, error) {
 		if err := refuseNonRegular(path); err != nil {
 			return err
 		}
+		if in.Base != "" {
+			got, err := FileClobberKey(path)
+			if err != nil {
+				return err
+			}
+			if got != in.Base {
+				return &ClobberError{Slug: in.Slug}
+			}
+		}
 		return atomicfile.Write(path, data, noteFileMode)
 	})
 }
@@ -139,10 +155,61 @@ func normalizeContents(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return nil, &UsageError{Msg: "set needs non-empty text"}
 	}
+	data = posixLF(data)
 	if data[len(data)-1] != '\n' {
 		data = append(data, '\n')
 	}
 	return data, nil
+}
+
+// HTML textareas submit CRLF; some editors use bare CR. Note files are POSIX LF.
+func posixLF(data []byte) []byte {
+	if !bytes.Contains(data, []byte{'\r'}) {
+		return data
+	}
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte{'\n'})
+	return bytes.ReplaceAll(data, []byte{'\r'}, []byte{'\n'})
+}
+
+// FileSnapshot reads path once and returns its bytes plus FileClobberKey.
+// A missing path is empty bytes and MissingClobberKey, not an error.
+// The directory entry is the identity: one O_NOFOLLOW open, then Fstat and
+// read that fd. A symlink or other non-regular path is NonRegularError,
+// matching Read and Set (the target is not read). O_NONBLOCK keeps a fifo
+// from blocking the caller.
+func FileSnapshot(path string) ([]byte, string, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, MissingClobberKey, nil
+		}
+		if errors.Is(err, syscall.ELOOP) {
+			return nil, "", &NonRegularError{Path: path}
+		}
+		return nil, "", fmt.Errorf("open %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, "", fmt.Errorf("stat %s: %w", path, err)
+	}
+	if !st.Mode().IsRegular() {
+		return nil, "", &NonRegularError{Path: path}
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, "", fmt.Errorf("read %s: %w", path, err)
+	}
+	sum := sha256.Sum256(data)
+	key := strconv.FormatInt(st.ModTime().UnixNano(), 10) + ":" + hex.EncodeToString(sum[:])
+	return data, key, nil
+}
+
+// FileClobberKey is mtime nanoseconds and a SHA-256 of the file bytes, or
+// MissingClobberKey when path does not exist.
+func FileClobberKey(path string) (string, error) {
+	_, key, err := FileSnapshot(path)
+	return key, err
 }
 
 // Delete unlinks a regular note file. Missing is success. An empty notes/

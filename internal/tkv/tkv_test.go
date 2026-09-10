@@ -976,6 +976,9 @@ func TestPrimaryNav(t *testing.T) {
 	}
 
 	home := do(s, "/").Body.String()
+	if strings.Contains(home, ">Notes</a>") {
+		t.Errorf("summary should not offer Notes without a selected scope: %s", home)
+	}
 	if !strings.Contains(home, `rel="icon" href="/static/tk-logo.svg"`) {
 		t.Errorf("missing favicon: %s", home)
 	}
@@ -994,6 +997,9 @@ func TestPrimaryNav(t *testing.T) {
 	kanban := do(s, "/scope/wc").Body.String()
 	if !strings.Contains(kanban, `href="/" class="current">Board</a>`) {
 		t.Errorf("board on kanban should navigate back to the scope summary: %s", kanban)
+	}
+	if !strings.Contains(kanban, `href="/scope/wc/notes">Notes</a>`) {
+		t.Errorf("selected scope should offer Notes: %s", kanban)
 	}
 	if strings.Contains(kanban, `name="scope"`) {
 		t.Errorf("kanban chrome search must not send scope")

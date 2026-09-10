@@ -198,7 +198,7 @@ func TestGETDoesNotWrite(t *testing.T) {
 	before := ticketBody(t, dir, "wc-ab2c")
 	setLens(t, app, "wc", []string{"frontend"})
 	beforeLens := lensFile(t, app)
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/body", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/doctor", "/doctor/sync", "/doctor/reindex"} {
+	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/notes", "/scope/wc/notes/default", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/body", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/doctor", "/doctor/sync", "/doctor/reindex"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))
@@ -235,6 +235,9 @@ func TestGETDoesNotWrite(t *testing.T) {
 	}
 	if lensFile(t, app) != beforeLens {
 		t.Fatal("GET/HEAD mutated lens.cue")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "notes")); !os.IsNotExist(err) {
+		t.Fatalf("GET notes created notes/: %v", err)
 	}
 }
 
@@ -1482,15 +1485,21 @@ func inspectBase(t *testing.T, page string) string {
 
 // textareaBrowserValue is the body field a browser would submit: inner HTML,
 // unescaped, then the WHATWG rule that a leading LF after the start tag is
-// not part of the value.
+// not part of the value. Matches inspect and note editors (extra attributes
+// on the start tag are ignored).
 func textareaBrowserValue(t *testing.T, page string) string {
 	t.Helper()
-	const open = `<textarea name="body" rows="16">`
+	const open = `<textarea name="body"`
 	i := strings.Index(page, open)
 	if i < 0 {
 		t.Fatalf("missing body textarea: %s", page)
 	}
 	rest := page[i+len(open):]
+	gt := strings.Index(rest, ">")
+	if gt < 0 {
+		t.Fatal("unterminated body textarea start tag")
+	}
+	rest = rest[gt+1:]
 	j := strings.Index(rest, "</textarea>")
 	if j < 0 {
 		t.Fatal("unclosed body textarea")

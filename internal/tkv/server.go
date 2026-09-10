@@ -169,7 +169,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /graphs/depends", s.wrap(s.dependsGraph))
 	mux.HandleFunc("GET /doctor", s.wrap(s.doctor))
 	mux.HandleFunc("GET /scope/{name}", s.wrap(s.kanban))
+	mux.HandleFunc("GET /scope/{name}/notes", s.wrap(s.notesList))
+	mux.HandleFunc("GET /scope/{name}/notes/{slug}", s.wrap(s.noteInspect))
 	mux.HandleFunc("GET /scope/{name}/{id}", s.wrap(s.inspect))
+	mux.HandleFunc("POST /scope/{name}/notes", s.wrapEngine(s.postNoteCreate))
+	mux.HandleFunc("POST /scope/{name}/notes/use", s.wrapEngine(s.postNoteUse))
+	mux.HandleFunc("POST /scope/{name}/notes/{slug}", s.wrapEngine(s.postNoteSet))
+	mux.HandleFunc("POST /scope/{name}/notes/{slug}/delete", s.wrapEngine(s.postNoteDelete))
 	mux.HandleFunc("POST /scope/{name}/mark", s.wrapEngine(s.postMark))
 	mux.HandleFunc("POST /scope/{name}/claim", s.wrapEngine(s.postClaim))
 	mux.HandleFunc("POST /scope/{name}/create", s.wrapEngine(s.postCreate))
@@ -245,6 +251,7 @@ func errBadRequest(msg string) error {
 
 const (
 	navBoard  = "board"
+	navNotes  = "notes"
 	navSearch = "search"
 	navGraphs = "graphs"
 	navDoctor = "doctor"
@@ -293,6 +300,13 @@ func requestPath(r *http.Request) string {
 
 // BoardHref is always the scope summary. A selected scope is reached from the switcher.
 func (c chrome) BoardHref() string { return "/" }
+
+func (c chrome) NotesHref() string {
+	if c.Selected == "" {
+		return ""
+	}
+	return notesListHref(c.Selected)
+}
 
 func (c chrome) GraphsHref() string { return c.sectionHref("/graphs") }
 
@@ -513,11 +527,25 @@ func sectionFromPath(p string) string {
 		return navGraphs
 	case strings.HasPrefix(p, "/doctor"):
 		return navDoctor
+	case notesPath(p):
+		return navNotes
 	case strings.HasPrefix(p, "/scope/"):
 		return navBoard
 	default:
 		return ""
 	}
+}
+
+func notesPath(p string) bool {
+	rest, ok := strings.CutPrefix(p, "/scope/")
+	if !ok {
+		return false
+	}
+	_, after, found := strings.Cut(rest, "/")
+	if !found {
+		return false
+	}
+	return after == "notes" || strings.HasPrefix(after, "notes/")
 }
 
 func parseIDArg(tok string) (full bool, ok bool) {

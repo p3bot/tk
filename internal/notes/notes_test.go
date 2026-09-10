@@ -222,6 +222,34 @@ func TestSetAndAdd(t *testing.T) {
 		t.Errorf("replace = %q", got)
 	}
 
+	if _, err := Set(e.deps, e.input(""), []byte("a\r\nb\rc\n")); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(defaultPath(e.dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "\r") {
+		t.Errorf("CR on disk: %q", got)
+	}
+	if string(got) != "a\nb\nc\n" {
+		t.Errorf("crlf set = %q", got)
+	}
+
+	if _, err := Set(e.deps, e.input(""), []byte("a\nb\nc\n")); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(defaultPath(e.dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "\r") {
+		t.Errorf("LF no-op introduced CR: %q", got)
+	}
+	if string(got) != "a\nb\nc\n" {
+		t.Errorf("LF no-op = %q", got)
+	}
+
 	if err := os.WriteFile(defaultPath(e.dir), []byte("no-nl"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -239,6 +267,114 @@ func TestSetAndAdd(t *testing.T) {
 	_, err = Add(e.deps, e.input(""), "")
 	if !errors.As(err, &use) || use.Msg != "add needs non-empty text" {
 		t.Errorf("empty add: %v", err)
+	}
+}
+
+func TestFileSnapshotMissingAndPresent(t *testing.T) {
+	e := newPlainEnv(t)
+	data, key, err := FileSnapshot(namedPath(e.dir, "ghost"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data != nil || key != MissingClobberKey {
+		t.Fatalf("missing snapshot data=%q key=%q", data, key)
+	}
+	writeFile(t, namedPath(e.dir, "pad"), "hello\n")
+	data, key, err = FileSnapshot(namedPath(e.dir, "pad"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "hello\n" {
+		t.Fatalf("body = %q", data)
+	}
+	got, err := FileClobberKey(namedPath(e.dir, "pad"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != key {
+		t.Fatalf("key %q vs FileClobberKey %q", key, got)
+	}
+}
+
+func TestFileSnapshotNonRegular(t *testing.T) {
+	e := newPlainEnv(t)
+	if err := os.MkdirAll(filepath.Join(e.dir, scopefile.NoteDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "secret")
+	writeFile(t, target, "secret\n")
+	path := namedPath(e.dir, "pad")
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+	data, key, err := FileSnapshot(path)
+	var nr *NonRegularError
+	if !errors.As(err, &nr) {
+		t.Fatalf("symlink: data=%q key=%q err=%v", data, key, err)
+	}
+	if strings.Contains(string(data), "secret") {
+		t.Fatalf("symlink snapshot read the target: %q", data)
+	}
+
+	dangling := namedPath(e.dir, "ghost")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "missing"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	data, key, err = FileSnapshot(dangling)
+	if !errors.As(err, &nr) {
+		t.Fatalf("dangling: data=%q key=%q err=%v", data, key, err)
+	}
+	if key == MissingClobberKey {
+		t.Fatal("dangling symlink treated as missing")
+	}
+
+	dirPath := namedPath(e.dir, "dirnote")
+	if err := os.Mkdir(dirPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, key, err = FileSnapshot(dirPath)
+	if !errors.As(err, &nr) {
+		t.Fatalf("directory: data=%q key=%q err=%v", data, key, err)
+	}
+}
+
+func TestSetClobber(t *testing.T) {
+	e := newPlainEnv(t)
+	in := e.input("pad")
+	if _, err := Set(e.deps, in, []byte("one\n")); err != nil {
+		t.Fatal(err)
+	}
+	key, err := FileClobberKey(namedPath(e.dir, "pad"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Base = key
+	if _, err := Set(e.deps, in, []byte("two\n")); err != nil {
+		t.Fatalf("matching base: %v", err)
+	}
+	in.Base = key
+	_, err = Set(e.deps, in, []byte("three\n"))
+	var cl *ClobberError
+	if !errors.As(err, &cl) {
+		t.Fatalf("stale base: %v", err)
+	}
+	got, err := os.ReadFile(namedPath(e.dir, "pad"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "two\n" {
+		t.Errorf("stale set wrote %q", got)
+	}
+
+	miss := e.input("ghost")
+	miss.Base = MissingClobberKey
+	if _, err := Set(e.deps, miss, []byte("new\n")); err != nil {
+		t.Fatalf("create with missing key: %v", err)
+	}
+	miss.Base = MissingClobberKey
+	_, err = Set(e.deps, miss, []byte("again\n"))
+	if !errors.As(err, &cl) {
+		t.Fatalf("create after file exists: %v", err)
 	}
 }
 
@@ -452,7 +588,15 @@ func TestSelectNameUsage(t *testing.T) {
 		t.Errorf("mix: %v", err)
 	}
 	_, err = SelectName("list", "", false, "default")
-	if !errors.As(err, &use) {
+	if !errors.As(err, &use) || use.Msg != `"list" is a reserved note name` {
 		t.Errorf("reserved: %v", err)
+	}
+	_, err = SelectName("Not_Valid", "", false, "default")
+	if !errors.As(err, &use) || use.Msg != `"Not_Valid" is not a valid note slug` {
+		t.Errorf("invalid: %v", err)
+	}
+	got, err := ParseSlug("pad")
+	if err != nil || got != "pad" {
+		t.Errorf("parse pad: got %q %v", got, err)
 	}
 }

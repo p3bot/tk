@@ -45,6 +45,8 @@ type Input struct {
 	Scope string
 	Dir   string
 	Slug  string
+	// Base is the clobber predicate from GET; empty skips the check.
+	Base string
 }
 
 // Result is the structured outcome of a note operation. Path is empty when the
@@ -77,6 +79,18 @@ type NonRegularError struct {
 }
 
 func (e *NonRegularError) Error() string { return e.Path + " is not a regular file" }
+
+// ClobberError is a stale editor predicate: the file changed, no write.
+type ClobberError struct {
+	Slug string
+}
+
+func (e *ClobberError) Error() string {
+	return fmt.Sprintf("%s changed since this form was rendered — reload and save again", e.Slug)
+}
+
+// MissingClobberKey is FileClobberKey when notes/<slug>.md does not exist.
+const MissingClobberKey = "0:missing"
 
 // RequireDir refuses when the scope directory is missing or not a directory.
 func RequireDir(scope, dir string) error {

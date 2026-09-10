@@ -1,9 +1,9 @@
 // Package tkv is the human-facing local web dashboard for browsing tickets
 // and scopes. Humans can mark, claim, create, meta, order, and splice H1+body
-// through the same write engine as tk, set or clear the machine-local tag lens
-// from chrome, sync tk-driven git-roots, and run doctor diagnose plus reindex.
-// Metadata comes from the machine-wide index; bodies from ticket files. Agents
-// do not use it.
+// through the same write engine as tk, read and edit scope notes, set or clear
+// the machine-local tag lens from chrome, sync tk-driven git-roots, and run
+// doctor diagnose plus reindex. Metadata comes from the machine-wide index;
+// bodies from ticket files; notes from the notes package. Agents do not use it.
 package tkv
 
 import (
@@ -33,7 +33,7 @@ const DefaultPort = 8736
 
 const usageText = `tkv is a local web dashboard for tk tickets.
 
-Humans can mark, claim, create, meta, order, edit title and body, set or clear the tag lens, sync tk-driven
+Humans can mark, claim, create, meta, order, edit title and body, edit scope notes, set or clear the tag lens, sync tk-driven
 git-roots, and run doctor diagnose plus reindex. Agents keep using tk. It listens
 on 127.0.0.1 (never 0.0.0.0). The default port is 8736.
 

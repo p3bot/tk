@@ -363,6 +363,11 @@ aside h2 + p { margin: 0 0 0.6rem; }
 .dep-node .dep-title { font-size: 14px; font-weight: 650; }
 a.dep-node { text-decoration: none; }
 a.dep-node:hover rect { stroke-width: 2.5; }
+.notes { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+.notes th, .notes td { text-align: left; padding: 0.45rem 0.35rem; border-bottom: 1px solid var(--line); }
+.notes tr.default td:first-child { font-weight: 650; }
+.note-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+.note-actions .write { margin-top: 0; }
 @media (max-width: 900px) {
   .inspect { grid-template-columns: 1fr; }
 }

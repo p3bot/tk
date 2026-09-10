@@ -53,6 +53,12 @@ func SelectName(positional, nameFlag string, nameSet bool, fallback string) (str
 	case nameSet:
 		name = nameFlag
 	}
+	return ParseSlug(name)
+}
+
+// ParseSlug is the addressable-slug check: reserved verbs first, then the
+// closed slug grammar. Empty is the caller's problem (missing vs fallback).
+func ParseSlug(name string) (string, error) {
 	if scopefile.IsReservedNoteName(name) {
 		return "", &UsageError{Msg: fmt.Sprintf("%q is a reserved note name", name)}
 	}

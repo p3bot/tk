@@ -1,0 +1,52 @@
+{{define "notes"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>notes</h1>
+<p class="bound">Default {{if .DefaultMissing}}<a href="{{.DefaultHref}}">{{.DefaultSlug}}</a> (no file){{else}}<a href="{{.DefaultHref}}">{{.DefaultSlug}}</a>{{end}}</p>
+{{if .CanClear}}
+<form class="write" method="post" action="/scope/{{.Chrome.Selected}}/notes/use">
+  <input type="hidden" name="clear" value="1">
+  <button type="submit">Use built-in default</button>
+</form>
+{{end}}
+<form class="write create" method="post" action="/scope/{{.Chrome.Selected}}/notes">
+  <label>
+    <span class="sr-only">new note slug</span>
+    <input type="text" name="slug" required maxlength="48" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="slug" aria-label="new note slug">
+  </label>
+  <button type="submit">Create</button>
+</form>
+{{if .Rows}}
+<table class="notes">
+  <thead>
+    <tr><th>slug</th><th></th></tr>
+  </thead>
+  <tbody>
+    {{range .Rows}}
+    <tr{{if .Default}} class="default"{{end}}>
+      <td><a href="{{.Href}}">{{.Slug}}</a>{{if .Default}} <span class="empty">default</span>{{end}}</td>
+      <td class="note-actions">
+        {{if not .Default}}
+        <form class="write" method="post" action="/scope/{{$.Chrome.Selected}}/notes/use">
+          <input type="hidden" name="slug" value="{{.Slug}}">
+          <button type="submit" aria-label="Use {{.Slug}} as default">Use</button>
+        </form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">No note files.</p>
+{{end}}
+</main>
+</body>
+</html>
+{{end}}

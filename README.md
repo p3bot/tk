@@ -90,7 +90,7 @@ they are not part of the agent skill. Humans (or an agent that needs session
 context) use `tk note` (`notes` is an alias).
 
 ```sh
-tk note                              # print this machine's default note (missing is an error)
+tk note                              # print this machine's default note (missing is empty)
 tk note [slug]                       # print notes/<slug>.md (one-shot; missing is an error)
 tk note --name <slug>                # same as tk note [slug]; never writes the default
 tk note list                         # addressable slugs, alphabetical
@@ -120,8 +120,9 @@ not a CLI rule.
 commit on a repo-driven scope. Slugs follow the
 existing ticket-slug grammar (`a-z0-9` and hyphens, 1–48). `list`, `ls`, `add`,
 `set`, `edit`, `remove`, `rm`, `help`, and `use` are reserved names and cannot be
-document slugs. A missing note on `tk note` / `tk note [slug]` is non-zero with
-the path on stderr and empty stdout; an empty file is empty stdout, exit 0.
+document slugs. A missing default on `tk note` is empty stdout, exit 0. A missing
+named note on `tk note [slug]` is non-zero with the path on stderr and empty
+stdout; an empty file is empty stdout, exit 0.
 `tk pulse note` prints the path of `notes/<effective-slug>.md` whether or not
 the file exists.
 

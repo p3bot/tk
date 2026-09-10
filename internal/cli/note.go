@@ -28,10 +28,11 @@ func newNoteCmd(app *App) *cobra.Command {
 		Use:     "note [slug]",
 		Aliases: []string{"notes"},
 		Short:   "Read and write committed scope notes",
-		Long: "Scope worklog documents at <scope-dir>/notes/<slug>.md. Bare `tk note` (or a\n" +
-			"slug / --name) prints the file bytes. A missing file is non-zero with the path\n" +
-			"on stderr and empty stdout. An empty file is empty stdout, exit 0. `list` prints\n" +
-			"addressable slugs, one per line, alphabetical.\n" +
+		Long: "Scope worklog documents at <scope-dir>/notes/<slug>.md. Bare `tk note` prints\n" +
+			"this machine's default note. A missing default is empty stdout, exit 0 (same as\n" +
+			"an empty file). A slug / --name prints that file; a missing named file is\n" +
+			"non-zero with the path on stderr and empty stdout. `list` prints addressable\n" +
+			"slugs, one per line, alphabetical.\n" +
 			"`add` appends one line; `set` replaces the file (`-` reads stdin); `edit` opens\n" +
 			"$EDITOR; `remove` unlinks the default (`--name` is one-shot). `use` sets this\n" +
 			"machine's default slug. Omit --name and a positional slug to use that\n" +
@@ -207,7 +208,8 @@ func runNoteCat(app *App, c *cobra.Command, args []string, scopeFlag, nameFlag s
 	if err != nil {
 		return err
 	}
-	return catNoteFile(c, n.path(name))
+	missingOK := positional == "" && !nameSet
+	return catNoteFile(c, n.path(name), missingOK)
 }
 
 func runNoteList(app *App, c *cobra.Command, scopeFlag string) error {
@@ -560,10 +562,13 @@ func selectNoteName(positional, nameFlag string, nameSet bool, fallback string) 
 	return name, nil
 }
 
-func catNoteFile(c *cobra.Command, path string) error {
+func catNoteFile(c *cobra.Command, path string, missingOK bool) error {
 	st, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if missingOK {
+				return nil
+			}
 			abs, absErr := absPath(path)
 			if absErr != nil {
 				abs = path

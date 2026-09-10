@@ -82,10 +82,21 @@ func TestNoteMissingCatAndList(t *testing.T) {
 	dir := initScope(t, app, "wc")
 
 	out, _, err := run(t, app, "note", "--scope", "wc")
-	assertNoteMissing(t, out, err, defaultNotePath(dir))
+	if err != nil {
+		t.Fatalf("missing default cat: %v", err)
+	}
+	if out != "" {
+		t.Errorf("missing default cat must be empty stdout, got %q", out)
+	}
 
 	out, _, err = run(t, app, "note", "foo", "--scope", "wc")
 	assertNoteMissing(t, out, err, namedNotePath(dir, "foo"))
+
+	out, _, err = run(t, app, "note", "default", "--scope", "wc")
+	assertNoteMissing(t, out, err, defaultNotePath(dir))
+
+	out, _, err = run(t, app, "note", "--name", "default", "--scope", "wc")
+	assertNoteMissing(t, out, err, defaultNotePath(dir))
 
 	out, _, err = run(t, app, "note", "list", "--scope", "wc")
 	if err != nil {
@@ -156,7 +167,12 @@ func TestNoteAddAppendRemoveDefault(t *testing.T) {
 		t.Errorf("remove must not emit sync_needed:, got %q", errOut)
 	}
 	out, _, err = run(t, app, "note", "--scope", "wc")
-	assertNoteMissing(t, out, err, wantPath)
+	if err != nil {
+		t.Fatalf("cat after remove: %v", err)
+	}
+	if out != "" {
+		t.Errorf("cat after remove must be empty stdout, got %q", out)
+	}
 	if _, err := os.Stat(wantPath); !os.IsNotExist(err) {
 		t.Errorf("default note file should be gone, stat err=%v", err)
 	}
@@ -598,10 +614,14 @@ func TestNoteNotesAliasParity(t *testing.T) {
 
 	primary, pErrOut, pErr := run(t, app, "note", "--scope", "wc")
 	alias, aErrOut, aErr := run(t, app, "notes", "--scope", "wc")
-	assertNoteMissing(t, primary, pErr, defaultNotePath(dir))
-	assertNoteMissing(t, alias, aErr, defaultNotePath(dir))
-	if (pErr == nil) != (aErr == nil) || (pErr != nil && aErr != nil && pErr.Error() != aErr.Error()) {
-		t.Errorf("notes missing cat != note: err %v/%v", pErr, aErr)
+	if pErr != nil {
+		t.Fatalf("note missing default: %v", pErr)
+	}
+	if aErr != nil {
+		t.Fatalf("notes missing default: %v", aErr)
+	}
+	if primary != "" || alias != "" {
+		t.Errorf("missing default cat must be empty stdout, got %q/%q", primary, alias)
 	}
 	if alias != primary || aErrOut != pErrOut {
 		t.Errorf("notes cat != note: out %q/%q errOut %q/%q", alias, primary, aErrOut, pErrOut)
@@ -1248,6 +1268,13 @@ func TestNoteUseRemoveLeavesPointer(t *testing.T) {
 	}
 
 	out, _, err = run(t, app, "note", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("cat after remove of used default: %v", err)
+	}
+	if out != "" {
+		t.Errorf("missing used default must be empty stdout, got %q", out)
+	}
+	out, _, err = run(t, app, "note", "grant", "--scope", "wc")
 	assertNoteMissing(t, out, err, namedNotePath(dir, "grant"))
 
 	out, _, err = run(t, app, "note", "list", "--scope", "wc")
@@ -1448,7 +1475,7 @@ func TestNoteUseHelpAndSkill(t *testing.T) {
 		"one-shot",
 		"convention",
 		"use",
-		"missing file is non-zero",
+		"missing named file is",
 	} {
 		if !strings.Contains(help, want) {
 			t.Errorf("note Long should mention %q, got:\n%s", want, help)

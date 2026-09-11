@@ -283,6 +283,20 @@ func (c chrome) LensOn(tag string) bool {
 	return false
 }
 
+func (c chrome) ScopeAriaCurrent(name string) string {
+	if c.Selected != name {
+		return ""
+	}
+	path := c.Return
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	if path == "/scope/"+name {
+		return "page"
+	}
+	return "true"
+}
+
 func (c *chrome) bind(r *http.Request) {
 	if c == nil || r == nil {
 		return
@@ -500,6 +514,7 @@ func (s *Server) errorPage(w http.ResponseWriter, r *http.Request, code int, mes
 		ch.Selected = name
 	}
 	ch.Section = sectionFromPath(r.URL.Path)
+	ch.bind(r)
 	_ = s.tpl.ExecuteTemplate(w, "error", errorPage{
 		Title:   fmt.Sprintf("%d", code),
 		Chrome:  ch,

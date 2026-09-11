@@ -950,6 +950,29 @@ func TestStaticCSS(t *testing.T) {
 		!strings.Contains(css, ".body { background: var(--ticket);") {
 		t.Fatalf("inspect body and board cards must share --ticket white: %s", css)
 	}
+	if !strings.Contains(css, ".chrome {\n  display: flex;\n  flex-direction: column;\n  background: var(--ticket);") {
+		t.Fatalf("chrome bar must be --ticket white: %s", css)
+	}
+	if strings.Contains(css, ".chrome {\n  display: flex;\n  flex-direction: column;\n  background: var(--card);") {
+		t.Fatalf("chrome bar must not use cream --card: %s", css)
+	}
+	if !strings.Contains(css, ".scopes { display: flex; flex-wrap: wrap;") ||
+		!strings.Contains(css, ".scopes a {\n  color: var(--muted);\n  font-weight: 550;\n  padding: 0.2rem 0.6rem;\n  border: 1px solid var(--line);\n  border-radius: 6px;\n  background: var(--ticket);") {
+		t.Fatalf("scope links must be wrapping --ticket tabs with a --line border: %s", css)
+	}
+	if !strings.Contains(css, ".scopes a.selected {\n  color: var(--fg);\n  font-weight: 650;\n  box-shadow: inset 0 -2px 0 var(--accent);") {
+		t.Fatalf("selected scope must use the accent underline, not a fill: %s", css)
+	}
+	if strings.Contains(css, `.scopes a[aria-current`) {
+		t.Fatalf("selected paint must follow class, not aria-current: %s", css)
+	}
+	if !strings.Contains(css, ".scopes a:hover {\n  color: var(--fg);\n  text-decoration: none;\n}") ||
+		strings.Contains(css, ".scopes a:hover {\n  color: var(--fg);\n  background: var(--bg);") {
+		t.Fatalf("scope hover must change type, not paint --bg: %s", css)
+	}
+	if !strings.Contains(css, ".scopes a:focus-visible {\n  outline: 2px solid var(--accent);\n  outline-offset: 3px;\n}") {
+		t.Fatalf("scope tabs must use the chrome accent focus ring: %s", css)
+	}
 	if !strings.Contains(css, ".body h2") || !strings.Contains(css, ".body h6") || !strings.Contains(css, "text-transform: none") {
 		t.Fatalf("article headings must override chrome h2: %s", css)
 	}
@@ -1123,6 +1146,156 @@ func TestPrimaryNav(t *testing.T) {
 	if !strings.Contains(kb, `class="current">Graphs</a>`) {
 		t.Errorf("graphs?scope=wc should keep Graphs current")
 	}
+}
+
+func TestChromeScopeTabs(t *testing.T) {
+	app := newTestApp(t)
+	initScope(t, app, "aa")
+	initScope(t, app, "wc")
+	s := mustServer(t, app)
+
+	const (
+		wcCurrent = `href="/scope/wc" class="selected" aria-current="page">wc</a>`
+		aaLink    = `href="/scope/aa">aa</a>`
+		aaCurrent = `href="/scope/aa" class="selected" aria-current="page">aa</a>`
+		wcLink    = `href="/scope/wc">wc</a>`
+	)
+
+	w := do(s, "/scope/wc")
+	if w.Code != 200 {
+		t.Fatalf("/scope/wc = %d %s", w.Code, w.Body.String())
+	}
+	wc := scopesNav(t, w.Body.String())
+	if !strings.Contains(wc, wcCurrent) {
+		t.Errorf("selected wc must be current and still link to /scope/wc: %s", wc)
+	}
+	if !strings.Contains(wc, aaLink) {
+		t.Errorf("unselected aa must remain a link to /scope/aa: %s", wc)
+	}
+	if strings.Count(wc, `aria-current="page"`) != 1 {
+		t.Errorf("want one aria-current on /scope/wc, got %s", wc)
+	}
+	if strings.Contains(wc, `aria-current="true"`) {
+		t.Errorf("board must use page, not true: %s", wc)
+	}
+	if scopeTabMarked(wc, "aa") {
+		t.Errorf("unselected aa must not be current: %s", wc)
+	}
+
+	w = do(s, "/scope/aa")
+	if w.Code != 200 {
+		t.Fatalf("/scope/aa = %d %s", w.Code, w.Body.String())
+	}
+	aa := scopesNav(t, w.Body.String())
+	if !strings.Contains(aa, aaCurrent) {
+		t.Errorf("selected aa must be current and still link to /scope/aa: %s", aa)
+	}
+	if !strings.Contains(aa, wcLink) {
+		t.Errorf("unselected wc must remain a link to /scope/wc: %s", aa)
+	}
+	if scopeTabMarked(aa, "wc") {
+		t.Errorf("unselected wc must not be current: %s", aa)
+	}
+
+	w = do(s, "/")
+	if w.Code != 200 {
+		t.Fatalf("/ = %d %s", w.Code, w.Body.String())
+	}
+	home := scopesNav(t, w.Body.String())
+	if strings.Contains(home, `aria-current=`) || strings.Contains(home, `class="selected"`) {
+		t.Errorf("summary must not mark a scope current: %s", home)
+	}
+	if !strings.Contains(home, wcLink) || !strings.Contains(home, aaLink) {
+		t.Errorf("summary scopes must still link to /scope/{name}: %s", home)
+	}
+
+	w = do(s, "/graphs?scope=wc")
+	if w.Code != 200 {
+		t.Fatalf("/graphs?scope=wc = %d %s", w.Code, w.Body.String())
+	}
+	graphs := scopesNav(t, w.Body.String())
+	if !strings.Contains(graphs, `href="/scope/wc" class="selected" aria-current="true">wc</a>`) {
+		t.Errorf("graphs must mark wc current-in-set, not the page: %s", graphs)
+	}
+	if strings.Contains(graphs, `aria-current="page"`) {
+		t.Errorf("graphs must not claim a scope is the current page: %s", graphs)
+	}
+	if scopeTabMarked(graphs, "aa") {
+		t.Errorf("graphs must not mark aa current: %s", graphs)
+	}
+}
+
+func TestErrorPageBoardScopeIsCurrentPage(t *testing.T) {
+	app := newTestApp(t)
+	initScope(t, app, "wc")
+	s := mustServer(t, app)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	w := do(s, "/scope/wc")
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("closed index GET /scope/wc = %d %s", w.Code, w.Body.String())
+	}
+	nav := scopesNav(t, w.Body.String())
+	if !strings.Contains(nav, `href="/scope/wc" class="selected" aria-current="page">wc</a>`) {
+		t.Fatalf("error on the board URL must use page, not true: %s", nav)
+	}
+
+	w = do(s, "/scope/wc?backlog=1")
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("closed index GET /scope/wc?backlog=1 = %d %s", w.Code, w.Body.String())
+	}
+	nav = scopesNav(t, w.Body.String())
+	if !strings.Contains(nav, `href="/scope/wc" class="selected" aria-current="page">wc</a>`) {
+		t.Fatalf("error on the board URL with query must still use page: %s", nav)
+	}
+}
+
+func TestScopeAriaCurrent(t *testing.T) {
+	c := chrome{Selected: "wc", Return: "/scope/wc"}
+	if got := c.ScopeAriaCurrent("wc"); got != "page" {
+		t.Errorf("board = %q, want page", got)
+	}
+	c.Return = "/scope/wc?backlog=1"
+	if got := c.ScopeAriaCurrent("wc"); got != "page" {
+		t.Errorf("board query = %q, want page", got)
+	}
+	c.Return = "/scope/wc/ab2c"
+	if got := c.ScopeAriaCurrent("wc"); got != "true" {
+		t.Errorf("inspect = %q, want true", got)
+	}
+	c.Return = "/graphs?scope=wc"
+	if got := c.ScopeAriaCurrent("wc"); got != "true" {
+		t.Errorf("graphs = %q, want true", got)
+	}
+	if got := c.ScopeAriaCurrent("aa"); got != "" {
+		t.Errorf("other scope = %q, want empty", got)
+	}
+	c.Selected = ""
+	if got := c.ScopeAriaCurrent("wc"); got != "" {
+		t.Errorf("no selection = %q, want empty", got)
+	}
+}
+
+func scopeTabMarked(nav, name string) bool {
+	href := `href="/scope/` + name + `"`
+	return strings.Contains(nav, href+` class="selected"`) || strings.Contains(nav, href+` aria-current`)
+}
+
+func scopesNav(t *testing.T, page string) string {
+	t.Helper()
+	const open = `<nav class="scopes" aria-label="scopes">`
+	i := strings.Index(page, open)
+	if i < 0 {
+		t.Fatalf("missing scopes nav: %s", page)
+	}
+	rest := page[i:]
+	j := strings.Index(rest, "</nav>")
+	if j < 0 {
+		t.Fatalf("unclosed scopes nav: %s", page)
+	}
+	return rest[:j+len("</nav>")]
 }
 
 func TestChromeOmitsMePointer(t *testing.T) {

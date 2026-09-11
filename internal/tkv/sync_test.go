@@ -177,7 +177,7 @@ func TestChromeSyncPOSTRefusesNonAutoCommit(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "auto-commit") {
 		t.Fatalf("refuse must name auto-commit: %s", w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `class="selected">pl</a>`) {
+	if !strings.Contains(w.Body.String(), `class="selected" aria-current="true">pl</a>`) {
 		t.Fatalf("refused chrome Sync must keep the selected scope: %s", w.Body.String())
 	}
 	if porcelain(t, repo) == "" {

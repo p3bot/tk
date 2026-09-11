@@ -42,7 +42,7 @@
   <div class="chrome-row chrome-context">
     <nav class="scopes" aria-label="scopes">
       {{range .Chrome.Scopes}}
-        <a href="/scope/{{.}}"{{if eq $.Chrome.Selected .}} class="selected"{{end}}>{{.}}</a>
+        <a href="/scope/{{.}}"{{if eq $.Chrome.Selected .}} class="selected" aria-current="{{$.Chrome.ScopeAriaCurrent .}}"{{end}}>{{.}}</a>
       {{end}}
     </nav>
     <dl class="meta">

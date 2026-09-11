@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -128,6 +129,92 @@ func TestListBoardContract(t *testing.T) {
 	_, _, err = run(t, app, "list", "--scope", "wc", "bogus")
 	if got := ExitCodeFromError(err); got != exitUsage {
 		t.Errorf("unknown status exit = %d want %d", got, exitUsage)
+	}
+}
+
+func TestListTerminalOnlyReverse(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-aa22", "early-todo", "todo", "a0", "# Early todo\n", false, "")
+	addTicket(t, dir, "wc-bb33", "old-done", "done", "a1", "# Old done\n", true, "")
+	addTicket(t, dir, "wc-cc44", "mid-todo", "todo", "a2", "# Mid todo\n", false, "")
+	addTicket(t, dir, "wc-dd55", "new-done", "done", "a3", "# New done\n", true, "")
+	addTicket(t, dir, "wc-ee66", "cancelled", "cancelled", "a4", "# Cancelled\n", true, "")
+
+	ids := func(out string) []string {
+		var got []string
+		for _, row := range lines(out) {
+			got = append(got, strings.Split(row, "\t")[0])
+		}
+		return got
+	}
+
+	out, _, err := run(t, app, "list", "--scope", "wc", "done")
+	if err != nil {
+		t.Fatalf("list done: %v", err)
+	}
+	if !slices.Equal(ids(out), []string{"wc-dd55", "wc-bb33"}) {
+		t.Fatalf("list done = %v, want highest order first", ids(out))
+	}
+	if strings.Contains(out, "Early todo") || strings.Contains(out, "Cancelled") {
+		t.Fatalf("list done leaked other statuses: %q", out)
+	}
+
+	out, _, err = run(t, app, "list", "--scope", "wc", "done", "cancelled")
+	if err != nil {
+		t.Fatalf("list done cancelled: %v", err)
+	}
+	if !slices.Equal(ids(out), []string{"wc-ee66", "wc-dd55", "wc-bb33"}) {
+		t.Fatalf("list done cancelled = %v, want reverse (order, id)", ids(out))
+	}
+
+	out, _, err = run(t, app, "list", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !slices.Equal(ids(out), []string{"wc-aa22", "wc-cc44"}) {
+		t.Fatalf("default list = %v, want forward", ids(out))
+	}
+
+	out, _, err = run(t, app, "list", "--scope", "wc", "--all")
+	if err != nil {
+		t.Fatalf("list --all: %v", err)
+	}
+	if !slices.Equal(ids(out), []string{"wc-aa22", "wc-bb33", "wc-cc44", "wc-dd55", "wc-ee66"}) {
+		t.Fatalf("list --all = %v, want forward board", ids(out))
+	}
+
+	out, _, err = run(t, app, "list", "--scope", "wc", "done", "todo")
+	if err != nil {
+		t.Fatalf("list done todo: %v", err)
+	}
+	if !slices.Equal(ids(out), []string{"wc-aa22", "wc-bb33", "wc-cc44", "wc-dd55"}) {
+		t.Fatalf("list done todo = %v, want forward mixed", ids(out))
+	}
+
+	out, _, err = run(t, app, "list", "--scope", "wc", "cancelled")
+	if err != nil {
+		t.Fatalf("list cancelled: %v", err)
+	}
+	if !slices.Equal(ids(out), []string{"wc-ee66"}) {
+		t.Fatalf("list cancelled = %v", ids(out))
+	}
+
+	writeCue(t, dir, "name: \"wc\"\nautoCommit: false\nstatuses: {\n  shipped: {category: \"done\"}\n}\n")
+	addTicket(t, dir, "wc-ff77", "old-shipped", "shipped", "a5", "# Old shipped\n", true, "")
+	addTicket(t, dir, "wc-gg88", "new-shipped", "shipped", "a6", "# New shipped\n", true, "")
+	out, _, err = run(t, app, "list", "--scope", "wc", "shipped")
+	if err != nil {
+		t.Fatalf("list shipped: %v", err)
+	}
+	if !slices.Equal(ids(out), []string{"wc-gg88", "wc-ff77"}) {
+		t.Fatalf("list shipped = %v, want reverse custom terminal", ids(out))
+	}
+
+	help, errOut, _ := run(t, app, "list", "--help")
+	text := help + errOut
+	if !strings.Contains(text, "every status in the filter is terminal") {
+		t.Fatalf("list help must state the terminal-only reverse rule:\n%s", text)
 	}
 }
 

@@ -26,6 +26,10 @@ func newListCmd(app *App) *cobra.Command {
 		Short:   "Board / inventory for one scope as parse-stable TSV",
 		Long: "Print one scope's tickets, sorted (order, id), one TSV line each:\n" +
 			"  <full-id>\\t<status>\\t<title>\\t<waiting-on>\n" +
+			"Reverse that order when every status in the filter is terminal (including\n" +
+			"custom terminal names), so `list done` and `list done cancelled` are highest\n" +
+			"order key first (the live board, flipped). Empty filter, --all, --open, and\n" +
+			"any mixed filter stay forward. The listing sort does not rewrite order keys.\n" +
 			"Headerless TSV (no header row). Summary is not a list column — use\n" +
 			"`tk meta get <id>`. Bare list is the default active set. Status positionals\n" +
 			"union-filter (an unknown status exits 2) and include matching rows under\n" +
@@ -127,7 +131,7 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 	if err != nil {
 		return err
 	}
-	index.SortTickets(kept)
+	index.SortListing(kept, filter.Statuses, schema.CustomStatuses())
 
 	tokens := depgate.NewTokenSet()
 	for _, row := range kept {

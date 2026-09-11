@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +108,32 @@ func colSection(body, status string) string {
 		return rest
 	}
 	return rest[:4+next]
+}
+
+func colCardIDs(col string) []string {
+	var ids []string
+	for _, part := range strings.Split(col, `data-filter="`)[1:] {
+		field, _, _ := strings.Cut(part, `"`)
+		id, _, _ := strings.Cut(field, " ")
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func cardSection(col, id string) string {
+	parts := strings.Split(col, "<article ")
+	for _, p := range parts[1:] {
+		chunk := "<article " + p
+		if i := strings.Index(chunk, "</article>"); i >= 0 {
+			chunk = chunk[:i+len("</article>")]
+		}
+		if strings.Contains(chunk, `data-filter="`+id+" ") {
+			return chunk
+		}
+	}
+	return ""
 }
 
 func setLens(t *testing.T, app *App, scope string, tags []string) {
@@ -329,6 +356,92 @@ func TestPOSTOrderUpSwapsTwoTodos(t *testing.T) {
 	iFirst, iSecond := strings.Index(todo, `class="title">First</span>`), strings.Index(todo, `class="title">Second</span>`)
 	if iFirst < 0 || iSecond < 0 || iSecond > iFirst {
 		t.Fatalf("up did not make second card first: %s", todo)
+	}
+}
+
+func TestKanbanArchivedDoneColumnIsReverseOrder(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-aa22", "old-done", "done", "a0", "# Old done\n", true, "")
+	addTicket(t, dir, "wc-bb33", "mid-done", "done", "a1", "# Mid done\n", true, "")
+	addTicket(t, dir, "wc-cc44", "new-done", "done", "a2", "# New done\n", true, "")
+	addTicket(t, dir, "wc-dd55", "live", "todo", "a3", "# Live\n", false, "")
+	s := mustServer(t, app)
+
+	todo := colSection(do(s, "/scope/wc").Body.String(), status.Todo)
+	if !strings.Contains(todo, `class="title">Live</span>`) {
+		t.Fatalf("todo column missing live card: %s", todo)
+	}
+
+	done := colSection(do(s, "/scope/wc?archived=1").Body.String(), status.Done)
+	if !slices.Equal(colCardIDs(done), []string{"wc-cc44", "wc-bb33", "wc-aa22"}) {
+		t.Fatalf("archived done ids = %v, want reverse of list done (order, id)", colCardIDs(done))
+	}
+	mid := cardSection(done, "wc-bb33")
+	if mid == "" {
+		t.Fatalf("middle done card missing: %s", done)
+	}
+	if !strings.Contains(mid, `aria-label="Move wc-bb33 up"`) || !strings.Contains(mid, `name="after" value="wc-cc44"`) {
+		t.Fatalf("middle card Up must be after visual previous (higher order): %s", mid)
+	}
+	if !strings.Contains(mid, `aria-label="Move wc-bb33 down"`) || !strings.Contains(mid, `name="before" value="wc-aa22"`) {
+		t.Fatalf("middle card Down must be before visual next (lower order): %s", mid)
+	}
+	if strings.Contains(mid, `name="before" value="wc-cc44"`) || strings.Contains(mid, `name="after" value="wc-aa22"`) {
+		t.Fatalf("middle card dests still board-semantic: %s", mid)
+	}
+
+	beforeNew := ticketOrder(t, dir, "wc-cc44")
+	beforeOld := ticketOrder(t, dir, "wc-aa22")
+	beforeLive := ticketOrder(t, dir, "wc-dd55")
+	want, err := order.KeyBetween(beforeNew, beforeLive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := doPost(s, "/scope/wc/order", url.Values{
+		"id":       {"wc-bb33"},
+		"after":    {"wc-cc44"},
+		"return":   {"board"},
+		"archived": {"1"},
+	})
+	page := mustFollow(t, s, w)
+	if ticketOrder(t, dir, "wc-bb33") != want {
+		t.Fatalf("order key = %q, want %q (Up toward visual top)", ticketOrder(t, dir, "wc-bb33"), want)
+	}
+	if ticketOrder(t, dir, "wc-cc44") != beforeNew || ticketOrder(t, dir, "wc-aa22") != beforeOld {
+		t.Fatalf("neighbours rewritten:\n%s\n%s", ticketBody(t, dir, "wc-cc44"), ticketBody(t, dir, "wc-aa22"))
+	}
+	if ticketOrder(t, dir, "wc-dd55") != beforeLive {
+		t.Fatalf("listing sort rewrote a non-dest ticket: %s", ticketBody(t, dir, "wc-dd55"))
+	}
+	done = colSection(page.Body.String(), status.Done)
+	if !slices.Equal(colCardIDs(done), []string{"wc-bb33", "wc-cc44", "wc-aa22"}) {
+		t.Fatalf("Up on middle archived card should become visual top, ids = %v", colCardIDs(done))
+	}
+}
+
+func TestKanbanArchivedCancelledAndCustomTerminalReverse(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(
+		"name: \"wc\"\nautoCommit: false\nstatuses: { shipped: { category: \"done\" } }\n",
+	), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "wc-aa22", "old-cancelled", "cancelled", "a0", "# Old cancelled\n", true, "")
+	addTicket(t, dir, "wc-bb33", "new-cancelled", "cancelled", "a1", "# New cancelled\n", true, "")
+	addTicket(t, dir, "wc-cc44", "old-shipped", "shipped", "a2", "# Old shipped\n", true, "")
+	addTicket(t, dir, "wc-dd55", "new-shipped", "shipped", "a3", "# New shipped\n", true, "")
+	s := mustServer(t, app)
+
+	board := do(s, "/scope/wc?archived=1").Body.String()
+	cancelled := colSection(board, status.Cancelled)
+	if !slices.Equal(colCardIDs(cancelled), []string{"wc-bb33", "wc-aa22"}) {
+		t.Fatalf("cancelled column = %v, want reverse (order, id)", colCardIDs(cancelled))
+	}
+	shipped := colSection(board, "shipped")
+	if !slices.Equal(colCardIDs(shipped), []string{"wc-dd55", "wc-cc44"}) {
+		t.Fatalf("custom terminal column = %v, want reverse (order, id)", colCardIDs(shipped))
 	}
 }
 

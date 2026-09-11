@@ -21,6 +21,47 @@ func TestSortTicketsOrderKeyThenID(t *testing.T) {
 	}
 }
 
+func TestSortListingTerminalOnlyReverse(t *testing.T) {
+	seed := func() []*Ticket {
+		return []*Ticket{
+			{ID: "wc-de34", OrderKey: "a1"},
+			{ID: "wc-gh56", OrderKey: "a0"},
+			{ID: "wc-ab2c", OrderKey: "a0"},
+		}
+	}
+	ids := func(rows []*Ticket) []string {
+		out := make([]string, len(rows))
+		for i, p := range rows {
+			out[i] = p.ID
+		}
+		return out
+	}
+	forward := []string{"wc-ab2c", "wc-gh56", "wc-de34"}
+	reverse := []string{"wc-de34", "wc-gh56", "wc-ab2c"}
+
+	rows := seed()
+	if got := SortListing(rows, nil, nil); got || !slices.Equal(ids(rows), forward) {
+		t.Fatalf("empty filter reverse=%v ids=%v, want forward %v", got, ids(rows), forward)
+	}
+	rows = seed()
+	if got := SortListing(rows, []string{status.Todo, status.Done}, nil); got || !slices.Equal(ids(rows), forward) {
+		t.Fatalf("mixed filter reverse=%v ids=%v, want forward", got, ids(rows))
+	}
+	rows = seed()
+	if got := SortListing(rows, []string{status.Done}, nil); !got || !slices.Equal(ids(rows), reverse) {
+		t.Fatalf("list done reverse=%v ids=%v, want reverse %v", got, ids(rows), reverse)
+	}
+	rows = seed()
+	if got := SortListing(rows, []string{status.Done, status.Cancelled}, nil); !got || !slices.Equal(ids(rows), reverse) {
+		t.Fatalf("list done cancelled reverse=%v ids=%v, want reverse", got, ids(rows))
+	}
+	custom := map[string]status.Category{"shipped": status.CategoryDone}
+	rows = seed()
+	if got := SortListing(rows, []string{"shipped"}, custom); !got || !slices.Equal(ids(rows), reverse) {
+		t.Fatalf("custom terminal column reverse=%v ids=%v, want reverse", got, ids(rows))
+	}
+}
+
 func TestSchemaHasQuerySurface(t *testing.T) {
 	db := openTemp(t)
 	if SchemaVersion <= 2 {

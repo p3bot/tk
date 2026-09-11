@@ -52,6 +52,28 @@ func TestIsTerminal(t *testing.T) {
 	}
 }
 
+func TestAllTerminal(t *testing.T) {
+	custom := customCategories()
+	if AllTerminal(nil, custom) || AllTerminal([]string{}, custom) {
+		t.Fatal("empty is not terminal-only")
+	}
+	if !AllTerminal([]string{Done}, custom) || !AllTerminal([]string{Cancelled, Done}, custom) {
+		t.Fatal("built-in terminal set should reverse")
+	}
+	if !AllTerminal([]string{"shipped", Cancelled}, custom) {
+		t.Fatal("custom terminal names are terminal-only")
+	}
+	if AllTerminal([]string{Done, Todo}, custom) || AllTerminal([]string{Todo}, custom) {
+		t.Fatal("any non-terminal keeps forward order")
+	}
+	if AllTerminal([]string{"shipped"}, nil) {
+		t.Fatal("undeclared custom is not terminal")
+	}
+	if AllTerminal([]string{"unknown"}, custom) {
+		t.Fatal("unknown is not terminal")
+	}
+}
+
 func TestIsNextEligible(t *testing.T) {
 	if !IsNextEligible(Todo) {
 		t.Error("IsNextEligible(todo) = false, want true")

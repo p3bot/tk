@@ -90,6 +90,20 @@ func IsTerminal(name string, custom map[string]Category) bool {
 	return ok && c == CategoryDone
 }
 
+// AllTerminal reports whether names is a non-empty terminal-only set. Empty is
+// not (the default board). Unknown names are not terminal.
+func AllTerminal(names []string, custom map[string]Category) bool {
+	if len(names) == 0 {
+		return false
+	}
+	for _, n := range names {
+		if !IsTerminal(n, custom) {
+			return false
+		}
+	}
+	return true
+}
+
 // IsNextEligible reports whether a status can appear in tk next. Only built-in todo qualifies.
 func IsNextEligible(name string) bool {
 	b, ok := builtins[name]

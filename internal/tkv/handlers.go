@@ -204,8 +204,10 @@ type kanbanCard struct {
 	Next         bool
 	CanClaim     bool
 	MarkStatuses []string
-	BeforeID     string
-	AfterID      string
+	UpName       string
+	UpID         string
+	DownName     string
+	DownID       string
 }
 
 func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
@@ -273,8 +275,9 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	colNames := kanbanColumns(custom, backlog, archived, present)
 	cols := make([]kanbanCol, 0, len(colNames))
 	for _, st := range colNames {
-		col := kanbanCol{Status: st}
 		cards := byStatus[st]
+		reverse := index.SortListing(cards, []string{st}, custom)
+		col := kanbanCol{Status: st}
 		for i, p := range cards {
 			waiting := gate.EvalDepends(p).WaitingOn
 			card := kanbanCard{
@@ -288,15 +291,8 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 				Next:        nextID != "" && p.ID == nextID,
 			}
 			card.CanClaim, card.MarkStatuses = ticketWriteControls(schema, p.Status, p.ParseError)
-			// Neighbours are this server-filtered column, not the CLI scope-wide set.
-			// Skip a dest the engine will refuse; do not walk past a visible broken card.
 			if ticketWritable(schema, p.ParseError) {
-				if i > 0 && order.Valid(cards[i-1].OrderKey) {
-					card.BeforeID = cards[i-1].ID
-				}
-				if i+1 < len(cards) && order.Valid(cards[i+1].OrderKey) {
-					card.AfterID = cards[i+1].ID
-				}
+				setColumnOrderDests(&card, cards, i, reverse)
 			}
 			col.Cards = append(col.Cards, card)
 		}
@@ -347,6 +343,25 @@ func (c kanbanCard) FilterText() string {
 		b.WriteString(w.ID)
 	}
 	return b.String()
+}
+
+// Neighbours are this server-filtered column, not the CLI scope-wide set.
+// Skip a dest the engine will refuse; do not walk past a visible broken card.
+func setColumnOrderDests(card *kanbanCard, cards []*index.Ticket, i int, reverse bool) {
+	if i > 0 && order.Valid(cards[i-1].OrderKey) {
+		card.UpID = cards[i-1].ID
+		card.UpName = "before"
+		if reverse {
+			card.UpName = "after"
+		}
+	}
+	if i+1 < len(cards) && order.Valid(cards[i+1].OrderKey) {
+		card.DownID = cards[i+1].ID
+		card.DownName = "after"
+		if reverse {
+			card.DownName = "before"
+		}
+	}
 }
 
 func waitLinks(ids []string) []idLink {

@@ -78,6 +78,7 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"do not cancel+recreate unless a human asks",
 		"never invent",
 		"--open",
+		"terminal-only status filters reverse that order",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {

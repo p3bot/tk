@@ -54,11 +54,28 @@ func (d *DB) BoardTickets(f BoardFilter) ([]*Ticket, error) {
 
 // SortTickets orders rows by (order_key, id), matching BoardTickets and NextCandidates.
 func SortTickets(rows []*Ticket) {
+	sortTickets(rows, false)
+}
+
+// SortListing orders a list or column by (order_key, id), reversed when
+// statuses is a non-empty terminal-only set (CLI status filter or one tkv column).
+// The returned flag is that same reverse decision, so dests can follow the sort.
+func SortListing(rows []*Ticket, statuses []string, custom map[string]status.Category) bool {
+	reverse := status.AllTerminal(statuses, custom)
+	sortTickets(rows, reverse)
+	return reverse
+}
+
+func sortTickets(rows []*Ticket, reverse bool) {
 	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].OrderKey != rows[j].OrderKey {
-			return rows[i].OrderKey < rows[j].OrderKey
+		a, b := rows[i], rows[j]
+		if reverse {
+			a, b = b, a
 		}
-		return rows[i].ID < rows[j].ID
+		if a.OrderKey != b.OrderKey {
+			return a.OrderKey < b.OrderKey
+		}
+		return a.ID < b.ID
 	})
 }
 

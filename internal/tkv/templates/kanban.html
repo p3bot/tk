@@ -79,20 +79,20 @@
         <button type="submit" aria-label="Mark {{.ID}}">Mark</button>
       </form>
       {{end}}
-      {{if or .BeforeID .AfterID}}
+      {{if or .UpID .DownID}}
       <div class="order">
-        {{if .BeforeID}}
+        {{if .UpID}}
         <form class="write" method="post" action="/scope/{{$.Name}}/order">
           <input type="hidden" name="id" value="{{.ID}}">
-          <input type="hidden" name="before" value="{{.BeforeID}}">
+          <input type="hidden" name="{{.UpName}}" value="{{.UpID}}">
           {{template "boardReturn" $}}
           <button type="submit" aria-label="Move {{.ID}} up">Up</button>
         </form>
         {{end}}
-        {{if .AfterID}}
+        {{if .DownID}}
         <form class="write" method="post" action="/scope/{{$.Name}}/order">
           <input type="hidden" name="id" value="{{.ID}}">
-          <input type="hidden" name="after" value="{{.AfterID}}">
+          <input type="hidden" name="{{.DownName}}" value="{{.DownID}}">
           {{template "boardReturn" $}}
           <button type="submit" aria-label="Move {{.ID}} down">Down</button>
         </form>

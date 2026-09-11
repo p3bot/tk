@@ -49,7 +49,7 @@ tk mark <status> <id> [id...] [--scope S]                           # Set status
 tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 
-tk list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens)
+tk list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens). Sorted (order, id); terminal-only status filters reverse that order
 tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
 tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key; soft required_missing: if gaps remain
@@ -101,7 +101,7 @@ Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk m
 
 Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk order / mark -> Durability
 
-Board: `tk list` | `tk list --open` | `tk list --all` -> `tk tags` | `tk order` | `tk lens` | `tk search`
+Board: `tk list` | `tk list --open` | `tk list --all` -> `tk tags` | `tk order` | `tk lens` | `tk search` (`list done` / other terminal-only filters are reverse (order, id); mixed and --all stay forward)
 
 Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:)
 

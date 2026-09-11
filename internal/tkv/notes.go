@@ -156,7 +156,7 @@ func (s *Server) noteInspect(w http.ResponseWriter, r *http.Request) error {
 		ListHref: notesListHref(name),
 	}
 	if len(body) > 0 {
-		html, err := renderMarkdown(body)
+		html, _, err := convertMarkdown(body)
 		if err != nil {
 			return err
 		}

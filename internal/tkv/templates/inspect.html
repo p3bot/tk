@@ -10,7 +10,7 @@
 <article class="body">
   {{if .ParseMsg}}<p class="banner">{{.ParseMsg}}</p>{{end}}
   {{if .SchemaErr}}<p class="banner">schema_error: a depends/related entry is not a legal full ticket id</p>{{end}}
-  {{if .RawText}}<pre class="raw">{{.RawText}}</pre>{{else}}{{.Body}}{{end}}
+  {{if .RawText}}<pre class="raw">{{.RawText}}</pre>{{else}}{{if .TOC}}{{template "toc" .TOC}}{{end}}{{.Body}}{{end}}
   {{if .CanEdit}}
   <form class="write splice" method="post" action="/scope/{{.Chrome.Selected}}/body">
     <input type="hidden" name="id" value="{{.ID}}">
@@ -162,6 +162,23 @@
 </main>
 </body>
 </html>
+{{end}}
+
+{{define "toc"}}
+<nav class="toc" aria-label="Table of contents">
+<ul>
+{{template "tocItems" .}}
+</ul>
+</nav>
+{{end}}
+
+{{define "tocItems"}}
+{{range .}}
+<li>
+<a href="#{{.ID}}">{{.Text}}</a>
+{{if .Kids}}<ul>{{template "tocItems" .Kids}}</ul>{{end}}
+</li>
+{{end}}
 {{end}}
 
 {{define "metaSetFields"}}

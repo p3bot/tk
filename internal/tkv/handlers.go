@@ -448,6 +448,7 @@ type inspectPage struct {
 	ParseMsg     string
 	RawText      string
 	Body         template.HTML
+	TOC          []tocItem
 	Depends      []neighbour
 	Depended     []neighbour
 	Related      []neighbour
@@ -643,11 +644,12 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 			if !present {
 				body = raw
 			}
-			html, err := renderMarkdown(body)
+			html, toc, err := convertMarkdown(body)
 			if err != nil {
 				return inspectPage{}, err
 			}
 			out.Body = html
+			out.TOC = toc
 			if writable && present {
 				heading, rest := title.SplitH1(body)
 				out.CanEdit = true

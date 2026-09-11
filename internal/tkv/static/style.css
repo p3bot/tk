@@ -227,6 +227,33 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
 .inspect { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1.5rem; align-items: start; }
 .body { background: var(--ticket); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; }
 .body h1 { margin-top: 0; }
+.body h2,
+.body h3,
+.body h4,
+.body h5,
+.body h6 {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg);
+  font-weight: 650;
+  margin: 1.25rem 0 0.5rem;
+}
+.body h2 { font-size: 1.15rem; }
+.body h3 { font-size: 1.05rem; }
+.body h4,
+.body h5,
+.body h6 { font-size: 1rem; }
+.toc {
+  margin: 0 0 1.25rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 0.9375rem;
+}
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 0.15rem 0; }
+.toc li ul { padding-left: 1rem; }
 .body .splice {
   flex-direction: column;
   flex-wrap: nowrap;

@@ -819,6 +819,91 @@ func TestSearchDefaultsToAllScopes(t *testing.T) {
 	}
 }
 
+func TestInspectTOC(t *testing.T) {
+	t.Run("headed", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		body := "# Title\n\n## Setup\n\ntext\n\n### Details\n\nmore\n\n## Finish\n"
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", body, false, "")
+		s := mustServer(t, app)
+		w := do(s, "/scope/wc/ab2c")
+		if w.Code != 200 {
+			t.Fatalf("inspect = %d %s", w.Code, w.Body.String())
+		}
+		got := w.Body.String()
+		navAt := strings.Index(got, `<nav class="toc"`)
+		bodyAt := strings.Index(got, `<h1 id="title">`)
+		if navAt < 0 || bodyAt < 0 || navAt > bodyAt {
+			t.Fatalf("toc not above goldmark body: nav=%d h1=%d\n%s", navAt, bodyAt, got)
+		}
+		nav := tocNav(t, got)
+		if !strings.Contains(nav, `href="#setup"`) || !strings.Contains(nav, `>Setup</a>`) {
+			t.Fatalf("toc missing Setup: %s", nav)
+		}
+		if !strings.Contains(nav, `href="#details"`) || !strings.Contains(nav, `>Details</a>`) {
+			t.Fatalf("toc missing Details: %s", nav)
+		}
+		if !strings.Contains(nav, `href="#finish"`) || !strings.Contains(nav, `>Finish</a>`) {
+			t.Fatalf("toc missing Finish: %s", nav)
+		}
+		if strings.Contains(nav, `href="#title"`) {
+			t.Fatalf("toc included H1: %s", nav)
+		}
+		setup := strings.Index(nav, `href="#setup"`)
+		details := strings.Index(nav, `href="#details"`)
+		finish := strings.Index(nav, `href="#finish"`)
+		if setup < 0 || details < 0 || finish < 0 || setup > details || details > finish {
+			t.Fatalf("toc order: %s", nav)
+		}
+		if !strings.Contains(nav[setup:finish], "<ul>") {
+			t.Fatalf("details not nested under setup: %s", nav)
+		}
+		if !strings.Contains(got, `<h2 id="setup">`) || !strings.Contains(got, `<h3 id="details">`) || !strings.Contains(got, `<h2 id="finish">`) {
+			t.Fatalf("body heading ids: %s", got)
+		}
+	})
+	t.Run("h1-only", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Title\n\njust a paragraph\n", false, "")
+		s := mustServer(t, app)
+		got := do(s, "/scope/wc/ab2c").Body.String()
+		if strings.Contains(got, `class="toc"`) {
+			t.Fatalf("h1-only inspect has toc: %s", got)
+		}
+	})
+	t.Run("parse-error", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		if err := os.WriteFile(filepath.Join(dir, "wc-abcd-x.md"), []byte("---\nid: wc-abcd\nstatus: [unterminated\n---\n# broke\n\n## Section\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s := mustServer(t, app)
+		got := do(s, "/scope/wc/abcd").Body.String()
+		if !strings.Contains(got, `<pre class="raw">`) {
+			t.Fatalf("parse-error inspect missing raw pre: %s", got)
+		}
+		if strings.Contains(got, `class="toc"`) {
+			t.Fatalf("parse-error inspect has toc: %s", got)
+		}
+	})
+}
+
+func tocNav(t *testing.T, page string) string {
+	t.Helper()
+	const open = `<nav class="toc" aria-label="Table of contents">`
+	i := strings.Index(page, open)
+	if i < 0 {
+		t.Fatalf("missing toc nav: %s", page)
+	}
+	rest := page[i:]
+	j := strings.Index(rest, "</nav>")
+	if j < 0 {
+		t.Fatalf("unclosed toc nav: %s", page)
+	}
+	return rest[:j+len("</nav>")]
+}
+
 func TestGoldmarkDoesNotRenderRawHTML(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
@@ -864,6 +949,9 @@ func TestStaticCSS(t *testing.T) {
 		!strings.Contains(css, "background: var(--ticket);") ||
 		!strings.Contains(css, ".body { background: var(--ticket);") {
 		t.Fatalf("inspect body and board cards must share --ticket white: %s", css)
+	}
+	if !strings.Contains(css, ".body h2") || !strings.Contains(css, ".body h6") || !strings.Contains(css, "text-transform: none") {
+		t.Fatalf("article headings must override chrome h2: %s", css)
 	}
 	js := do(s, "/static/board.js")
 	if js.Code != 200 {

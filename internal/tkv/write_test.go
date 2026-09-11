@@ -806,7 +806,7 @@ func TestPOSTCreateDraftInspectsAndIndexes(t *testing.T) {
 	}
 	page := mustFollow(t, s, w)
 	body := page.Body.String()
-	if !strings.Contains(body, "<h1>Network redesign</h1>") {
+	if !strings.Contains(body, `<h1 id="network-redesign">Network redesign</h1>`) {
 		t.Fatalf("inspect missing H1: %s", body)
 	}
 	if !strings.Contains(body, "<dd>draft</dd>") {
@@ -854,7 +854,7 @@ func TestPOSTCreateDoneArchivesAndInspects(t *testing.T) {
 	if !strings.Contains(ticketBody(t, dir, id), "status: done") {
 		t.Fatalf("file: %s", ticketBody(t, dir, id))
 	}
-	if !strings.Contains(page.Body.String(), "<h1>Already done</h1>") {
+	if !strings.Contains(page.Body.String(), `<h1 id="already-done">Already done</h1>`) {
 		t.Fatalf("inspect: %s", page.Body.String())
 	}
 	if !strings.Contains(page.Body.String(), "<dd>yes</dd>") {
@@ -911,7 +911,7 @@ func TestPOSTCreateToolbarFormEmptyTagSucceeds(t *testing.T) {
 	if strings.Contains(raw, "tags:") {
 		t.Fatalf("empty tag field must omit tags: %s", raw)
 	}
-	if !strings.Contains(page.Body.String(), "<h1>From toolbar</h1>") {
+	if !strings.Contains(page.Body.String(), `<h1 id="from-toolbar">From toolbar</h1>`) {
 		t.Fatalf("inspect: %s", page.Body.String())
 	}
 
@@ -1578,7 +1578,7 @@ func TestPOSTBodySavesAndReloadsGoldmark(t *testing.T) {
 	}
 	page := mustFollow(t, s, w)
 	body := page.Body.String()
-	if !strings.Contains(body, "<h1>Renamed title</h1>") {
+	if !strings.Contains(body, `<h1 id="renamed-title">Renamed title</h1>`) {
 		t.Fatalf("inspect missing new H1: %s", body)
 	}
 	if !strings.Contains(body, "<strong>markdown</strong>") {

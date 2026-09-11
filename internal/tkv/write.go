@@ -84,13 +84,18 @@ func (s *Server) writeDeps(ctx context.Context, reg *registry.Registry, h *index
 	// compile on the process context under that mutex. cue.Context is not safe
 	// for concurrent use. Schema cache stays on the pinned index.
 	cueCtx := cuecontext.New()
+	configDir, err := s.app.configDir()
+	if err != nil {
+		return writeengine.Deps{}, err
+	}
 	return writeengine.Deps{
-		Ctx:      ctx,
-		Cue:      cueCtx,
-		StateDir: stateDir,
-		Reg:      reg,
-		DB:       h.db,
-		Rec:      reconcile.New(h.db, cueCtx),
+		Ctx:       ctx,
+		Cue:       cueCtx,
+		StateDir:  stateDir,
+		ConfigDir: configDir,
+		Reg:       reg,
+		DB:        h.db,
+		Rec:       reconcile.New(h.db, cueCtx),
 	}, nil
 }
 

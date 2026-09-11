@@ -221,7 +221,7 @@ func TestRootHelpGroups(t *testing.T) {
 			board := helpSection(out, groupBoardTitle)
 			admin := helpSection(out, groupAdminTitle)
 
-			wantWork := []string{"create", "get", "edit", "mark", "order", "next"}
+			wantWork := []string{"create", "get", "edit", "mark", "order", "next", "rehome"}
 			wantBoard := []string{"list", "pulse", "meta", "depends", "search", "query", "lens", "me", "note", "tags"}
 			wantAdmin := []string{"scope", "sync", "doctor", "repair", "reindex", "skill"}
 			if got := commandsInSectionOrder(work); !slicesEqual(got, wantWork) {

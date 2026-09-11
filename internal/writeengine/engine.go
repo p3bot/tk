@@ -1,7 +1,7 @@
 // Package writeengine is the cobra-free ticket-file write session: create, meta
-// mutate, order, mark, claim, custom-key strip, and H1+body splice. Callers map
-// structured results to process edges; this package does not import cobra or
-// internal/cli.
+// mutate, order, mark, claim, rehome, custom-key strip, and H1+body splice.
+// Callers map structured results to process edges; this package does not import
+// cobra or internal/cli.
 package writeengine
 
 import (
@@ -22,12 +22,13 @@ import (
 
 // Deps are machine-local services the write engine needs.
 type Deps struct {
-	Ctx      context.Context
-	Cue      *cue.Context
-	StateDir string
-	Reg      *registry.Registry
-	DB       *index.DB
-	Rec      *reconcile.Reconciler
+	Ctx       context.Context
+	Cue       *cue.Context
+	StateDir  string
+	ConfigDir string
+	Reg       *registry.Registry
+	DB        *index.DB
+	Rec       *reconcile.Reconciler
 }
 
 // Reporter receives progress lines (stdout-class Out, stderr-class Err).
@@ -104,6 +105,36 @@ type Result struct {
 	ScaffoldCue      string
 	ArchiveNote      string
 	TagNew           []string
+	// EdgeVerify is inbound-edge messages (without the token prefix) for
+	// scopes this write did not rewrite. Emitted on stderr.
+	EdgeVerify []string
+	// SyncNeededAll / SyncDisabledAll are per-git-root durability lines
+	// (without the token prefix). When empty, SyncNeeded / SyncDisabled
+	// are the single-root fallback used by one-scope writes.
+	SyncNeededAll   []string
+	SyncDisabledAll []string
+}
+
+// SyncNeededLines is every sync_needed: reason this write produced.
+func (r Result) SyncNeededLines() []string {
+	if len(r.SyncNeededAll) > 0 {
+		return r.SyncNeededAll
+	}
+	if r.SyncNeeded != "" {
+		return []string{r.SyncNeeded}
+	}
+	return nil
+}
+
+// SyncDisabledLines is every sync_disabled: reason this write produced.
+func (r Result) SyncDisabledLines() []string {
+	if len(r.SyncDisabledAll) > 0 {
+		return r.SyncDisabledAll
+	}
+	if r.SyncDisabled != "" {
+		return []string{r.SyncDisabled}
+	}
+	return nil
 }
 
 // Tickets is the per-ticket outcome of this write. When Members is set it is

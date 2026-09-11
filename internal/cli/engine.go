@@ -59,12 +59,13 @@ func (e *engine) syncDeps(c *cobra.Command) syncengine.Deps {
 
 func (e *engine) writeDeps(ctx context.Context) writeengine.Deps {
 	return writeengine.Deps{
-		Ctx:      ctx,
-		Cue:      e.app.Ctx,
-		StateDir: e.app.StateDir,
-		Reg:      e.reg,
-		DB:       e.db,
-		Rec:      e.rec,
+		Ctx:       ctx,
+		Cue:       e.app.Ctx,
+		StateDir:  e.app.StateDir,
+		ConfigDir: e.app.ConfigDir,
+		Reg:       e.reg,
+		DB:        e.db,
+		Rec:       e.rec,
 	}
 }
 

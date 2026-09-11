@@ -22,20 +22,24 @@ func emitWriteResult(c *cobra.Command, res writeengine.Result, err error) error 
 		stderrln(c, line)
 	}
 
-	printPath := err == nil || errors.Is(err, writeengine.ErrPushFailed)
 	tickets := res.Tickets()
-	if printPath {
-		for _, m := range tickets {
-			if m.Path != "" {
-				stdoutln(c, m.Path)
-			}
+	hasPath := false
+	for _, m := range tickets {
+		if m.Path != "" {
+			stdoutln(c, m.Path)
+			hasPath = true
 		}
 	}
-	if res.SyncDisabled != "" {
-		stderrln(c, token.Line(token.SyncDisabled, res.SyncDisabled))
+	// Path on the result means the write landed; print side tokens then too.
+	printPath := err == nil || errors.Is(err, writeengine.ErrPushFailed) || hasPath
+	for _, line := range res.SyncDisabledLines() {
+		stderrln(c, token.Line(token.SyncDisabled, line))
 	}
-	if res.SyncNeeded != "" {
-		stderrln(c, token.Line(token.SyncNeeded, res.SyncNeeded))
+	for _, line := range res.SyncNeededLines() {
+		stderrln(c, token.Line(token.SyncNeeded, line))
+	}
+	for _, line := range res.EdgeVerify {
+		stderrln(c, token.Line(token.EdgeVerify, line))
 	}
 	if printPath {
 		for _, m := range tickets {

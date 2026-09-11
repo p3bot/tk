@@ -46,6 +46,35 @@ func TestApplyMoveWritesNewRemovesOld(t *testing.T) {
 	}
 }
 
+func TestApplyRefusesCreateOntoDifferentFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "dest.md")
+	if err := os.WriteFile(p, []byte("occupant"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Apply([]Op{{NewPath: p, Content: []byte("newcomer")}})
+	if err == nil {
+		t.Fatal("create-only write onto an occupied destination must refuse")
+	}
+	if data, _ := os.ReadFile(p); string(data) != "occupant" {
+		t.Errorf("destination must be untouched, got %q", data)
+	}
+}
+
+func TestApplyCreateOntoSameBytesIsOK(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "dest.md")
+	if err := os.WriteFile(p, []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply([]Op{{NewPath: p, Content: []byte("same")}}); err != nil {
+		t.Fatalf("create-only onto identical bytes: %v", err)
+	}
+	if data, _ := os.ReadFile(p); string(data) != "same" {
+		t.Errorf("content = %q want same", data)
+	}
+}
+
 // Two tickets can compute the same destination basename; a move onto one would erase it.
 func TestApplyRefusesMoveOntoDifferentFile(t *testing.T) {
 	dir := t.TempDir()

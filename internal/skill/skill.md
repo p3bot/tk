@@ -12,7 +12,7 @@ description: >-
 # Ticket management with tk
 
 - A scope is a directory of tickets plus its tk.cue
-- tk create, get, and next print a cleaned absolute path on stdout
+- tk create, get, next, and rehome print a cleaned absolute path on stdout
 - That path is live: call create once, work with it, do not create ticket files yourself
 - mark prints one path per unique marked ticket
 - A ticket is one markdown file: YAML frontmatter fence, then a single ATX H1, then the body
@@ -48,6 +48,7 @@ tk get <id> [--content] [--scope S]                                 # Resolve id
 tk mark <status> <id> [id...] [--scope S]                           # Set status; done/cancelled move to archive/; soft depends_open: / required_missing: as applicable
 tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
+tk rehome <id> <dest-scope> [--scope S]                             # Prefix-rewrite ticket into dest scope; print dest path
 
 tk list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens). Sorted (order, id); terminal-only status filters reverse that order
 tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
@@ -109,7 +110,7 @@ Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `ren
 
 Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
-  - Commands that self commit: mark, order, next --claim, meta set/add/remove, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
+  - Commands that self commit: mark, order, next --claim, rehome, meta set/add/remove, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
   - Create and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
 - repo-driven: host git commit/push (no `tk sync`)

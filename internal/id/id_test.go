@@ -120,6 +120,22 @@ func TestScopeOfFullID(t *testing.T) {
 	}
 }
 
+func TestRewritePrefix(t *testing.T) {
+	cases := []struct{ full, oldName, newName, want string }{
+		{"foo-ab2c", "foo", "bar", "bar-ab2c"},
+		{"foo-ab2ca", "foo", "bar", "bar-ab2ca"},
+		{"other-ab2c", "foo", "bar", "other-ab2c"},
+		{"not-an-id", "foo", "bar", "not-an-id"},
+		{"ok", "foo", "bar", "ok"},
+		{"", "foo", "bar", ""},
+	}
+	for _, tc := range cases {
+		if got := RewritePrefix(tc.full, tc.oldName, tc.newName); got != tc.want {
+			t.Errorf("RewritePrefix(%q, %q, %q) = %q want %q", tc.full, tc.oldName, tc.newName, got, tc.want)
+		}
+	}
+}
+
 func TestMintShape(t *testing.T) {
 	for i := 0; i < 2000; i++ {
 		got, err := Mint(rand.Reader)

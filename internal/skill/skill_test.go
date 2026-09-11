@@ -79,6 +79,9 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"never invent",
 		"--open",
 		"terminal-only status filters reverse that order",
+		"tk rehome <id> <dest-scope> [--scope S]",
+		"tk create, get, next, and rehome print a cleaned absolute path",
+		"next --claim, rehome, meta set/add/remove",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {

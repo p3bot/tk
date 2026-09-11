@@ -114,6 +114,17 @@ func ScopeOfFullID(s string) string {
 	return s[:i]
 }
 
+// RewritePrefix swaps oldName for newName on a full ticket id in that scope.
+// Values that are not a full id in oldName are returned unchanged. The short is
+// frozen. Forming scope+"-"+short (when that short may be minted or extended)
+// is a different join.
+func RewritePrefix(full, oldName, newName string) string {
+	if IsFullTicketID(full) && ScopeOfFullID(full) == oldName {
+		return newName + strings.TrimPrefix(full, oldName)
+	}
+	return full
+}
+
 // Mint draws a fresh length-4 short-id from r.
 // First char is a uniform letter; positions 2–4 are a 50/50 letter/digit class flip.
 // Collision checking lives at the call site under the scope flock, not here.

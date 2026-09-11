@@ -13,7 +13,7 @@ registry, scope `tk.cue` evaluation, ambient resolution, and the full `tk scope`
 verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `auto-commit`, `field`); the machine-wide
 SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
 `pulse`, `get`, `meta`, `next`, `depends`, `search`, `query`, `lens`); the authoring
-hot path (`create`, `mark`, `order`, `edit`, `next --claim`) with local git
+hot path (`create`, `mark`, `order`, `edit`, `next --claim`, `rehome`) with local git
 self-commit, and claim-time refresh/push on a tk-driven root with an upstream;
 `tk doctor` (diagnose) and `tk repair`; the closed token catalogue; P6a's
 frontmatter merge package (`internal/fmmerge`), the rebase driver
@@ -100,7 +100,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `scopefile` — scope-dir allowlist classification, dirty counting, and per-scope flock acquire
   - `integrity` — doctor diagnose report and shared repair orchestration (acquiring + locks-held core)
   - `syncengine` — per-root snapshot/integrate/integrity/push; `tk sync` and claim
-  - `writeengine` — cobra-free ticket-file write session, create, meta, order, mark, and claim orchestration
+  - `writeengine` — cobra-free ticket-file write session, create, meta, order, mark, claim, and rehome orchestration
   - `notes` — cobra-free scope note list/read/set/add/delete and the machine-local use pointer (`tk note edit` stays in CLI)
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
   - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, doctor diagnose/reindex, mark/claim/create/meta/order, chrome lens, sync)

@@ -56,7 +56,7 @@ tk meta get <id> [key] [--scope S]                                  # Full heade
 tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key; soft required_missing: if gaps remain
 tk meta add <id> <key> <value> [--scope S]                          # Append multi-value frontmatter entry; soft required_missing: if gaps remain
 tk meta remove <id> <key> <value> [--scope S]                       # Remove multi-value frontmatter entry; soft required_missing: if gaps remain
-tk depends <id> [--scope S] [--transitive] [--tree]                 # Depends/related neighbourhood
+tk depends [<id>] [--scope S] [--transitive] [--tree] [--no-lens]   # TSV neighbourhood; --tree forest (id optional; lens default)
 tk search <terms> [--scope S]                                       # FTS5 search titles and bodies
 tk query <sql>                                                      # Ad-hoc read-only SQL; schema unstable
 tk query --schema                                                   # Debug only — do not script against it
@@ -104,7 +104,10 @@ Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk ord
 
 Board: `tk list` | `tk list --open` | `tk list --all` -> `tk tags` | `tk order` | `tk lens` | `tk search` (`list done` / other terminal-only filters are reverse (order, id); mixed and --all stay forward)
 
-Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:)
+Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:). `tk depends --tree` pretty-prints a short-id forest (omit id for the default board, lens unless `--no-lens`); not TSV:
+
+    j8dj ─┬─ kv6x ── r345
+          └─ h2h7
 
 Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `auto-commit` | `field list|set|unset`
 

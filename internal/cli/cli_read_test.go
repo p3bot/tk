@@ -624,11 +624,11 @@ func TestDepsTransitiveAndTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("deps --tree: %v", err)
 	}
-	if !strings.Contains(out, "depends tree:") {
-		t.Errorf("expected the tree header, got %q", out)
+	if !strings.Contains(out, "aa22 ─── bb33 ── cc44\n") {
+		t.Errorf("tree should box-draw the chain, got %q", out)
 	}
-	if !strings.Contains(out, "\n    wc-bb33\t") || !strings.Contains(out, "\n      wc-cc44\t") {
-		t.Errorf("tree should indent bb33 then cc44 one level deeper, got %q", out)
+	if strings.Contains(out, "depends tree:") || strings.Contains(out, "\n    wc-bb33\t") {
+		t.Errorf("tree must not be indented full-id TSV, got %q", out)
 	}
 }
 

@@ -115,7 +115,7 @@ func TestSkillPulseCommand(t *testing.T) {
 func TestSkillCanonicalVerbNames(t *testing.T) {
 	text := skill.Text()
 	for _, n := range []string{
-		"tk depends <id> [--scope S] [--transitive] [--tree]",
+		"tk depends [<id>] [--scope S] [--transitive] [--tree] [--no-lens]",
 		"tk meta remove <id> <key> <value> [--scope S]",
 		"tk meta add|remove",
 		"meta set/add/remove",
@@ -135,6 +135,15 @@ func TestSkillCanonicalVerbNames(t *testing.T) {
 		if strings.Contains(text, bad) {
 			t.Errorf("skill must not teach alias or short verb %q", bad)
 		}
+	}
+	if !strings.Contains(text, "tk depends --tree") {
+		t.Error("skill must document depends --tree")
+	}
+	if !strings.Contains(text, "─┬─") || !strings.Contains(text, "pretty-print") {
+		t.Error("skill must show the --tree box-drawing shape as pretty-print, not TSV")
+	}
+	if !strings.Contains(text, "lens unless `--no-lens`") {
+		t.Error("skill must teach depends --tree as the default board, lens unless --no-lens")
 	}
 }
 

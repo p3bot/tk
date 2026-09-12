@@ -34,8 +34,8 @@ func TestArityUsageMessages(t *testing.T) {
 		missing string
 		usage   string
 	}{
-		{"depends none", []string{"depends"}, "missing <id>", "tk depends <id> [--scope S] [--transitive] [--tree]"},
-		{"deps alias none", []string{"deps"}, "missing <id>", "tk depends <id> [--scope S] [--transitive] [--tree]"},
+		{"depends none", []string{"depends"}, "missing <id>", "tk depends <id> [--scope S] [--transitive] [--tree] [--no-lens]"},
+		{"deps alias none", []string{"deps"}, "missing <id>", "tk depends <id> [--scope S] [--transitive] [--tree] [--no-lens]"},
 		{"get none", []string{"get"}, "missing <id>", "tk get <id> [--content] [--scope S]"},
 		{"rehome none", []string{"rehome"}, "missing <id> <dest-scope>", "tk rehome <id> <dest-scope> [--scope S]"},
 		{"rehome one", []string{"rehome", "ab2c"}, "missing <dest-scope>", "tk rehome <id> <dest-scope> [--scope S]"},
@@ -79,7 +79,8 @@ func TestArityTooManyArguments(t *testing.T) {
 		args  []string
 		usage string
 	}{
-		{"depends extra", []string{"depends", "ab2c", "extra"}, "tk depends <id> [--scope S] [--transitive] [--tree]"},
+		{"depends extra", []string{"depends", "ab2c", "extra"}, "tk depends <id> [--scope S] [--transitive] [--tree] [--no-lens]"},
+		{"depends tree extra", []string{"depends", "--tree", "ab2c", "extra"}, "tk depends [<id>] [--scope S] [--transitive] [--tree] [--no-lens]"},
 		{"forget extra", []string{"scope", "forget", "a", "b"}, "tk scope forget <name>"},
 		{"next extra", []string{"next", "ab2c"}, "tk next [--scope S] [--no-lens] [--claim]"},
 		{"rehome extra", []string{"rehome", "ab2c", "bar", "extra"}, "tk rehome <id> <dest-scope> [--scope S]"},
@@ -202,7 +203,7 @@ func TestFlagErrorIncludesUsage(t *testing.T) {
 	if !strings.HasPrefix(msg, "unknown flag: --bogus\n") {
 		t.Errorf("message %q, want cobra flag error first", msg)
 	}
-	if !strings.Contains(msg, "usage: tk depends <id> [--scope S] [--transitive] [--tree]") {
+	if !strings.Contains(msg, "usage: tk depends [<id>] [--scope S] [--transitive] [--tree] [--no-lens]") {
 		t.Errorf("message %q, want usage line", msg)
 	}
 }
@@ -216,7 +217,7 @@ func TestArityPrintedError(t *testing.T) {
 	var buf strings.Builder
 	fprintError(&buf, err, true)
 	got := buf.String()
-	want := ansiRed + "error:" + ansiReset + " missing <id>\nusage: tk depends <id> [--scope S] [--transitive] [--tree]\n"
+	want := ansiRed + "error:" + ansiReset + " missing <id>\nusage: tk depends <id> [--scope S] [--transitive] [--tree] [--no-lens]\n"
 	if got != want {
 		t.Errorf("printed %q, want %q", got, want)
 	}

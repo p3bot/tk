@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/index"
+	"github.com/p3bot/tk/internal/status"
 )
 
 func newDependsCmd(app *App) *cobra.Command {
@@ -15,33 +16,70 @@ func newDependsCmd(app *App) *cobra.Command {
 		scope      string
 		transitive bool
 		tree       bool
+		noLens     bool
 	)
 	cmd := &cobra.Command{
-		Use:     "depends <id> [--scope S] [--transitive] [--tree]",
+		Use:     "depends [<id>] [--scope S] [--transitive] [--tree] [--no-lens]",
 		Aliases: []string{"deps", "dep"},
-		Short:   "Show a ticket's edge neighbourhood (depends + related)",
-		Long: "Print three sections — depends on, is depended on by, related (both\n" +
-			"directions, non-gating) — each neighbour line carrying id, status, and a short\n" +
-			"label, with (none) for empty sides. --transitive expands depends both ways as\n" +
-			"a flat list; --tree pretty-prints the depends graph. Walks are cycle-safe and\n" +
-			"warn once (pointing at doctor) on a cycle. Pure read; never runs git.",
-		Args: exactArgs("<id>"),
+		Short:   "TSV neighbourhood, or --tree forest (id optional)",
+		Long: "Two modes. Without --tree, id is required and stdout is TSV: three sections —\n" +
+			"depends on, is depended on by, related (both directions, non-gating) — each\n" +
+			"neighbour line carrying id, status, and a short label, with (none) for empty\n" +
+			"sides. --transitive expands depends both ways as a flat list. --tree pretty-prints\n" +
+			"a box-drawing forest of short ids (full id when a node is foreign); not TSV.\n" +
+			"With --tree and no id, print the scope forest: roots are the default board\n" +
+			"(lens unless --no-lens) tickets that have outbound depends and no inbound depends\n" +
+			"from that board; a cycle cluster with no entry starts at the lexicographically\n" +
+			"smallest full id with outbound. Isolated tickets are omitted. Related is printed\n" +
+			"only when an id is given. Walks are cycle-safe and warn (pointing at doctor) on a\n" +
+			"cycle. Pure read; never runs git. Forest membership is the default board, not\n" +
+			"--all/--open.",
+		Args: dependsArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			return runDepends(app, c, args[0], scope, transitive, tree)
+			idArg := ""
+			if len(args) > 0 {
+				idArg = args[0]
+			}
+			return runDepends(app, c, idArg, scope, transitive, tree, noLens)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "ambient scope for a short id")
 	cmd.Flags().BoolVar(&transitive, "transitive", false, "expand depends both ways as a flat list")
-	cmd.Flags().BoolVar(&tree, "tree", false, "pretty-print the depends graph")
+	cmd.Flags().BoolVar(&tree, "tree", false, "pretty-print the depends forest (id optional)")
+	cmd.Flags().BoolVar(&noLens, "no-lens", false, "with --tree and no id: ignore the active lens")
 	return cmd
 }
 
-func runDepends(app *App, c *cobra.Command, idArg, scope string, transitive, tree bool) error {
+func dependsArgs(c *cobra.Command, args []string) error {
+	tree, err := c.Flags().GetBool("tree")
+	if err != nil {
+		return err
+	}
+	if tree {
+		return rangeArgs(0, 1, "<id>")(c, args)
+	}
+	// Without --tree the id is required; usage on this path must not show [<id>].
+	n := len(args)
+	if n == 1 {
+		return nil
+	}
+	usage := strings.Replace(commandUsageLine(c), "[<id>]", "<id>", 1)
+	if n < 1 {
+		return usageErrorf("missing <id>\nusage: %s", usage)
+	}
+	return usageErrorf("too many arguments\nusage: %s", usage)
+}
+
+func runDepends(app *App, c *cobra.Command, idArg, scope string, transitive, tree, noLens bool) error {
 	e, err := app.openEngine(c)
 	if err != nil {
 		return err
 	}
 	defer e.close()
+
+	if tree && idArg == "" {
+		return runDependsForest(e, c, scope, noLens)
+	}
 
 	r, err := e.resolveTicket(c, idArg, scope)
 	if err != nil {
@@ -63,7 +101,7 @@ func runDepends(app *App, c *cobra.Command, idArg, scope string, transitive, tre
 
 	switch {
 	case tree:
-		g.printTree(c, subject)
+		g.printSubtree(c, subject, r.scope)
 	case transitive:
 		g.printSection(c, "depends on (transitive)", g.transitiveDepends(subject))
 		g.printSection(c, "is depended on by (transitive)", g.transitiveDependedOnBy(subject))
@@ -85,11 +123,7 @@ type dependsGraph struct {
 }
 
 func (e *engine) buildDependsGraph(subject string, transitive, tree bool) (*dependsGraph, error) {
-	g := &dependsGraph{
-		outDep: map[string][]string{}, inDep: map[string][]string{},
-		outRel: map[string][]string{}, inRel: map[string][]string{},
-		byID: map[string]*index.Ticket{},
-	}
+	g := newDependsGraph()
 	from, err := e.db.EdgesFromID(subject)
 	if err != nil {
 		return nil, err
@@ -123,6 +157,108 @@ func (e *engine) buildDependsGraph(subject string, transitive, tree bool) (*depe
 		}
 	}
 	return g, nil
+}
+
+func runDependsForest(e *engine, c *cobra.Command, scopeFlag string, noLens bool) error {
+	resolved, err := e.resolveAmbient(scopeFlag)
+	if err != nil {
+		return err
+	}
+	scope := resolved.Name
+	res, err := e.reconcile(c, map[string]string{scope: resolved.Entry.Dir})
+	if err != nil {
+		return err
+	}
+	schema := res.Schema(scope)
+	lens := e.reg.Lens[scope]
+	applyLens := !noLens && len(lens) > 0
+	filter := index.BoardFilter{Scope: scope, DefaultStatuses: status.DefaultListNames(schema.CustomStatuses())}
+	if applyLens {
+		filter.Lens = lens
+	}
+	board, err := e.db.BoardTickets(filter)
+	if err != nil {
+		return err
+	}
+	boardIDs := make([]string, 0, len(board))
+	boardSet := make(map[string]bool, len(board))
+	for _, p := range board {
+		boardIDs = append(boardIDs, p.ID)
+		boardSet[p.ID] = true
+	}
+
+	g, err := e.buildForestGraph(scope, boardSet)
+	if err != nil {
+		return err
+	}
+	roots := forestRoots(boardIDs, g.outDep)
+	for _, root := range roots {
+		if g.subjectInCycle(root) {
+			stderrln(c, fmt.Sprintf("%s is in a depends cycle — run tk doctor for detail", root))
+		}
+	}
+	g.printForest(c, roots, scope)
+	if applyLens {
+		stderrln(c, lensEcho(lens))
+	}
+	return nil
+}
+
+func (e *engine) buildForestGraph(scope string, boardSet map[string]bool) (*dependsGraph, error) {
+	g := newDependsGraph()
+	edges, err := e.db.DependsFromScopes([]string{scope})
+	if err != nil {
+		return nil, err
+	}
+	for _, ed := range edges {
+		if boardSet[ed.FromID] {
+			g.addEdge(ed)
+		}
+	}
+	var boardIDs []string
+	for id := range boardSet {
+		boardIDs = append(boardIDs, id)
+	}
+	for _, root := range forestRoots(boardIDs, g.outDep) {
+		if err := e.expandOutboundDepends(g, root, g.outDep[root]); err != nil {
+			return nil, err
+		}
+	}
+	tickets, err := e.db.TicketsByFullIDs(g.dependsNodeIDs())
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range tickets {
+		g.byID[p.ID] = p
+	}
+	return g, nil
+}
+
+func (g *dependsGraph) dependsNodeIDs() []string {
+	seen := map[string]bool{}
+	var ids []string
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	for from, tos := range g.outDep {
+		add(from)
+		for _, to := range tos {
+			add(to)
+		}
+	}
+	return ids
+}
+
+func newDependsGraph() *dependsGraph {
+	return &dependsGraph{
+		outDep: map[string][]string{}, inDep: map[string][]string{},
+		outRel: map[string][]string{}, inRel: map[string][]string{},
+		byID: map[string]*index.Ticket{},
+	}
 }
 
 func (g *dependsGraph) addEdge(ed index.Edge) {
@@ -313,29 +449,17 @@ func (g *dependsGraph) subjectInCycle(subject string) bool {
 	return walk(subject)
 }
 
-// printTree stops a branch on revisit so a cycle cannot expand forever.
-func (g *dependsGraph) printTree(c *cobra.Command, subject string) {
-	stdoutln(c, "depends tree:")
-	stdoutln(c, "  "+g.neighbourLine(subject))
-	onPath := map[string]bool{subject: true}
-	g.printTreeChildren(c, subject, 2, onPath)
+func (g *dependsGraph) printSubtree(c *cobra.Command, subject, homeScope string) {
+	g.printForest(c, []string{subject}, homeScope)
 	g.printSection(c, "related", g.relatedBoth(subject))
 }
 
-func (g *dependsGraph) printTreeChildren(c *cobra.Command, node string, depth int, onPath map[string]bool) {
-	children := append([]string(nil), g.outDep[node]...)
-	sort.Strings(children)
-	indent := strings.Repeat("  ", depth)
-	for _, child := range children {
-		if onPath[child] {
-			stdoutln(c, indent+child+"\t(cycle)")
-			continue
-		}
-		stdoutln(c, indent+g.neighbourLine(child))
-		onPath[child] = true
-		g.printTreeChildren(c, child, depth+1, onPath)
-		delete(onPath, child)
+func (g *dependsGraph) printForest(c *cobra.Command, roots []string, homeScope string) {
+	s := g.formatForest(roots, homeScope)
+	if s == "" {
+		return
 	}
+	fmt.Fprint(c.OutOrStdout(), s)
 }
 
 func appendUnique(list []string, v string) []string {

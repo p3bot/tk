@@ -60,6 +60,22 @@ func TestDependsDanglingTargetIsUnresolved(t *testing.T) {
 	if strings.Contains(out, "is depended on by:\n  wc-zz99") {
 		t.Errorf("dangling target must not appear as a reverse depender: %q", out)
 	}
+
+	out, _, err = run(t, app, "deps", "wc-ab2c", "--tree")
+	if err != nil {
+		t.Fatalf("deps --tree dangling: %v", err)
+	}
+	if !strings.Contains(out, "ab2c ── zz99 (unresolved)\n") {
+		t.Errorf("subtree --tree should mark dangling (unresolved): %q", out)
+	}
+
+	out, _, err = run(t, app, "depends", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("forest dangling: %v", err)
+	}
+	if out != "ab2c ── zz99 (unresolved)\n" {
+		t.Errorf("forest --tree should mark dangling (unresolved): %q", out)
+	}
 }
 
 func TestDependsRelatedBothDirectionsStayOutOfDepends(t *testing.T) {
@@ -116,8 +132,187 @@ func TestDependsThreeCycleWarnsOnDefault(t *testing.T) {
 	if !strings.Contains(errOut, "wc-aa22 is in a depends cycle — run tk doctor for detail") {
 		t.Errorf("expected cycle warning on --tree, stderr=%q", errOut)
 	}
-	if !strings.Contains(out, "\n    wc-bb33\ttodo\tTwo\n      wc-cc44\ttodo\tThree\n        wc-aa22\t(cycle)\n") {
+	if !strings.Contains(out, "aa22 ─── bb33 ─── cc44 ── aa22 (cycle)\n") {
 		t.Errorf("3-cycle --tree must print the hop-2 close as (cycle): %q", out)
+	}
+	if !strings.Contains(out, "related:\n  (none)\n") {
+		t.Errorf("subtree --tree must still print related: %q", out)
+	}
+}
+
+func TestDependsTreeForestAndSubtree(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-aa22", "a", "todo", "a0", "# A\n", false, "depends: [wc-bb33]\nrelated: [wc-zz99]\n")
+	addTicket(t, dir, "wc-bb33", "b", "todo", "a1", "# B\n", false, "depends: [wc-cc44]\n")
+	addTicket(t, dir, "wc-cc44", "c", "todo", "a2", "# C\n", false, "")
+	addTicket(t, dir, "wc-dd55", "d", "todo", "a3", "# D\n", false, "depends: [wc-ee66, wc-ff77, wc-gg88]\n")
+	addTicket(t, dir, "wc-ee66", "e", "todo", "a4", "# E\n", false, "")
+	addTicket(t, dir, "wc-ff77", "f", "todo", "a5", "# F\n", false, "")
+	addTicket(t, dir, "wc-gg88", "g", "todo", "a6", "# G\n", false, "")
+	addTicket(t, dir, "wc-hh99", "h", "todo", "a7", "# Isolated\n", false, "")
+
+	out, _, err := run(t, app, "depends", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("depends --tree forest: %v", err)
+	}
+	want := "aa22 ─── bb33 ── cc44\ndd55 ── ee66, ff77, gg88\n"
+	if out != want {
+		t.Errorf("forest stdout = %q want %q", out, want)
+	}
+	if strings.Contains(out, "related:") || strings.Contains(out, "hh99") || strings.Contains(out, "\t") {
+		t.Errorf("forest must omit related, isolated, and TSV tabs: %q", out)
+	}
+
+	out, _, err = run(t, app, "depends", "wc-aa22", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("depends id --tree: %v", err)
+	}
+	if !strings.HasPrefix(out, "aa22 ─── bb33 ── cc44\nrelated:\n  wc-zz99\t(unresolved)\n") {
+		t.Errorf("subtree --tree should root at aa22 then related TSV: %q", out)
+	}
+
+	out, _, err = run(t, app, "depends", "wc-aa22", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("depends TSV: %v", err)
+	}
+	if !strings.Contains(out, "depends on:\n  wc-bb33\ttodo\tB") {
+		t.Errorf("default TSV unchanged: %q", out)
+	}
+}
+
+func TestDependsTreeForestTwoTicketCycle(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-bb33", "b", "todo", "a1", "# B\n", false, "depends: [wc-aa22]\n")
+	addTicket(t, dir, "wc-aa22", "a", "todo", "a0", "# A\n", false, "depends: [wc-bb33]\n")
+
+	out, errOut, err := run(t, app, "depends", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("cycle forest: %v", err)
+	}
+	if out != "aa22 ─── bb33 ── aa22 (cycle)\n" {
+		t.Errorf("cycle forest = %q", out)
+	}
+	if !strings.Contains(errOut, "wc-aa22 is in a depends cycle — run tk doctor for detail") {
+		t.Errorf("cycle forest should warn on the start id, stderr=%q", errOut)
+	}
+	if strings.Contains(out, "related:") {
+		t.Errorf("forest must not print related: %q", out)
+	}
+}
+
+func TestDependsTreeForestWalksArchivedAndForeign(t *testing.T) {
+	app := newApp(t)
+	wc := initScope(t, app, "wc")
+	up := initScope(t, app, "up")
+	addTicket(t, wc, "wc-aa22", "a", "todo", "a0", "# A\n", false, "depends: [wc-bb33]\n")
+	addTicket(t, wc, "wc-bb33", "b", "done", "a1", "# B\n", true, "depends: [wc-cc44]\n")
+	addTicket(t, wc, "wc-cc44", "c", "done", "a2", "# C\n", true, "")
+	addTicket(t, wc, "wc-dd55", "d", "todo", "a3", "# D\n", false, "depends: [up-ee66]\n")
+	addTicket(t, up, "up-ee66", "e", "todo", "a0", "# E\n", false, "depends: [up-ff77]\n")
+	addTicket(t, up, "up-ff77", "f", "todo", "a1", "# F\n", false, "")
+	indexScopes(t, app, "wc", "up")
+
+	out, _, err := run(t, app, "depends", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("forest walk: %v", err)
+	}
+	want := "aa22 ─── bb33 ── cc44\ndd55 ─── up-ee66 ── up-ff77\n"
+	if out != want {
+		t.Errorf("forest = %q want %q", out, want)
+	}
+}
+
+func TestDependsTreeForestLiveRootAfterArchivedIsJoin(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-aa22", "a", "todo", "a0", "# A\n", false, "depends: [wc-bb33]\n")
+	addTicket(t, dir, "wc-bb33", "b", "done", "a1", "# B\n", true, "depends: [wc-cc44]\n")
+	addTicket(t, dir, "wc-cc44", "c", "todo", "a2", "# C\n", false, "depends: [wc-dd55]\n")
+	addTicket(t, dir, "wc-dd55", "d", "todo", "a3", "# D\n", false, "")
+
+	out, _, err := run(t, app, "depends", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("archived-middle forest: %v", err)
+	}
+	want := "aa22 ─── bb33 ─── cc44\ncc44 ── dd55\n"
+	if out != want {
+		t.Errorf("forest = %q want %q", out, want)
+	}
+}
+
+func TestDependsTreeForestCycleClusterSkipsSmallerSink(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-aa22", "sink", "todo", "a0", "# Sink\n", false, "")
+	addTicket(t, dir, "wc-bb33", "b", "todo", "a1", "# B\n", false, "depends: [wc-aa22, wc-cc44]\n")
+	addTicket(t, dir, "wc-cc44", "c", "todo", "a2", "# C\n", false, "depends: [wc-bb33]\n")
+
+	out, _, err := run(t, app, "depends", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("cycle+sink forest: %v", err)
+	}
+	want := "bb33 ─┬─ aa22\n      └─ cc44 ── bb33 (cycle)\n"
+	if out != want {
+		t.Errorf("forest = %q want %q", out, want)
+	}
+}
+
+func TestDependsTreeForestHonoursLens(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-aa22", "a", "todo", "a0", "# A\n", false, "depends: [wc-bb33]\ntags: [frontend]\n")
+	addTicket(t, dir, "wc-bb33", "b", "todo", "a1", "# B\n", false, "tags: [frontend]\n")
+	addTicket(t, dir, "wc-cc44", "c", "todo", "a2", "# C\n", false, "depends: [wc-dd55]\ntags: [backend]\n")
+	addTicket(t, dir, "wc-dd55", "d", "todo", "a3", "# D\n", false, "tags: [backend]\n")
+	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
+		t.Fatalf("lens: %v", err)
+	}
+
+	out, errOut, err := run(t, app, "depends", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("lensed forest: %v", err)
+	}
+	if out != "aa22 ── bb33\n" {
+		t.Errorf("lens forest = %q want aa22 chain only", out)
+	}
+	if !strings.Contains(errOut, "lens:") {
+		t.Errorf("lensed forest should echo lens on stderr, got %q", errOut)
+	}
+
+	out, errOut, err = run(t, app, "depends", "--tree", "--no-lens", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("no-lens forest: %v", err)
+	}
+	if out != "aa22 ── bb33\ncc44 ── dd55\n" {
+		t.Errorf("no-lens forest = %q", out)
+	}
+	if strings.Contains(errOut, "lens:") {
+		t.Errorf("--no-lens forest must not echo lens, stderr %q", errOut)
+	}
+
+	out, errOut, err = run(t, app, "depends", "wc-aa22", "--tree", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("subtree under lens: %v", err)
+	}
+	if !strings.HasPrefix(out, "aa22 ── bb33\n") {
+		t.Errorf("subtree --tree stdout = %q", out)
+	}
+	if strings.Contains(errOut, "lens:") {
+		t.Errorf("depends <id> --tree must not echo lens, stderr %q", errOut)
+	}
+}
+
+func TestDependsWithoutIDRequiresTree(t *testing.T) {
+	app := newApp(t)
+	_ = initScope(t, app, "wc")
+	_, _, err := run(t, app, "depends", "--scope", "wc")
+	if got := ExitCodeFromError(err); got != exitUsage {
+		t.Fatalf("depends without id or --tree exit = %d want %d (err=%v)", got, exitUsage, err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "missing <id>") {
+		t.Errorf("want missing <id>, got %v", err)
 	}
 }
 

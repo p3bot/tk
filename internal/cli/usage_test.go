@@ -41,7 +41,7 @@ func TestArityUsageMessages(t *testing.T) {
 		{"rehome one", []string{"rehome", "ab2c"}, "missing <dest-scope>", "tk rehome <id> <dest-scope> [--scope S]"},
 		{"mark none", []string{"mark"}, "missing <status> <id>", "tk mark <status> <id> [id...] [--scope S]"},
 		{"mark one", []string{"mark", "todo"}, "missing <id>", "tk mark <status> <id> [id...] [--scope S]"},
-		{"create none", []string{"create"}, "missing <title>", "tk create <title> [status] [--scope S] [--tag T]..."},
+		{"create none", []string{"create"}, "missing <title>", "tk create <title> [status] [--scope S] [--tag T]... [--edit]"},
 		{"meta set none", []string{"meta", "set"}, "missing <id> <key> <value>", "tk meta set <id> <key> <value> [--scope S]"},
 		{"meta set two", []string{"meta", "set", "ab2c", "summary"}, "missing <value>", "tk meta set <id> <key> <value> [--scope S]"},
 		{"meta remove none", []string{"meta", "remove"}, "missing <id> <key> <value>", "tk meta remove <id> <key> <value> [--scope S]"},
@@ -85,7 +85,7 @@ func TestArityTooManyArguments(t *testing.T) {
 		{"next extra", []string{"next", "ab2c"}, "tk next [--scope S] [--no-lens] [--claim]"},
 		{"rehome extra", []string{"rehome", "ab2c", "bar", "extra"}, "tk rehome <id> <dest-scope> [--scope S]"},
 		{"pulse extra", []string{"pulse", "mode", "extra"}, "tk pulse [key] [--scope S]"},
-		{"create extra", []string{"create", "one", "todo", "three"}, "tk create <title> [status] [--scope S] [--tag T]..."},
+		{"create extra", []string{"create", "one", "todo", "three"}, "tk create <title> [status] [--scope S] [--tag T]... [--edit]"},
 		{"reindex extra", []string{"reindex", "x"}, "tk reindex"},
 		{"auto-commit extra", []string{"scope", "auto-commit", "true", "false"}, "tk scope auto-commit [true|false] [--scope S]"},
 	}

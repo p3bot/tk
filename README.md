@@ -8,6 +8,8 @@
 place. It indexes, queues, and locates tickets; the filesystem is the editor.
 Humans can run `tkv` for a local dashboard (mark, claim, create, meta, order, inspect title and body, the tag lens, sync, and doctor diagnose/reindex; agents keep using `tk`).
 
+`tk create --edit` is human `$EDITOR` convenience: after a successful scaffold it opens the new ticket with the same editor contract as `tk edit`. Agents keep using the printed path.
+
 The implementation is the source of truth.
 
 ## Supported platforms

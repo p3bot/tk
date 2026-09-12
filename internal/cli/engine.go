@@ -41,9 +41,11 @@ func (a *App) openEngine(_ *cobra.Command) (*engine, error) {
 func nowNS() int64 { return time.Now().UnixNano() }
 
 func (e *engine) close() {
-	if e != nil && e.db != nil {
-		_ = e.db.Close()
+	if e == nil || e.db == nil {
+		return
 	}
+	_ = e.db.Close()
+	e.db = nil
 }
 
 func (e *engine) syncDeps(c *cobra.Command) syncengine.Deps {

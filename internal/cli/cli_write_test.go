@@ -178,6 +178,152 @@ func TestCreateEmptyTitleAndUnknownStatus(t *testing.T) {
 	assertNoScaffoldedWithFrontmatter(t, out, errOut)
 }
 
+func TestCreateEdit(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+
+	t.Run("help documents --edit", func(t *testing.T) {
+		out, _, err := run(t, app, "create", "--help")
+		if err != nil {
+			t.Fatalf("create --help: %v", err)
+		}
+		if !strings.Contains(out, "--edit") {
+			t.Errorf("create --help must mention --edit, got %q", out)
+		}
+		if !strings.Contains(out, "$EDITOR") {
+			t.Errorf("create --help must mention $EDITOR, got %q", out)
+		}
+	})
+
+	t.Run("omitted --edit does not launch editor", func(t *testing.T) {
+		t.Setenv("EDITOR", "false")
+		out, errOut, err := run(t, app, "create", "No editor", "--scope", "wc")
+		if err != nil {
+			t.Fatalf("create without --edit: %v", err)
+		}
+		path := strings.TrimSpace(out)
+		assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("scaffold should exist, stat: %v", err)
+		}
+	})
+
+	t.Run("edit with EDITOR=true prints path and leaves file", func(t *testing.T) {
+		t.Setenv("EDITOR", "true")
+		out, errOut, err := run(t, app, "create", "Open me", "--edit", "--scope", "wc")
+		if err != nil {
+			t.Fatalf("create --edit: %v", err)
+		}
+		path := strings.TrimSpace(out)
+		if !filepath.IsAbs(path) || !strings.HasSuffix(path, ".md") {
+			t.Fatalf("create --edit must print an absolute .md path, got %q", out)
+		}
+		assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasSuffix(string(data), "# Open me\n") {
+			t.Errorf("editor true must leave the scaffold body, got %q", data)
+		}
+	})
+
+	t.Run("unset EDITOR after landed write", func(t *testing.T) {
+		t.Setenv("EDITOR", "")
+		out, errOut, err := run(t, app, "create", "No env", "--edit", "--scope", "wc")
+		if err == nil {
+			t.Fatal("create --edit with no $EDITOR must be non-zero")
+		}
+		if ExitCodeFromError(err) == exitUsage {
+			t.Errorf("unset $EDITOR is not usage, got %v", err)
+		}
+		path := strings.TrimSpace(out)
+		if !filepath.IsAbs(path) || !strings.HasSuffix(path, ".md") {
+			t.Fatalf("stdout must still have the scaffold path, got %q", out)
+		}
+		assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("ticket must remain, stat: %v", err)
+		}
+		if !strings.Contains(err.Error(), "$EDITOR") {
+			t.Errorf("expected an $EDITOR-not-set message, got %v", err)
+		}
+	})
+
+	t.Run("editor non-zero leaves ticket", func(t *testing.T) {
+		t.Setenv("EDITOR", "false")
+		out, errOut, err := run(t, app, "create", "Editor fails", "--edit", "--scope", "wc")
+		if err == nil {
+			t.Fatal("create --edit with failing editor must be non-zero")
+		}
+		path := strings.TrimSpace(out)
+		if !filepath.IsAbs(path) || !strings.HasSuffix(path, ".md") {
+			t.Fatalf("stdout must still have the scaffold path, got %q", out)
+		}
+		assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("ticket must remain, stat: %v", err)
+		}
+		if !strings.Contains(err.Error(), "editor exited with an error") {
+			t.Errorf("expected editor-exited message, got %v", err)
+		}
+	})
+
+	t.Run("failed create does not launch editor", func(t *testing.T) {
+		t.Setenv("EDITOR", "false")
+		before, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, errOut, err := run(t, app, "create", "X", "nope", "--edit", "--scope", "wc")
+		if ExitCodeFromError(err) != exitUsage {
+			t.Errorf("unknown status should exit 2 before the editor, got %v", err)
+		}
+		if err != nil && strings.Contains(err.Error(), "editor exited") {
+			t.Errorf("failed create must not launch the editor, got %v", err)
+		}
+		assertNoScaffoldedWithFrontmatter(t, out, errOut)
+		after, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(after) != len(before) {
+			t.Errorf("failed create --edit must not write a ticket, dir %d -> %d", len(before), len(after))
+		}
+	})
+}
+
+func TestCreateEditNeverSelfCommits(t *testing.T) {
+	requireGit(t)
+	app := newApp(t)
+	_, repo := initGitScope(t, app, "wc", true)
+
+	t.Setenv("EDITOR", "true")
+	out, errOut, err := run(t, app, "create", "Edited work", "--edit", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("create --edit: %v", err)
+	}
+	path := strings.TrimSpace(out)
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
+	if n := len(gitLog(t, repo)); n != 0 {
+		t.Fatalf("create --edit must not self-commit, got %d commits", n)
+	}
+
+	t.Setenv("EDITOR", "false")
+	out, errOut, err = run(t, app, "create", "Failing editor", "--edit", "--scope", "wc")
+	if err == nil {
+		t.Fatal("create --edit with failing editor must be non-zero")
+	}
+	path = strings.TrimSpace(out)
+	assertScaffoldedWithFrontmatter(t, ticketIDFromCreatePath(path), out, errOut)
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("ticket must remain after editor failure, stat: %v", err)
+	}
+	if n := len(gitLog(t, repo)); n != 0 {
+		t.Fatalf("failed editor must not self-commit, got %d commits", n)
+	}
+}
+
 func TestCreateTags(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")

@@ -225,7 +225,7 @@ func TestGETDoesNotWrite(t *testing.T) {
 	before := ticketBody(t, dir, "wc-ab2c")
 	setLens(t, app, "wc", []string{"frontend"})
 	beforeLens := lensFile(t, app)
-	for _, path := range []string{"/scope/wc", "/scope/wc/ab2c", "/scope/wc/notes", "/scope/wc/notes/default", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/body", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/doctor", "/doctor/sync", "/doctor/reindex"} {
+	for _, path := range []string{"/", "/notes", "/scope/wc", "/scope/wc/ab2c", "/scope/wc/edit/ab2c", "/scope/wc/notes", "/scope/wc/notes/default", "/scope/wc/notes/default/edit", "/scope/wc/mark", "/scope/wc/claim", "/scope/wc/create", "/scope/wc/meta", "/scope/wc/order", "/scope/wc/body", "/scope/wc/lens", "/scope/wc/lens/clear", "/scope/wc/sync", "/sync", "/doctor", "/doctor/sync", "/doctor/reindex"} {
 		w := do(s, path)
 		if w.Code == http.StatusSeeOther {
 			t.Fatalf("GET %s redirected as a write: %s", path, w.Header().Get("Location"))
@@ -1479,11 +1479,24 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if !strings.Contains(ins, `method="post" action="/scope/wc/order"`) {
 		t.Fatalf("inspect missing order form: %s", ins)
 	}
-	if !strings.Contains(ins, `method="post" action="/scope/wc/body"`) {
-		t.Fatalf("inspect missing body form: %s", ins)
+	if strings.Contains(ins, `method="post" action="/scope/wc/body"`) || strings.Contains(ins, `<textarea name="body"`) {
+		t.Fatalf("inspect must not embed the body editor: %s", ins)
 	}
-	if !strings.Contains(ins, `name="title" required`) || !strings.Contains(ins, `<textarea name="body"`) {
-		t.Fatalf("inspect body form missing title/body: %s", ins)
+	if !strings.Contains(ins, `href="/scope/wc/edit/wc-ab2c"`) {
+		t.Fatalf("inspect missing Edit: %s", ins)
+	}
+	ed := do(s, "/scope/wc/edit/ab2c").Body.String()
+	if !strings.Contains(ed, "<h1>Edit wc-ab2c</h1>") {
+		t.Fatalf("edit missing heading: %s", ed)
+	}
+	if !strings.Contains(ed, `method="post" action="/scope/wc/body"`) {
+		t.Fatalf("edit missing body form: %s", ed)
+	}
+	if !strings.Contains(ed, `name="title" required`) || !strings.Contains(ed, `<textarea name="body"`) {
+		t.Fatalf("edit body form missing title/body: %s", ed)
+	}
+	if !strings.Contains(ed, `onsubmit="if(this.dataset.submitted)return false;`) {
+		t.Fatalf("edit save should ignore a second submit: %s", ed)
 	}
 	if !strings.Contains(ins, `name="dest" value="first"`) || !strings.Contains(ins, `name="dest" value="last"`) {
 		t.Fatalf("inspect missing board first/last: %s", ins)
@@ -1546,8 +1559,11 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 			t.Fatalf("unusable schema must still offer chrome lens: %s", board)
 		}
 		ins := do(s, "/scope/wc/ab2c").Body.String()
-		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) || strings.Contains(ins, `action="/scope/wc/body"`) {
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) || strings.Contains(ins, `action="/scope/wc/body"`) || strings.Contains(ins, `href="/scope/wc/edit/wc-ab2c"`) {
 			t.Fatalf("inspect still offers ticket writes: %s", ins)
+		}
+		if code := do(s, "/scope/wc/edit/ab2c").Code; code != http.StatusBadRequest {
+			t.Fatalf("unusable edit = %d, want 400", code)
 		}
 		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
 			t.Fatalf("inspect must still offer chrome lens: %s", ins)
@@ -1572,8 +1588,11 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 			t.Fatalf("parse-quarantined board must still offer create: %s", board)
 		}
 		ins := do(s, "/scope/wc/abcd").Body.String()
-		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) || strings.Contains(ins, `action="/scope/wc/body"`) || strings.Contains(ins, `<textarea`) {
+		if strings.Contains(ins, `action="/scope/wc/claim"`) || strings.Contains(ins, `action="/scope/wc/mark"`) || strings.Contains(ins, `action="/scope/wc/meta"`) || strings.Contains(ins, `action="/scope/wc/order"`) || strings.Contains(ins, `action="/scope/wc/body"`) || strings.Contains(ins, `<textarea`) || strings.Contains(ins, `href="/scope/wc/edit/wc-abcd"`) {
 			t.Fatalf("inspect still offers ticket writes: %s", ins)
+		}
+		if code := do(s, "/scope/wc/edit/abcd").Code; code != http.StatusBadRequest {
+			t.Fatalf("parse-error edit = %d, want 400", code)
 		}
 		if !strings.Contains(ins, `action="/scope/wc/lens"`) {
 			t.Fatalf("parse-error inspect must still offer chrome lens: %s", ins)
@@ -1641,9 +1660,9 @@ func TestInspectEditFormMatchesDisk(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n\nhello\n", false, "")
 	s := mustServer(t, app)
-	ins := do(s, "/scope/wc/ab2c")
+	ins := do(s, "/scope/wc/edit/ab2c")
 	if ins.Code != http.StatusOK {
-		t.Fatalf("GET inspect = %d %s", ins.Code, ins.Body.String())
+		t.Fatalf("GET edit = %d %s", ins.Code, ins.Body.String())
 	}
 	page := ins.Body.String()
 	_, body, ok := frontmatter.Split([]byte(ticketBody(t, dir, "wc-ab2c")))
@@ -1665,9 +1684,9 @@ func TestPOSTBodySavesAndReloadsGoldmark(t *testing.T) {
 	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\nhello **file**\n", false, "foo: bar\n")
 	s := mustServer(t, app)
 
-	ins := do(s, "/scope/wc/ab2c")
+	ins := do(s, "/scope/wc/edit/ab2c")
 	if ins.Code != http.StatusOK {
-		t.Fatalf("GET inspect = %d %s", ins.Code, ins.Body.String())
+		t.Fatalf("GET edit = %d %s", ins.Code, ins.Body.String())
 	}
 	base := inspectBase(t, ins.Body.String())
 	before := ticketBody(t, dir, "wc-ab2c")
@@ -1723,7 +1742,7 @@ func TestPOSTBodyStaleBaseIs409(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\nhello\n", false, "")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/ab2c").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/edit/ab2c").Body.String())
 	before := ticketBody(t, dir, "wc-ab2c")
 	if err := os.WriteFile(filepath.Join(dir, "wc-ab2c-work.md"), []byte(before+"changed\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -1749,7 +1768,7 @@ func TestPOSTBodyCRLFStoredAsLF(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\nhello\n", false, "")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/ab2c").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/edit/ab2c").Body.String())
 
 	w := doPost(s, "/scope/wc/body", url.Values{
 		"id":    {"wc-ab2c"},
@@ -1776,7 +1795,7 @@ func TestPOSTBodyNeverSelfCommits(t *testing.T) {
 	pushOrigin(t, repo)
 	before := testgit.Combined(t, repo, "rev-parse", "HEAD")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/ab2c").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/edit/ab2c").Body.String())
 
 	w := doPost(s, "/scope/wc/body", url.Values{
 		"id":    {"wc-ab2c"},
@@ -1806,7 +1825,7 @@ func TestPOSTBodyEmptyTitleIs400(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/ab2c").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/edit/ab2c").Body.String())
 	before := ticketBody(t, dir, "wc-ab2c")
 
 	w := doPost(s, "/scope/wc/body", url.Values{

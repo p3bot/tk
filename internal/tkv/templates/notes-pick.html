@@ -1,0 +1,22 @@
+{{define "notes-pick"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>notes</h1>
+<p class="lead">{{.Lead}}</p>
+<ul class="scope-pick">
+  {{range .Chrome.Scopes}}
+  <li><a href="{{$.Chrome.ScopeHref .}}">{{.}}</a></li>
+  {{else}}
+  <li class="empty">No scopes registered.</li>
+  {{end}}
+</ul>
+</main>
+</body>
+</html>
+{{end}}

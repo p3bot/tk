@@ -557,7 +557,19 @@ type neighbour struct {
 	Owned      bool
 }
 
+func (p inspectPage) EditHref() string { return inspectEditHref(p.ID) }
+
+func (p inspectPage) ViewHref() string { return inspectHref(p.ID) }
+
 func (s *Server) inspect(w http.ResponseWriter, r *http.Request) error {
+	return s.serveInspect(w, r, false)
+}
+
+func (s *Server) inspectEdit(w http.ResponseWriter, r *http.Request) error {
+	return s.serveInspect(w, r, true)
+}
+
+func (s *Server) serveInspect(w http.ResponseWriter, r *http.Request, edit bool) error {
 	name := r.PathValue("name")
 	idArg := r.PathValue("id")
 	if !id.IsScopeName(name) {
@@ -608,6 +620,12 @@ func (s *Server) inspect(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	s.bindChrome(&page.Chrome, r)
+	if edit {
+		if !page.CanEdit {
+			return errBadRequest("ticket body is not editable")
+		}
+		return s.render(w, "inspect-edit", page)
+	}
 	return s.render(w, "inspect", page)
 }
 

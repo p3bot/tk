@@ -25,7 +25,7 @@
     </a>
     <nav class="primary" aria-label="sections">
       <a href="{{.Chrome.BoardHref}}"{{if eq .Chrome.Section "board"}} class="current"{{end}}>Board</a>
-      {{if .Chrome.Selected}}<a href="{{.Chrome.NotesHref}}"{{if eq .Chrome.Section "notes"}} class="current"{{end}}>Notes</a>{{end}}
+      <a href="{{.Chrome.NotesHref}}"{{if eq .Chrome.Section "notes"}} class="current"{{end}}>Notes</a>
       <a href="{{.Chrome.GraphsHref}}"{{if eq .Chrome.Section "graphs"}} class="current"{{end}}>Graphs</a>
       <a href="{{.Chrome.DoctorHref}}"{{if eq .Chrome.Section "doctor"}} class="current"{{end}}>Doctor</a>
     </nav>
@@ -42,7 +42,7 @@
   <div class="chrome-row chrome-context">
     <nav class="scopes" aria-label="scopes">
       {{range .Chrome.Scopes}}
-        <a href="/scope/{{.}}"{{if eq $.Chrome.Selected .}} class="selected" aria-current="{{$.Chrome.ScopeAriaCurrent .}}"{{end}}>{{.}}</a>
+        <a href="{{$.Chrome.ScopeHref .}}"{{if eq $.Chrome.Selected .}} class="selected" aria-current="{{$.Chrome.ScopeAriaCurrent .}}"{{end}}>{{.}}</a>
       {{end}}
     </nav>
     <dl class="meta">

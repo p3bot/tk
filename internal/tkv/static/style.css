@@ -273,14 +273,36 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
 .toc ul { list-style: none; margin: 0; padding: 0; }
 .toc li { margin: 0.15rem 0; }
 .toc li ul { padding-left: 1rem; }
+.content-edit { margin: 0 0 1rem; }
+a.button {
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 550;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 0.15rem 0.4rem;
+}
+a.button:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+}
 .body .splice {
   flex-direction: column;
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 0.6rem;
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
+  margin-top: 0;
+}
+.body .splice .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
 }
 .body .splice label {
   display: flex;
@@ -409,11 +431,23 @@ aside h2 + p { margin: 0 0 0.6rem; }
 .dep-node .dep-title { font-size: 14px; font-weight: 650; }
 a.dep-node { text-decoration: none; }
 a.dep-node:hover rect { stroke-width: 2.5; }
-.notes { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-.notes th, .notes td { text-align: left; padding: 0.45rem 0.35rem; border-bottom: 1px solid var(--line); }
-.notes tr.default td:first-child { font-weight: 650; }
-.note-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
-.note-actions .write { margin-top: 0; }
+.note-files { list-style: none; padding: 0; margin: 0 0 0.7rem; }
+.note-files li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: baseline;
+  padding: 0.25rem 0.15rem;
+  border-bottom: 1px solid var(--line);
+}
+.note-files li.current a {
+  color: var(--fg);
+  font-weight: 650;
+}
+.note-files li.current {
+  box-shadow: inset 2px 0 0 var(--accent);
+  padding-left: 0.45rem;
+}
 @media (max-width: 900px) {
   .inspect { grid-template-columns: 1fr; }
 }

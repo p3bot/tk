@@ -1,52 +1,52 @@
-{{define "notes"}}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-{{template "head" .}}
-</head>
-<body>
-{{template "chrome" .}}
-<main>
-<h1>notes</h1>
-<p class="bound">Default {{if .DefaultMissing}}<a href="{{.DefaultHref}}">{{.DefaultSlug}}</a> (no file){{else}}<a href="{{.DefaultHref}}">{{.DefaultSlug}}</a>{{end}}</p>
-{{if .CanClear}}
-<form class="write" method="post" action="/scope/{{.Chrome.Selected}}/notes/use">
-  <input type="hidden" name="clear" value="1">
-  <button type="submit">Use built-in default</button>
-</form>
-{{end}}
-<form class="write create" method="post" action="/scope/{{.Chrome.Selected}}/notes">
-  <label>
-    <span class="sr-only">new note slug</span>
-    <input type="text" name="slug" required maxlength="48" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="slug" aria-label="new note slug">
-  </label>
-  <button type="submit">Create</button>
-</form>
-{{if .Rows}}
-<table class="notes">
-  <thead>
-    <tr><th>slug</th><th></th></tr>
-  </thead>
-  <tbody>
+{{define "noteAside"}}
+<aside>
+  <h2>notes</h2>
+  <ul class="note-files">
     {{range .Rows}}
-    <tr{{if .Default}} class="default"{{end}}>
-      <td><a href="{{.Href}}">{{.Slug}}</a>{{if .Default}} <span class="empty">default</span>{{end}}</td>
-      <td class="note-actions">
-        {{if not .Default}}
-        <form class="write" method="post" action="/scope/{{$.Chrome.Selected}}/notes/use">
-          <input type="hidden" name="slug" value="{{.Slug}}">
-          <button type="submit" aria-label="Use {{.Slug}} as default">Use</button>
-        </form>
-        {{end}}
-      </td>
-    </tr>
+    <li{{if .Current}} class="current"{{end}}>
+      <a href="{{.Href}}"{{if .Current}} aria-current="{{$.FileAriaCurrent .}}"{{end}}>{{.Slug}}</a>
+      {{if .Default}} <span class="empty">default</span>{{end}}
+      {{if .Missing}} <span class="empty">(no file)</span>{{end}}
+    </li>
+    {{else}}
+    <li class="empty">No notes.</li>
     {{end}}
-  </tbody>
-</table>
-{{else}}
-<p class="empty">No note files.</p>
-{{end}}
-</main>
-</body>
-</html>
+  </ul>
+  {{if not .Editing}}
+  <form class="write create" method="post" action="/scope/{{.Chrome.Selected}}/notes">
+    <label>
+      <span class="sr-only">new note slug</span>
+      <input type="text" name="slug" required maxlength="48" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="slug" aria-label="new note slug">
+    </label>
+    <button type="submit">Create</button>
+  </form>
+  {{end}}
+  <h2>note</h2>
+  <dl>
+    <div><dt>slug</dt><dd>{{.Slug}}</dd></div>
+    <div><dt>default</dt><dd>{{if .Default}}yes{{else}}no{{end}}</dd></div>
+    <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
+  </dl>
+  {{if not .Editing}}
+  {{if not .Default}}
+  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/notes/use">
+    <input type="hidden" name="slug" value="{{.Slug}}">
+    {{if .ReturnInspect}}<input type="hidden" name="return" value="inspect">{{end}}
+    <button type="submit">Use as default</button>
+  </form>
+  {{else if .CanClear}}
+  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/notes/use">
+    <input type="hidden" name="slug" value="{{.Slug}}">
+    <input type="hidden" name="clear" value="1">
+    {{if .ReturnInspect}}<input type="hidden" name="return" value="inspect">{{end}}
+    <button type="submit">Use built-in default</button>
+  </form>
+  {{end}}
+  {{if and (not .Missing) (not .SnapMsg)}}
+  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/notes/{{.Slug}}/delete" onsubmit="return confirm('Delete {{.Slug}}?')">
+    <button type="submit" aria-label="Delete {{.Slug}}">Delete</button>
+  </form>
+  {{end}}
+  {{end}}
+</aside>
 {{end}}

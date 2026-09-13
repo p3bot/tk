@@ -168,9 +168,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /graphs", s.wrap(s.graphs))
 	mux.HandleFunc("GET /graphs/depends", s.wrap(s.dependsGraph))
 	mux.HandleFunc("GET /doctor", s.wrap(s.doctor))
+	mux.HandleFunc("GET /notes", s.wrap(s.notesPick))
 	mux.HandleFunc("GET /scope/{name}", s.wrap(s.kanban))
 	mux.HandleFunc("GET /scope/{name}/notes", s.wrap(s.notesList))
 	mux.HandleFunc("GET /scope/{name}/notes/{slug}", s.wrap(s.noteInspect))
+	mux.HandleFunc("GET /scope/{name}/notes/{slug}/edit", s.wrap(s.noteEdit))
+	// /edit/{id}, not /{id}/edit: ServeMux treats /{id}/edit and /notes/{slug}
+	// as overlapping on /scope/{name}/notes/edit.
+	mux.HandleFunc("GET /scope/{name}/edit/{id}", s.wrap(s.inspectEdit))
 	mux.HandleFunc("GET /scope/{name}/{id}", s.wrap(s.inspect))
 	mux.HandleFunc("POST /scope/{name}/notes", s.wrapEngine(s.postNoteCreate))
 	mux.HandleFunc("POST /scope/{name}/notes/use", s.wrapEngine(s.postNoteUse))
@@ -287,14 +292,17 @@ func (c chrome) ScopeAriaCurrent(name string) string {
 	if c.Selected != name {
 		return ""
 	}
-	path := c.Return
-	if i := strings.IndexByte(path, '?'); i >= 0 {
-		path = path[:i]
-	}
-	if path == "/scope/"+name {
+	if stripQuery(c.Return) == stripQuery(c.ScopeHref(name)) {
 		return "page"
 	}
 	return "true"
+}
+
+func stripQuery(p string) string {
+	if i := strings.IndexByte(p, '?'); i >= 0 {
+		return p[:i]
+	}
+	return p
 }
 
 func (c *chrome) bind(r *http.Request) {
@@ -317,7 +325,7 @@ func (c chrome) BoardHref() string { return "/" }
 
 func (c chrome) NotesHref() string {
 	if c.Selected == "" {
-		return ""
+		return notesPickHref()
 	}
 	return notesListHref(c.Selected)
 }
@@ -326,11 +334,42 @@ func (c chrome) GraphsHref() string { return c.sectionHref("/graphs") }
 
 func (c chrome) DoctorHref() string { return c.sectionHref("/doctor") }
 
-func (c chrome) sectionHref(path string) string {
-	if c.Selected == "" {
+// ScopeHref is the switcher target for name. Board and inspect land on that
+// scope's board; notes, graphs, and doctor keep the current section.
+func (c chrome) ScopeHref(name string) string {
+	if name == "" {
+		return ""
+	}
+	switch c.Section {
+	case navNotes:
+		return notesListHref(name)
+	case navGraphs:
+		return c.sectionHrefFor(name, graphsKeepPath(c.Return))
+	case navDoctor:
+		return c.sectionHrefFor(name, "/doctor")
+	default:
+		return "/scope/" + name
+	}
+}
+
+func graphsKeepPath(ret string) string {
+	switch stripQuery(ret) {
+	case "/graphs/depends":
+		return "/graphs/depends"
+	default:
+		return "/graphs"
+	}
+}
+
+func (c chrome) sectionHrefFor(name, path string) string {
+	if name == "" {
 		return path
 	}
-	return path + "?scope=" + url.QueryEscape(c.Selected)
+	return path + "?scope=" + url.QueryEscape(name)
+}
+
+func (c chrome) sectionHref(path string) string {
+	return c.sectionHrefFor(c.Selected, path)
 }
 
 func registeredScope(reg *registry.Registry, name string) string {
@@ -542,6 +581,8 @@ func sectionFromPath(p string) string {
 		return navGraphs
 	case strings.HasPrefix(p, "/doctor"):
 		return navDoctor
+	case p == "/notes" || strings.HasPrefix(p, "/notes/"):
+		return navNotes
 	case notesPath(p):
 		return navNotes
 	case strings.HasPrefix(p, "/scope/"):

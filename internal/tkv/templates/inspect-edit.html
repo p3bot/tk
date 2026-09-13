@@ -1,0 +1,41 @@
+{{define "inspect-edit"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body>
+{{template "chrome" .}}
+<main class="inspect">
+<article class="body">
+  <h1>Edit {{.ID}}</h1>
+  <form class="write splice" method="post" action="/scope/{{.Chrome.Selected}}/body" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <input type="hidden" name="base" value="{{.Base}}">
+    <label>
+      Title
+      <input type="text" name="title" required value="{{.EditTitle}}">
+    </label>
+    <label>
+      Body
+      <textarea name="body" rows="16">
+{{.EditBody}}</textarea>
+    </label>
+    <p class="form-actions">
+      <button type="submit" aria-label="Save {{.ID}} title and body">Save</button>
+      <a class="button" href="{{.ViewHref}}">Cancel</a>
+    </p>
+  </form>
+</article>
+<aside>
+  <h2>ticket</h2>
+  <dl>
+    <div><dt>id</dt><dd>{{.ID}}</dd></div>
+    <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
+  </dl>
+  <p><a href="{{.ViewHref}}">View ticket</a></p>
+</aside>
+</main>
+</body>
+</html>
+{{end}}

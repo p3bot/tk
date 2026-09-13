@@ -1,0 +1,30 @@
+{{define "note-edit"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body>
+{{template "chrome" .}}
+<main class="inspect">
+<article class="body">
+  <h1>Edit {{.Slug}}</h1>
+  {{if .Missing}}<p class="empty">no file</p>{{end}}
+  <form class="write splice" method="post" action="/scope/{{.Chrome.Selected}}/notes/{{.Slug}}" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+    <input type="hidden" name="base" value="{{.Base}}">
+    <label>
+      Body
+      <textarea name="body" rows="16" required>
+{{.EditBody}}</textarea>
+    </label>
+    <p class="form-actions">
+      <button type="submit" aria-label="Save {{.Slug}}">Save</button>
+      <a class="button" href="{{.ViewHref}}">Cancel</a>
+    </p>
+  </form>
+</article>
+{{template "noteAside" .}}
+</main>
+</body>
+</html>
+{{end}}

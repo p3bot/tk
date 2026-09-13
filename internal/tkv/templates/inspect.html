@@ -10,23 +10,10 @@
 <article class="body">
   {{if .ParseMsg}}<p class="banner">{{.ParseMsg}}</p>{{end}}
   {{if .SchemaErr}}<p class="banner">schema_error: a depends/related entry is not a legal full ticket id</p>{{end}}
-  {{if .RawText}}<pre class="raw">{{.RawText}}</pre>{{else}}{{if .TOC}}{{template "toc" .TOC}}{{end}}{{.Body}}{{end}}
   {{if .CanEdit}}
-  <form class="write splice" method="post" action="/scope/{{.Chrome.Selected}}/body">
-    <input type="hidden" name="id" value="{{.ID}}">
-    <input type="hidden" name="base" value="{{.Base}}">
-    <label>
-      Title
-      <input type="text" name="title" required value="{{.EditTitle}}">
-    </label>
-    <label>
-      Body
-      <textarea name="body" rows="16">
-{{.EditBody}}</textarea>
-    </label>
-    <button type="submit" aria-label="Save {{.ID}} title and body">Save</button>
-  </form>
+  <p class="content-edit"><a class="button" href="{{.EditHref}}">Edit</a></p>
   {{end}}
+  {{if .RawText}}<pre class="raw">{{.RawText}}</pre>{{else}}{{if .TOC}}{{template "toc" .TOC}}{{end}}{{.Body}}{{end}}
 </article>
 <aside>
   <h2>ticket</h2>

@@ -35,7 +35,73 @@ func readNote(t *testing.T, dir, slug string) string {
 	return string(data)
 }
 
-func TestGETNotesIsNotInspect(t *testing.T) {
+func TestNoteViewHref(t *testing.T) {
+	if got := noteViewHref("wc", "default", "default"); got != notesListHref("wc") {
+		t.Errorf("default = %q, want list", got)
+	}
+	if got := noteViewHref("wc", "pad", "default"); got != noteHref("wc", "pad") {
+		t.Errorf("other = %q, want inspect", got)
+	}
+	if got := noteViewHref("wc", "pad", "pad"); got != notesListHref("wc") {
+		t.Errorf("stored default = %q, want list", got)
+	}
+}
+
+func TestFileAriaCurrent(t *testing.T) {
+	p := noteInspectPage{Chrome: chrome{Return: "/scope/wc/notes"}}
+	def := noteListRow{Href: notesListHref("wc"), Current: true}
+	if got := p.FileAriaCurrent(def); got != "page" {
+		t.Errorf("list = %q, want page", got)
+	}
+	p.Chrome.Return = "/scope/wc/notes?sync_needed=1"
+	if got := p.FileAriaCurrent(def); got != "page" {
+		t.Errorf("list query = %q, want page", got)
+	}
+	p.Chrome.Return = "/scope/wc/notes/default"
+	if got := p.FileAriaCurrent(def); got != "true" {
+		t.Errorf("default inspect = %q, want true", got)
+	}
+	pad := noteListRow{Href: noteHref("wc", "pad"), Current: true}
+	p.Chrome.Return = "/scope/wc/notes/pad"
+	if got := p.FileAriaCurrent(pad); got != "page" {
+		t.Errorf("pad inspect = %q, want page", got)
+	}
+	p.Chrome.Return = "/scope/wc/notes/pad/edit"
+	if got := p.FileAriaCurrent(pad); got != "true" {
+		t.Errorf("pad edit = %q, want true", got)
+	}
+	other := noteListRow{Href: noteHref("wc", "alpha")}
+	if got := p.FileAriaCurrent(other); got != "" {
+		t.Errorf("other = %q, want empty", got)
+	}
+}
+
+func TestNotesPick(t *testing.T) {
+	app := newTestApp(t)
+	initScope(t, app, "wc")
+	initScope(t, app, "aa")
+	s := mustServer(t, app)
+
+	w := do(s, "/notes")
+	if w.Code != http.StatusOK {
+		t.Fatalf("/notes = %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `class="current">Notes</a>`) {
+		t.Fatalf("nav: %s", body)
+	}
+	if !strings.Contains(body, "Pick a scope to read its notes.") {
+		t.Fatalf("lead: %s", body)
+	}
+	if !strings.Contains(body, `href="/scope/wc/notes">wc</a>`) || !strings.Contains(body, `href="/scope/aa/notes">aa</a>`) {
+		t.Fatalf("picker links: %s", body)
+	}
+	if strings.Contains(body, `action="/scope/`) {
+		t.Fatalf("picker must not write: %s", body)
+	}
+}
+
+func TestNotesListInspectAndEdit(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
 	writeNote(t, dir, "pad", "hello **world**\n")
@@ -61,11 +127,26 @@ func TestGETNotesIsNotInspect(t *testing.T) {
 	if !strings.Contains(body, ">pad</a>") || !strings.Contains(body, ">alpha</a>") {
 		t.Errorf("missing slug: %s", body)
 	}
-	if !strings.Contains(body, "Default") || !strings.Contains(body, ">default</a>") {
-		t.Errorf("effective default missing: %s", body)
+	if !strings.Contains(body, `href="/scope/wc/notes"`) || !strings.Contains(body, ">default</a>") {
+		t.Errorf("effective default missing from the list: %s", body)
 	}
 	if !strings.Contains(body, "(no file)") {
 		t.Errorf("missing default file should be labelled: %s", body)
+	}
+	if !strings.Contains(body, "<h1>notes</h1>") {
+		t.Errorf("missing default list must have a heading: %s", body)
+	}
+	if !strings.Contains(body, `class="current"`) {
+		t.Errorf("list must mark the current note: %s", body)
+	}
+	if !strings.Contains(body, `href="/scope/wc/notes" aria-current="page">default</a>`) {
+		t.Errorf("list must mark the default file as this page: %s", body)
+	}
+	if strings.Contains(body, "<strong>world</strong>") {
+		t.Errorf("list rendered a non-default note: %s", body)
+	}
+	if !strings.Contains(body, `href="/scope/wc/notes/default/edit"`) {
+		t.Errorf("list missing Edit for default: %s", body)
 	}
 	if strings.Contains(body, `action="/scope/wc/mark"`) || strings.Contains(body, `action="/scope/wc/claim"`) {
 		t.Fatalf("list offered ticket writes: %s", body)
@@ -103,11 +184,37 @@ func TestGETNotesIsNotInspect(t *testing.T) {
 	if strings.Contains(ib, `action="/scope/wc/mark"`) || strings.Contains(ib, `action="/scope/wc/claim"`) {
 		t.Fatalf("note inspect offered ticket writes: %s", ib)
 	}
-	if !strings.Contains(ib, `name="base" value="`) {
-		t.Fatalf("missing clobber base: %s", ib)
+	if strings.Contains(ib, `name="base" value="`) || strings.Contains(ib, `<textarea name="body"`) {
+		t.Fatalf("inspect must not embed the editor: %s", ib)
 	}
-	if !strings.Contains(ib, `onsubmit="if(this.dataset.submitted)return false;`) {
-		t.Fatalf("save should ignore a second submit: %s", ib)
+	if !strings.Contains(ib, `href="/scope/wc/notes/pad/edit"`) {
+		t.Fatalf("inspect missing Edit: %s", ib)
+	}
+	if !strings.Contains(ib, `href="/scope/wc/notes"`) || !strings.Contains(ib, ">default</a>") || !strings.Contains(ib, `href="/scope/wc/notes/alpha">alpha</a>`) {
+		t.Fatalf("inspect missing the notes list: %s", ib)
+	}
+	if strings.Contains(ib, "All notes") {
+		t.Fatalf("inspect still has All notes: %s", ib)
+	}
+	if !strings.Contains(ib, `href="/scope/wc/notes/pad" aria-current="page">pad</a>`) {
+		t.Fatalf("inspect must mark pad as this page: %s", ib)
+	}
+	ed := do(s, "/scope/wc/notes/pad/edit")
+	if ed.Code != http.StatusOK {
+		t.Fatalf("edit = %d %s", ed.Code, ed.Body.String())
+	}
+	eb := ed.Body.String()
+	if !strings.Contains(eb, "<h1>Edit pad</h1>") {
+		t.Fatalf("edit missing heading: %s", eb)
+	}
+	if !strings.Contains(eb, `name="base" value="`) {
+		t.Fatalf("missing clobber base: %s", eb)
+	}
+	if !strings.Contains(eb, `onsubmit="if(this.dataset.submitted)return false;`) {
+		t.Fatalf("save should ignore a second submit: %s", eb)
+	}
+	if !strings.Contains(eb, `href="/scope/wc/notes/pad" aria-current="true">pad</a>`) {
+		t.Fatalf("edit must not claim inspect is this page: %s", eb)
 	}
 	if !strings.Contains(ib, `name="slug" value="pad"`) || !strings.Contains(ib, `name="return" value="inspect"`) {
 		t.Fatalf("non-default inspect should offer use and stay on inspect: %s", ib)
@@ -119,11 +226,119 @@ func TestGETNotesIsNotInspect(t *testing.T) {
 		t.Fatalf("delete should name the slug: %s", ib)
 	}
 	defIns := do(s, "/scope/wc/notes/default").Body.String()
+	if strings.Contains(defIns, `aria-current="page"`) {
+		t.Fatalf("default inspect must not claim the list is this page: %s", defIns)
+	}
+	if !strings.Contains(defIns, `href="/scope/wc/notes" aria-current="true">default</a>`) {
+		t.Fatalf("default inspect must mark default as current-in-set: %s", defIns)
+	}
 	if strings.Contains(defIns, `name="slug" value="default"`) || strings.Contains(defIns, `name="clear" value="1"`) {
 		t.Fatalf("built-in default inspect should not offer use or clear: %s", defIns)
 	}
 	if strings.Contains(defIns, "/delete") {
 		t.Fatalf("missing inspect should not offer delete: %s", defIns)
+	}
+	if !strings.Contains(defIns, "<h1>notes</h1>") {
+		t.Fatalf("missing default inspect must have a heading: %s", defIns)
+	}
+	ghost := do(s, "/scope/wc/notes/ghost").Body.String()
+	if !strings.Contains(ghost, "<h1>ghost</h1>") || !strings.Contains(ghost, "no file") {
+		t.Fatalf("missing named note must use the slug as heading: %s", ghost)
+	}
+
+	use := doPost(s, "/scope/wc/notes/use", url.Values{"slug": {"pad"}})
+	if use.Code != http.StatusSeeOther {
+		t.Fatalf("use: %d %s", use.Code, use.Body.String())
+	}
+	storedList := do(s, "/scope/wc/notes").Body.String()
+	if !strings.Contains(storedList, `name="clear" value="1"`) {
+		t.Fatalf("list with stored default should offer clear: %s", storedList)
+	}
+	if strings.Contains(storedList, `name="return" value="inspect"`) {
+		t.Fatalf("list use/clear must not return to inspect: %s", storedList)
+	}
+	storedIns := do(s, "/scope/wc/notes/pad").Body.String()
+	if !strings.Contains(storedIns, `name="clear" value="1"`) || !strings.Contains(storedIns, `name="return" value="inspect"`) {
+		t.Fatalf("stored-default inspect should offer clear and stay on inspect: %s", storedIns)
+	}
+}
+
+func TestNotesListRendersDefault(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	writeNote(t, dir, "default", "# Pad\n\nhello **world**\n")
+	writeNote(t, dir, "scratch", "other file\n")
+	s := mustServer(t, app)
+
+	w := do(s, "/scope/wc/notes")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list = %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `<h1 id="pad">Pad</h1>`) || !strings.Contains(body, "<strong>world</strong>") {
+		t.Fatalf("list must render the default note: %s", body)
+	}
+	if !strings.Contains(body, `href="/scope/wc/notes/scratch">scratch</a>`) {
+		t.Fatalf("list must name other files: %s", body)
+	}
+	if !strings.Contains(body, `href="/scope/wc/notes"`) || !strings.Contains(body, ">default</a>") || !strings.Contains(body, `class="empty">default</span>`) {
+		t.Fatalf("list must include the default note: %s", body)
+	}
+	if strings.Contains(body, "other file") {
+		t.Fatalf("list rendered a non-default note: %s", body)
+	}
+	if !strings.Contains(body, `href="/scope/wc/notes/default/edit"`) {
+		t.Fatalf("list missing Edit: %s", body)
+	}
+	if strings.Contains(body, "<table") {
+		t.Fatalf("list still uses a table: %s", body)
+	}
+}
+
+func TestNotesListNonRegularDefault(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	writeNote(t, dir, "pad", "hello **world**\n")
+	defPath := filepath.Join(dir, scopefile.NoteDir, "default.md")
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(target, []byte("classified-note-body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, defPath); err != nil {
+		t.Fatal(err)
+	}
+	s := mustServer(t, app)
+
+	w := do(s, "/scope/wc/notes")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list = %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "is not a regular file") {
+		t.Fatalf("list must name the snapshot error: %s", body)
+	}
+	if strings.Contains(body, "classified-note-body") {
+		t.Fatalf("list must not read the symlink target: %s", body)
+	}
+	if strings.Contains(body, `href="/scope/wc/notes/default/edit"`) {
+		t.Fatalf("list must not offer Edit: %s", body)
+	}
+	if strings.Contains(body, `/notes/default/delete`) {
+		t.Fatalf("list must not offer Delete: %s", body)
+	}
+	if strings.Contains(body, "(no file)") {
+		t.Fatalf("list must not call the symlink missing: %s", body)
+	}
+	if !strings.Contains(body, `href="/scope/wc/notes/pad">pad</a>`) {
+		t.Fatalf("other notes must stay listed: %s", body)
+	}
+	if strings.Contains(body, "<strong>world</strong>") {
+		t.Fatalf("list rendered a non-default note: %s", body)
+	}
+
+	ed := do(s, "/scope/wc/notes/default/edit")
+	if ed.Code != http.StatusConflict {
+		t.Fatalf("edit = %d %s", ed.Code, ed.Body.String())
 	}
 }
 
@@ -137,9 +352,12 @@ func TestGETNotesDoesNotWrite(t *testing.T) {
 	}
 	s := mustServer(t, app)
 	for _, p := range []string{
+		"/notes",
 		"/scope/wc/notes",
 		"/scope/wc/notes/pad",
+		"/scope/wc/notes/pad/edit",
 		"/scope/wc/notes/default",
+		"/scope/wc/notes/default/edit",
 		"/scope/wc/notes/use",
 		"/scope/wc/notes/pad/delete",
 	} {
@@ -166,9 +384,9 @@ func TestGETNoteEditFormMatchesDisk(t *testing.T) {
 	body := "\nhello **world**\n"
 	writeNote(t, dir, "pad", body)
 	s := mustServer(t, app)
-	ins := do(s, "/scope/wc/notes/pad")
+	ins := do(s, "/scope/wc/notes/pad/edit")
 	if ins.Code != http.StatusOK {
-		t.Fatalf("inspect = %d %s", ins.Code, ins.Body.String())
+		t.Fatalf("edit = %d %s", ins.Code, ins.Body.String())
 	}
 	page := ins.Body.String()
 	if textareaBrowserValue(t, page) != body {
@@ -192,7 +410,7 @@ func TestPOSTNoteSetRoundTrip(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	writeNote(t, dir, "pad", "hello\n")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/notes/pad").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/notes/pad/edit").Body.String())
 
 	w := doPost(s, "/scope/wc/notes/pad", url.Values{
 		"body": {"replaced **md**\n"},
@@ -214,12 +432,53 @@ func TestPOSTNoteSetRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPOSTNoteSetDefaultReturnsToList(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	writeNote(t, dir, "default", "hello\n")
+	s := mustServer(t, app)
+	ed := do(s, "/scope/wc/notes/default/edit")
+	if ed.Code != http.StatusOK {
+		t.Fatalf("edit = %d %s", ed.Code, ed.Body.String())
+	}
+	if !strings.Contains(ed.Body.String(), `href="`+notesListHref("wc")+`">Cancel</a>`) {
+		t.Fatalf("cancel must go to the list: %s", ed.Body.String())
+	}
+	base := inspectBase(t, ed.Body.String())
+
+	w := doPost(s, "/scope/wc/notes/default", url.Values{
+		"body": {"saved **md**\n"},
+		"base": {base},
+	})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if !strings.HasPrefix(loc, notesListHref("wc")) {
+		t.Fatalf("location = %s, want list", loc)
+	}
+	if strings.Contains(loc, "/default") {
+		t.Fatalf("save must not land on default inspect: %s", loc)
+	}
+	page := mustFollow(t, s, w)
+	body := page.Body.String()
+	if !strings.Contains(body, "<strong>md</strong>") {
+		t.Fatalf("list missing goldmark: %s", body)
+	}
+	if !strings.Contains(body, `href="/scope/wc/notes" aria-current="page">default</a>`) {
+		t.Fatalf("list must mark default as this page: %s", body)
+	}
+	if readNote(t, dir, "default") != "saved **md**\n" {
+		t.Fatalf("disk = %q", readNote(t, dir, "default"))
+	}
+}
+
 func TestPOSTNoteSetCRLFStoredAsLF(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
 	writeNote(t, dir, "pad", "hello\n")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/notes/pad").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/notes/pad/edit").Body.String())
 
 	w := doPost(s, "/scope/wc/notes/pad", url.Values{
 		"body": {"a\r\nb\rc\n"},
@@ -236,7 +495,7 @@ func TestPOSTNoteSetCRLFStoredAsLF(t *testing.T) {
 		t.Fatalf("body = %q", got)
 	}
 
-	base = inspectBase(t, do(s, "/scope/wc/notes/pad").Body.String())
+	base = inspectBase(t, do(s, "/scope/wc/notes/pad/edit").Body.String())
 	w = doPost(s, "/scope/wc/notes/pad", url.Values{
 		"body": {"a\nb\nc\n"},
 		"base": {base},
@@ -258,7 +517,7 @@ func TestPOSTNoteSetEmptyIs400(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	writeNote(t, dir, "pad", "keep\n")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/notes/pad").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/notes/pad/edit").Body.String())
 	w := doPost(s, "/scope/wc/notes/pad", url.Values{"body": {""}, "base": {base}})
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d %s", w.Code, w.Body.String())
@@ -294,7 +553,7 @@ func TestPOSTNoteCreateAndDeleteAndUse(t *testing.T) {
 	if create.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d %s", create.Code, create.Body.String())
 	}
-	if loc := create.Header().Get("Location"); loc != noteHref("wc", "grant") {
+	if loc := create.Header().Get("Location"); loc != noteEditHref("wc", "grant") {
 		t.Fatalf("create loc = %s", loc)
 	}
 	if _, err := os.Stat(filepath.Join(dir, scopefile.NoteDir, "grant.md")); !os.IsNotExist(err) {
@@ -347,8 +606,14 @@ func TestPOSTNoteCreateAndDeleteAndUse(t *testing.T) {
 	}
 	list := mustFollow(t, s, use)
 	lb := list.Body.String()
-	if !strings.Contains(lb, `class="default"`) || !strings.Contains(lb, ">grant</a>") {
-		t.Fatalf("default row: %s", lb)
+	if !strings.Contains(lb, `class="current"`) || !strings.Contains(lb, ">grant</a>") || !strings.Contains(lb, `class="empty">default</span>`) {
+		t.Fatalf("default slug: %s", lb)
+	}
+	if !strings.Contains(lb, "grant pad") {
+		t.Fatalf("list must render the default note: %s", lb)
+	}
+	if strings.Contains(lb, `name="return" value="inspect"`) {
+		t.Fatalf("list must not return to inspect: %s", lb)
 	}
 	grantIns := do(s, "/scope/wc/notes/grant").Body.String()
 	if !strings.Contains(grantIns, `name="clear" value="1"`) || !strings.Contains(grantIns, `name="return" value="inspect"`) {
@@ -370,11 +635,14 @@ func TestPOSTNoteCreateAndDeleteAndUse(t *testing.T) {
 	if !strings.Contains(ab, ">grant</a>") || !strings.Contains(ab, "(no file)") {
 		t.Fatalf("default after delete: %s", ab)
 	}
-	if strings.Contains(ab, `class="default"`) {
-		t.Fatalf("missing file should not mark a list row: %s", ab)
+	if !strings.Contains(ab, "(no file)") {
+		t.Fatalf("missing default file should stay in the list: %s", ab)
 	}
 	if !strings.Contains(ab, `name="clear" value="1"`) {
 		t.Fatalf("stored default should offer clear: %s", ab)
+	}
+	if strings.Contains(ab, `name="return" value="inspect"`) {
+		t.Fatalf("list clear must not return to inspect: %s", ab)
 	}
 
 	clr := doPost(s, "/scope/wc/notes/use", url.Values{"clear": {"1"}})
@@ -452,7 +720,7 @@ func TestPOSTNoteNeverSelfCommits(t *testing.T) {
 	pushOrigin(t, repo)
 	before := testgit.Combined(t, repo, "rev-parse", "HEAD")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/notes/pad").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/notes/pad/edit").Body.String())
 
 	w := doPost(s, "/scope/wc/notes/pad", url.Values{
 		"body": {"edited\n"},
@@ -495,9 +763,9 @@ func TestPOSTNoteRefusesMidRebase(t *testing.T) {
 	}
 	s := mustServer(t, app)
 
-	ins := do(s, "/scope/wc/notes/pad")
+	ins := do(s, "/scope/wc/notes/pad/edit")
 	if ins.Code != http.StatusOK {
-		t.Fatalf("inspect mid-rebase = %d %s", ins.Code, ins.Body.String())
+		t.Fatalf("edit mid-rebase = %d %s", ins.Code, ins.Body.String())
 	}
 	base := inspectBase(t, ins.Body.String())
 
@@ -550,7 +818,7 @@ func TestPOSTNoteRefusesForeignOrigin(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	writeNote(t, dir, "pad", "keep\n")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/notes/pad").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/notes/pad/edit").Body.String())
 	form := url.Values{"body": {"hacked\n"}, "base": {base}}
 
 	w := doPostHeader(s, "/scope/wc/notes/pad", form, http.Header{"Origin": {"https://evil.example"}})
@@ -579,11 +847,17 @@ func TestGETNoteSymlinkIsNotFollowed(t *testing.T) {
 	s := mustServer(t, app)
 
 	list := do(s, "/scope/wc/notes").Body.String()
-	if strings.Contains(list, ">default</a>") && !strings.Contains(list, "(no file)") {
-		t.Fatalf("list treated symlink as a note file: %s", list)
-	}
 	if strings.Contains(list, "notefish-secret") {
 		t.Fatalf("list leaked target: %s", list)
+	}
+	if !strings.Contains(list, "is not a regular file") {
+		t.Fatalf("list must name the snapshot error: %s", list)
+	}
+	if strings.Contains(list, "(no file)") {
+		t.Fatalf("list must not call the symlink missing: %s", list)
+	}
+	if strings.Contains(list, `href="/scope/wc/notes/default/edit"`) {
+		t.Fatalf("list must not offer Edit: %s", list)
 	}
 
 	ins := do(s, "/scope/wc/notes/default")
@@ -607,8 +881,12 @@ func TestNoteMarkdownRawHTMLOff(t *testing.T) {
 	if strings.Contains(body, "<script>") || strings.Contains(body, "<script ") {
 		t.Fatalf("raw script leaked: %s", body)
 	}
-	if !strings.Contains(body, "&lt;script&gt;alert(1)&lt;/script&gt;") {
-		t.Fatalf("editor must show escaped source, not omit it: %s", body)
+	if strings.Contains(body, `<textarea name="body"`) {
+		t.Fatalf("inspect must not embed the editor: %s", body)
+	}
+	ed := do(s, "/scope/wc/notes/pad/edit").Body.String()
+	if !strings.Contains(ed, "&lt;script&gt;alert(1)&lt;/script&gt;") {
+		t.Fatalf("editor must show escaped source, not omit it: %s", ed)
 	}
 }
 
@@ -617,7 +895,7 @@ func TestPOSTNoteSetStaleBaseIs409(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	path := writeNote(t, dir, "pad", "hello\n")
 	s := mustServer(t, app)
-	base := inspectBase(t, do(s, "/scope/wc/notes/pad").Body.String())
+	base := inspectBase(t, do(s, "/scope/wc/notes/pad/edit").Body.String())
 	if err := os.WriteFile(path, []byte("changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

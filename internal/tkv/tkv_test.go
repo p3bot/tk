@@ -924,8 +924,12 @@ func TestGoldmarkDoesNotRenderRawHTML(t *testing.T) {
 	if strings.Contains(got, `<img src=x`) {
 		t.Fatalf("raw img leaked: %s", got)
 	}
-	if !strings.Contains(got, "&lt;script&gt;alert(1)&lt;/script&gt;") {
-		t.Fatalf("editor must show escaped source, not omit it: %s", got)
+	if strings.Contains(got, `<textarea name="body"`) {
+		t.Fatalf("inspect must not embed the editor: %s", got)
+	}
+	ed := do(s, "/scope/wc/edit/ab2c").Body.String()
+	if !strings.Contains(ed, "&lt;script&gt;alert(1)&lt;/script&gt;") {
+		t.Fatalf("editor must show escaped source, not omit it: %s", ed)
 	}
 }
 
@@ -1049,13 +1053,13 @@ func TestPrimaryNav(t *testing.T) {
 	s := mustServer(t, app)
 
 	cases := []struct {
-		path, current string
+		path, current, scopeHref string
 	}{
-		{"/", "Board"},
-		{"/scope/wc", "Board"},
-		{"/search", ""},
-		{"/graphs", "Graphs"},
-		{"/doctor", "Doctor"},
+		{"/", "Board", "/scope/wc"},
+		{"/scope/wc", "Board", "/scope/wc"},
+		{"/search", "", "/scope/wc"},
+		{"/graphs", "Graphs", "/graphs?scope=wc"},
+		{"/doctor", "Doctor", "/doctor?scope=wc"},
 	}
 	for _, c := range cases {
 		w := do(s, c.path)
@@ -1066,7 +1070,7 @@ func TestPrimaryNav(t *testing.T) {
 		if strings.Contains(body, ">Overview</a>") || strings.Contains(body, ">Search</a>") {
 			t.Errorf("%s still has Overview or Search in primary nav", c.path)
 		}
-		for _, label := range []string{"Board", "Graphs", "Doctor"} {
+		for _, label := range []string{"Board", "Notes", "Graphs", "Doctor"} {
 			if !strings.Contains(body, ">"+label+"</a>") {
 				t.Errorf("%s missing primary nav %s", c.path, label)
 			}
@@ -1078,8 +1082,8 @@ func TestPrimaryNav(t *testing.T) {
 		} else if !strings.Contains(body, `class="current">`+c.current+"</a>") {
 			t.Errorf("%s current want %s", c.path, c.current)
 		}
-		if !strings.Contains(body, `href="/scope/wc"`) {
-			t.Errorf("%s missing scope switcher", c.path)
+		if !strings.Contains(body, `href="`+c.scopeHref+`"`) {
+			t.Errorf("%s missing scope switcher %s", c.path, c.scopeHref)
 		}
 		if !strings.Contains(body, `aria-label="sections"`) {
 			t.Errorf("%s missing sections nav", c.path)
@@ -1087,8 +1091,8 @@ func TestPrimaryNav(t *testing.T) {
 	}
 
 	home := do(s, "/").Body.String()
-	if strings.Contains(home, ">Notes</a>") {
-		t.Errorf("summary should not offer Notes without a selected scope: %s", home)
+	if !strings.Contains(home, `href="/notes">Notes</a>`) {
+		t.Errorf("summary should offer Notes picker: %s", home)
 	}
 	if !strings.Contains(home, `rel="icon" href="/static/tk-logo.svg"`) {
 		t.Errorf("missing favicon: %s", home)
@@ -1120,6 +1124,9 @@ func TestPrimaryNav(t *testing.T) {
 	if !strings.Contains(graphs, "Depends") || !strings.Contains(graphs, `href="/graphs/depends"`) {
 		t.Errorf("graphs hub: %s", graphs)
 	}
+	if !strings.Contains(graphs, `href="/notes">Notes</a>`) {
+		t.Errorf("graphs without a scope should offer Notes picker: %s", graphs)
+	}
 	doc := do(s, "/doctor").Body.String()
 	if !strings.Contains(doc, "integrity") || !strings.Contains(doc, "wc") {
 		t.Errorf("doctor hub: %s", doc)
@@ -1145,6 +1152,9 @@ func TestPrimaryNav(t *testing.T) {
 	}
 	if !strings.Contains(kb, `class="current">Graphs</a>`) {
 		t.Errorf("graphs?scope=wc should keep Graphs current")
+	}
+	if !strings.Contains(kb, `href="/scope/wc/notes">Notes</a>`) {
+		t.Errorf("graphs with a scope should offer that scope's notes: %s", kb)
 	}
 }
 
@@ -1209,19 +1219,91 @@ func TestChromeScopeTabs(t *testing.T) {
 		t.Errorf("summary scopes must still link to /scope/{name}: %s", home)
 	}
 
+	w = do(s, "/notes")
+	if w.Code != 200 {
+		t.Fatalf("/notes = %d %s", w.Code, w.Body.String())
+	}
+	pick := w.Body.String()
+	if !strings.Contains(pick, `class="current">Notes</a>`) {
+		t.Errorf("picker must mark Notes current: %s", pick)
+	}
+	if !strings.Contains(pick, `href="/scope/wc/notes">wc</a>`) || !strings.Contains(pick, `href="/scope/aa/notes">aa</a>`) {
+		t.Errorf("picker must send scopes onto notes: %s", pick)
+	}
+	if strings.Contains(pick, `aria-current=`) || strings.Contains(pick, `class="selected"`) {
+		t.Errorf("picker must not mark a scope current: %s", pick)
+	}
+
 	w = do(s, "/graphs?scope=wc")
 	if w.Code != 200 {
 		t.Fatalf("/graphs?scope=wc = %d %s", w.Code, w.Body.String())
 	}
 	graphs := scopesNav(t, w.Body.String())
-	if !strings.Contains(graphs, `href="/scope/wc" class="selected" aria-current="true">wc</a>`) {
-		t.Errorf("graphs must mark wc current-in-set, not the page: %s", graphs)
+	if !strings.Contains(graphs, `href="/graphs?scope=wc" class="selected" aria-current="page">wc</a>`) {
+		t.Errorf("graphs must keep graphs and mark wc as the page: %s", graphs)
 	}
-	if strings.Contains(graphs, `aria-current="page"`) {
-		t.Errorf("graphs must not claim a scope is the current page: %s", graphs)
+	if !strings.Contains(graphs, `href="/graphs?scope=aa">aa</a>`) {
+		t.Errorf("graphs must switch aa onto graphs, not the board: %s", graphs)
+	}
+	if strings.Contains(graphs, `href="/scope/aa">aa</a>`) {
+		t.Errorf("graphs must not drop to the board: %s", graphs)
 	}
 	if scopeTabMarked(graphs, "aa") {
 		t.Errorf("graphs must not mark aa current: %s", graphs)
+	}
+
+	w = do(s, "/graphs/depends?scope=wc")
+	if w.Code != 200 {
+		t.Fatalf("/graphs/depends?scope=wc = %d %s", w.Code, w.Body.String())
+	}
+	depends := scopesNav(t, w.Body.String())
+	if !strings.Contains(depends, `href="/graphs/depends?scope=wc" class="selected" aria-current="page">wc</a>`) {
+		t.Errorf("depends must keep depends: %s", depends)
+	}
+	if !strings.Contains(depends, `href="/graphs/depends?scope=aa">aa</a>`) {
+		t.Errorf("depends must switch aa onto depends: %s", depends)
+	}
+
+	w = do(s, "/doctor?scope=wc")
+	if w.Code != 200 {
+		t.Fatalf("/doctor?scope=wc = %d %s", w.Code, w.Body.String())
+	}
+	doctor := scopesNav(t, w.Body.String())
+	if !strings.Contains(doctor, `href="/doctor?scope=wc" class="selected" aria-current="page">wc</a>`) {
+		t.Errorf("doctor must keep doctor: %s", doctor)
+	}
+	if !strings.Contains(doctor, `href="/doctor?scope=aa">aa</a>`) {
+		t.Errorf("doctor must switch aa onto doctor: %s", doctor)
+	}
+
+	w = do(s, "/scope/wc/notes")
+	if w.Code != 200 {
+		t.Fatalf("/scope/wc/notes = %d %s", w.Code, w.Body.String())
+	}
+	notes := scopesNav(t, w.Body.String())
+	if !strings.Contains(notes, `href="/scope/wc/notes" class="selected" aria-current="page">wc</a>`) {
+		t.Errorf("notes list must keep notes and mark wc as the page: %s", notes)
+	}
+	if !strings.Contains(notes, `href="/scope/aa/notes">aa</a>`) {
+		t.Errorf("notes list must switch aa onto notes, not the board: %s", notes)
+	}
+	if strings.Contains(notes, `href="/scope/aa">aa</a>`) {
+		t.Errorf("notes list must not drop to the board: %s", notes)
+	}
+
+	w = do(s, "/scope/wc/notes/default")
+	if w.Code != 200 {
+		t.Fatalf("/scope/wc/notes/default = %d %s", w.Code, w.Body.String())
+	}
+	note := scopesNav(t, w.Body.String())
+	if !strings.Contains(note, `href="/scope/wc/notes" class="selected" aria-current="true">wc</a>`) {
+		t.Errorf("note inspect must keep notes as current-in-set: %s", note)
+	}
+	if strings.Contains(note, `aria-current="page"`) {
+		t.Errorf("note inspect must not claim the list is the current page: %s", note)
+	}
+	if !strings.Contains(note, `href="/scope/aa/notes">aa</a>`) {
+		t.Errorf("note inspect must switch aa onto notes: %s", note)
 	}
 }
 
@@ -1252,6 +1334,38 @@ func TestErrorPageBoardScopeIsCurrentPage(t *testing.T) {
 	}
 }
 
+func TestScopeHref(t *testing.T) {
+	c := chrome{Selected: "wc"}
+	if got := c.ScopeHref("aa"); got != "/scope/aa" {
+		t.Errorf("board = %q", got)
+	}
+	if got := c.NotesHref(); got != "/scope/wc/notes" {
+		t.Errorf("notes selected = %q", got)
+	}
+	c.Selected = ""
+	if got := c.NotesHref(); got != "/notes" {
+		t.Errorf("notes picker = %q", got)
+	}
+	c.Selected = "wc"
+	c.Section = navNotes
+	if got := c.ScopeHref("aa"); got != "/scope/aa/notes" {
+		t.Errorf("notes = %q", got)
+	}
+	c.Section = navGraphs
+	c.Return = "/graphs?scope=wc"
+	if got := c.ScopeHref("aa"); got != "/graphs?scope=aa" {
+		t.Errorf("graphs = %q", got)
+	}
+	c.Return = "/graphs/depends?scope=wc"
+	if got := c.ScopeHref("aa"); got != "/graphs/depends?scope=aa" {
+		t.Errorf("depends = %q", got)
+	}
+	c.Section = navDoctor
+	if got := c.ScopeHref("aa"); got != "/doctor?scope=aa" {
+		t.Errorf("doctor = %q", got)
+	}
+}
+
 func TestScopeAriaCurrent(t *testing.T) {
 	c := chrome{Selected: "wc", Return: "/scope/wc"}
 	if got := c.ScopeAriaCurrent("wc"); got != "page" {
@@ -1267,7 +1381,20 @@ func TestScopeAriaCurrent(t *testing.T) {
 	}
 	c.Return = "/graphs?scope=wc"
 	if got := c.ScopeAriaCurrent("wc"); got != "true" {
-		t.Errorf("graphs = %q, want true", got)
+		t.Errorf("graphs without section = %q, want true", got)
+	}
+	c.Section = navGraphs
+	if got := c.ScopeAriaCurrent("wc"); got != "page" {
+		t.Errorf("graphs hub = %q, want page", got)
+	}
+	c.Section = navNotes
+	c.Return = "/scope/wc/notes"
+	if got := c.ScopeAriaCurrent("wc"); got != "page" {
+		t.Errorf("notes list = %q, want page", got)
+	}
+	c.Return = "/scope/wc/notes/pad"
+	if got := c.ScopeAriaCurrent("wc"); got != "true" {
+		t.Errorf("note inspect = %q, want true", got)
 	}
 	if got := c.ScopeAriaCurrent("aa"); got != "" {
 		t.Errorf("other scope = %q, want empty", got)

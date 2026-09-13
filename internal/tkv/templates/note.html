@@ -8,45 +8,16 @@
 {{template "chrome" .}}
 <main class="inspect">
 <article class="body">
-  {{if .Missing}}<p class="empty">no file</p>{{else}}{{.Body}}{{end}}
-  <form class="write splice" method="post" action="/scope/{{.Chrome.Selected}}/notes/{{.Slug}}" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
-    <input type="hidden" name="base" value="{{.Base}}">
-    <label>
-      Body
-      <textarea name="body" rows="16" required>
-{{.EditBody}}</textarea>
-    </label>
-    <button type="submit" aria-label="Save {{.Slug}}">Save</button>
-  </form>
+  {{if .SnapMsg}}<p class="banner">{{.SnapMsg}}</p>{{end}}
+  {{if .CanEdit}}
+  <p class="content-edit"><a class="button" href="{{.EditHref}}">Edit</a></p>
+  {{end}}
+  {{if .Missing}}
+  <h1>{{.Title}}</h1>
+  <p class="empty">no file</p>
+  {{else}}{{.Body}}{{end}}
 </article>
-<aside>
-  <h2>note</h2>
-  <dl>
-    <div><dt>slug</dt><dd>{{.Slug}}</dd></div>
-    <div><dt>default</dt><dd>{{if .Default}}yes{{else}}no{{end}}</dd></div>
-    <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
-  </dl>
-  <p><a href="{{.ListHref}}">All notes</a></p>
-  {{if not .Default}}
-  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/notes/use">
-    <input type="hidden" name="slug" value="{{.Slug}}">
-    <input type="hidden" name="return" value="inspect">
-    <button type="submit">Use as default</button>
-  </form>
-  {{else if .CanClear}}
-  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/notes/use">
-    <input type="hidden" name="slug" value="{{.Slug}}">
-    <input type="hidden" name="clear" value="1">
-    <input type="hidden" name="return" value="inspect">
-    <button type="submit">Use built-in default</button>
-  </form>
-  {{end}}
-  {{if not .Missing}}
-  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/notes/{{.Slug}}/delete" onsubmit="return confirm('Delete {{.Slug}}?')">
-    <button type="submit" aria-label="Delete {{.Slug}}">Delete</button>
-  </form>
-  {{end}}
-</aside>
+{{template "noteAside" .}}
 </main>
 </body>
 </html>

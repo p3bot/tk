@@ -280,6 +280,9 @@ func TestPOSTOrderDownSwapsTwoTodos(t *testing.T) {
 	if !strings.Contains(todo, `aria-label="Move wc-ab2c down"`) {
 		t.Fatalf("first card missing down: %s", todo)
 	}
+	if !strings.Contains(todo, `class="order-down"`) || !strings.Contains(todo, `<svg viewBox="0 0 16 16"`) {
+		t.Fatalf("down control must be an SVG arrow: %s", todo)
+	}
 	if strings.Contains(todo, `aria-label="Move wc-ab2c up"`) {
 		t.Fatalf("first card offered up: %s", todo)
 	}
@@ -1420,7 +1423,7 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	s := mustServer(t, app)
 
 	board := do(s, "/scope/wc").Body.String()
-	if !strings.Contains(board, `<div class="board-controls">`) {
+	if !strings.Contains(board, `<div class="board-controls"`) {
 		t.Fatalf("kanban toolbar must be a div so Claim next can sit in it: %s", board)
 	}
 	if strings.Contains(board, `<p class="board-controls">`) {
@@ -1450,14 +1453,45 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if !strings.Contains(board, `onsubmit="if(this.dataset.submitted)return false;`) {
 		t.Fatalf("claim next form missing double-submit guard: %s", board)
 	}
-	if strings.Contains(colSection(board, status.Todo), `option value="in-progress"`) {
+	if strings.Contains(colSection(board, status.Todo), `name="status" value="in-progress"`) {
 		t.Fatalf("todo card must not mark in-progress: %s", colSection(board, status.Todo))
 	}
 	if !strings.Contains(board, `aria-label="Claim wc-ab2c"`) {
 		t.Fatalf("kanban claim missing named control: %s", board)
 	}
-	if !strings.Contains(board, `aria-label="Mark wc-ab2c"`) {
-		t.Fatalf("kanban mark missing named control: %s", board)
+	if strings.Contains(board, `aria-label="Mark wc-ab2c"`) || strings.Contains(colSection(board, status.Todo), `>Mark</button>`) {
+		t.Fatalf("kanban mark must not use a Mark button: %s", board)
+	}
+	if !strings.Contains(board, `aria-label="Status wc-ab2c, todo"`) {
+		t.Fatalf("kanban mark missing named status control: %s", board)
+	}
+	todoCol := colSection(board, status.Todo)
+	if !strings.Contains(todoCol, `<button type="button" class="status-menu" popovertarget="status-wc-ab2c" aria-haspopup="menu" aria-label="Status wc-ab2c, todo"><span>todo</span></button>`) {
+		t.Fatalf("kanban status chip must show the current status: %s", todoCol)
+	}
+	if !strings.Contains(todoCol, `<div class="mark">`) {
+		t.Fatalf("kanban status chip must sit outside the mark form: %s", todoCol)
+	}
+	if !strings.Contains(todoCol, `<div id="status-wc-ab2c" popover class="status-menu-list">`) {
+		t.Fatalf("kanban status menu must be a popover: %s", todoCol)
+	}
+	if strings.Contains(todoCol, `<form class="write mark"`) {
+		t.Fatalf("kanban status invoker must not be a form participant: %s", todoCol)
+	}
+	if strings.Contains(todoCol, `<details`) || strings.Contains(todoCol, `<summary`) {
+		t.Fatalf("kanban status menu must not use details: %s", todoCol)
+	}
+	if !strings.Contains(todoCol, `<button type="submit" name="status" value="done">done</button>`) {
+		t.Fatalf("kanban status menu items must submit mark: %s", todoCol)
+	}
+	if strings.Contains(todoCol, `<select`) || strings.Contains(todoCol, `onchange=`) {
+		t.Fatalf("kanban mark must not use a native select: %s", todoCol)
+	}
+	if !strings.Contains(todoCol, `onsubmit="if(this.dataset.submitted)return false;`) {
+		t.Fatalf("kanban mark missing double-submit guard: %s", todoCol)
+	}
+	if !strings.Contains(board, `class="card-tools"`) {
+		t.Fatalf("kanban card tools row missing: %s", board)
 	}
 
 	ins := do(s, "/scope/wc/ab2c").Body.String()
@@ -1494,6 +1528,9 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	}
 	if !strings.Contains(ed, `name="title" required`) || !strings.Contains(ed, `<textarea name="body"`) {
 		t.Fatalf("edit body form missing title/body: %s", ed)
+	}
+	if !strings.Contains(ed, `<body class="edit">`) || !strings.Contains(ed, `class="field-body"`) {
+		t.Fatalf("edit page must mark the viewport-fill layout: %s", ed)
 	}
 	if !strings.Contains(ed, `onsubmit="if(this.dataset.submitted)return false;`) {
 		t.Fatalf("edit save should ignore a second submit: %s", ed)
@@ -1581,7 +1618,7 @@ func TestWriteControlsHiddenWhenEngineWillRefuse(t *testing.T) {
 		if strings.Contains(board, `href="/scope/wc/abcd"`) {
 			t.Fatalf("parse-quarantined ticket listed on the board: %s", board)
 		}
-		if !strings.Contains(board, `aria-label="Claim wc-ab2c"`) || !strings.Contains(board, `aria-label="Mark wc-ab2c"`) {
+		if !strings.Contains(board, `aria-label="Claim wc-ab2c"`) || !strings.Contains(board, `aria-label="Status wc-ab2c, todo"`) {
 			t.Fatalf("healthy card lost writes because a sibling is quarantined: %s", board)
 		}
 		if !strings.Contains(board, `action="/scope/wc/create"`) {

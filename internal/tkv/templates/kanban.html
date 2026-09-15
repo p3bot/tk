@@ -8,7 +8,7 @@
 {{template "chrome" .}}
 <main>
 <h1>{{.Name}}</h1>
-<div class="board-controls">
+<div class="board-controls" data-board-scope="{{.Name}}">
   <a class="switch{{if .Backlog}} on{{end}}" href="{{.BacklogHref}}" role="switch" aria-checked="{{if .Backlog}}true{{else}}false{{end}}" data-board-switch>
     <span class="switch-ui" aria-hidden="true"></span>
     Backlog
@@ -17,7 +17,6 @@
     <span class="switch-ui" aria-hidden="true"></span>
     Archived
   </a>
-  <span class="next">next {{if .NextHref}}<a href="{{.NextHref}}">{{.Next}}</a>{{else}}—{{end}}</span>
   {{if and .Next .CanWrite}}
   <form class="write" method="post" action="/scope/{{.Name}}/claim" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
     {{template "boardReturn" $}}
@@ -50,7 +49,7 @@
 </div>
 <section class="kanban" aria-label="board">
 {{range .Cols}}
-  <div class="col">
+  <div class="col" data-status="{{.Status}}"{{if .Category}} data-category="{{.Category}}"{{end}}>
     <h2>{{.Status}} <span class="count">{{len .Cards}}</span></h2>
     {{range .Cards}}
     <article class="card" data-filter="{{.FilterText}}">
@@ -65,37 +64,37 @@
         <button type="submit" aria-label="Claim {{.ID}}">Claim</button>
       </form>
       {{end}}
-      {{if .MarkStatuses}}
-      <form class="write" method="post" action="/scope/{{$.Name}}/mark">
-        <input type="hidden" name="id" value="{{.ID}}">
-        {{template "boardReturn" $}}
-        <label>
-          <span class="sr-only">status {{.ID}}</span>
-          <select name="status" required>
-            <option value="" disabled selected>status</option>
-            {{range .MarkStatuses}}<option value="{{.}}">{{.}}</option>{{end}}
-          </select>
-        </label>
-        <button type="submit" aria-label="Mark {{.ID}}">Mark</button>
-      </form>
-      {{end}}
-      {{if or .UpID .DownID}}
-      <div class="order">
-        {{if .UpID}}
-        <form class="write" method="post" action="/scope/{{$.Name}}/order">
-          <input type="hidden" name="id" value="{{.ID}}">
-          <input type="hidden" name="{{.UpName}}" value="{{.UpID}}">
-          {{template "boardReturn" $}}
-          <button type="submit" aria-label="Move {{.ID}} up">Up</button>
-        </form>
-        {{end}}
-        {{if .DownID}}
-        <form class="write" method="post" action="/scope/{{$.Name}}/order">
-          <input type="hidden" name="id" value="{{.ID}}">
-          <input type="hidden" name="{{.DownName}}" value="{{.DownID}}">
-          {{template "boardReturn" $}}
-          <button type="submit" aria-label="Move {{.ID}} down">Down</button>
-        </form>
+      {{if or .UpID .DownID .MarkStatuses}}
+      <div class="card-tools">
+        <div class="order">
+          {{if .UpID}}
+          <form class="write" method="post" action="/scope/{{$.Name}}/order">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <input type="hidden" name="{{.UpName}}" value="{{.UpID}}">
+            {{template "boardReturn" $}}
+            <button type="submit" class="order-up" aria-label="Move {{.ID}} up"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 2.5 14.5 13h-13L8 2.5z"/></svg></button>
+          </form>
+          {{end}}
+          {{if .DownID}}
+          <form class="write" method="post" action="/scope/{{$.Name}}/order">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <input type="hidden" name="{{.DownName}}" value="{{.DownID}}">
+            {{template "boardReturn" $}}
+            <button type="submit" class="order-down" aria-label="Move {{.ID}} down"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 13.5 1.5 3h13L8 13.5z"/></svg></button>
+          </form>
+          {{end}}
+        </div>
+        {{if .MarkStatuses}}
+        <div class="mark">
+          <button type="button" class="status-menu" popovertarget="status-{{.ID}}" aria-haspopup="menu" aria-label="Status {{.ID}}, {{.Status}}"><span>{{.Status}}</span></button>
+          <form class="write" method="post" action="/scope/{{$.Name}}/mark" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true">
+            <input type="hidden" name="id" value="{{.ID}}">
+            {{template "boardReturn" $}}
+            <div id="status-{{.ID}}" popover class="status-menu-list">
+              {{range .MarkStatuses}}<button type="submit" name="status" value="{{.}}">{{.}}</button>{{end}}
+            </div>
+          </form>
+        </div>
         {{end}}
       </div>
       {{end}}
@@ -105,7 +104,6 @@
 {{end}}
 </section>
 </main>
-<script src="/static/board.js" defer></script>
 </body>
 </html>
 {{end}}

@@ -207,6 +207,9 @@ func TestNotesListInspectAndEdit(t *testing.T) {
 	if !strings.Contains(eb, "<h1>Edit pad</h1>") {
 		t.Fatalf("edit missing heading: %s", eb)
 	}
+	if !strings.Contains(eb, `<body class="edit">`) || !strings.Contains(eb, `class="field-body"`) {
+		t.Fatalf("edit page must mark the viewport-fill layout: %s", eb)
+	}
 	if !strings.Contains(eb, `name="base" value="`) {
 		t.Fatalf("missing clobber base: %s", eb)
 	}
@@ -875,11 +878,15 @@ func TestNoteMarkdownRawHTMLOff(t *testing.T) {
 	writeNote(t, dir, "pad", "**bold**\n\n<script>alert(1)</script>\n")
 	s := mustServer(t, app)
 	body := do(s, "/scope/wc/notes/pad").Body.String()
-	if !strings.Contains(body, "<strong>bold</strong>") {
-		t.Fatalf("expected goldmark strong: %s", body)
+	if !strings.Contains(body, `<script src="/static/board.js"`) {
+		t.Fatalf("note chrome must still load board.js: %s", body)
 	}
-	if strings.Contains(body, "<script>") || strings.Contains(body, "<script ") {
-		t.Fatalf("raw script leaked: %s", body)
+	article := articleBody(t, body)
+	if !strings.Contains(article, "<strong>bold</strong>") {
+		t.Fatalf("expected goldmark strong: %s", article)
+	}
+	if strings.Contains(article, "<script") || strings.Contains(article, "alert(1)") {
+		t.Fatalf("raw script leaked into article: %s", article)
 	}
 	if strings.Contains(body, `<textarea name="body"`) {
 		t.Fatalf("inspect must not embed the editor: %s", body)

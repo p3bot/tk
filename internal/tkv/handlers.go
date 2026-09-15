@@ -182,15 +182,15 @@ type kanbanPage struct {
 	Tags           []string
 	Active         []string
 	Next           string
-	NextHref       string
 	Cols           []kanbanCol
 	CanWrite       bool
 	CreateStatuses []string
 }
 
 type kanbanCol struct {
-	Status string
-	Cards  []kanbanCard
+	Status   string
+	Category string
+	Cards    []kanbanCard
 }
 
 type kanbanCard struct {
@@ -203,6 +203,7 @@ type kanbanCard struct {
 	SchemaError  bool
 	Next         bool
 	CanClaim     bool
+	Status       string
 	MarkStatuses []string
 	UpName       string
 	UpID         string
@@ -254,7 +255,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	var nextID, nextHref string
+	var nextID string
 	if !res.Unreachable[name] {
 		candidates, err := s.db.NextCandidates(name)
 		if err != nil {
@@ -262,7 +263,6 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		}
 		if next := gate.SelectNext(candidates, lens, false).Chosen; next != nil {
 			nextID = next.ID
-			nextHref = inspectHref(next.ID)
 		}
 	}
 
@@ -278,6 +278,9 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		cards := byStatus[st]
 		reverse := index.SortListing(cards, []string{st}, custom)
 		col := kanbanCol{Status: st}
+		if cat, ok := status.CategoryOf(st, custom); ok {
+			col.Category = string(cat)
+		}
 		for i, p := range cards {
 			waiting := gate.EvalDepends(p).WaitingOn
 			card := kanbanCard{
@@ -289,6 +292,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 				WaitingOn:   waitLinks(waiting),
 				SchemaError: p.SchemaError,
 				Next:        nextID != "" && p.ID == nextID,
+				Status:      p.Status,
 			}
 			card.CanClaim, card.MarkStatuses = ticketWriteControls(schema, p.Status, p.ParseError)
 			if ticketWritable(schema, p.ParseError) {
@@ -320,7 +324,6 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 		Tags:           distinct,
 		Active:         tags,
 		Next:           nextID,
-		NextHref:       nextHref,
 		Cols:           cols,
 		CanWrite:       schema != nil,
 		CreateStatuses: createStatuses,

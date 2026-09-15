@@ -452,6 +452,9 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	if !strings.Contains(body, `href="/scope/wc"`) || !strings.Contains(body, "wc-ab2c") {
 		t.Fatalf("overview missing scope/next: %s", body)
 	}
+	if !strings.Contains(body, `/static/board.js`) {
+		t.Fatalf("overview must load board.js so scope links pick up stored layers: %s", body)
+	}
 
 	board := do(s, "/scope/wc")
 	if board.Code != 200 {
@@ -479,11 +482,22 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	if strings.Contains(b, `aria-label="pulse"`) || strings.Contains(b, "claimed") {
 		t.Fatalf("kanban still has pulse strip: %s", b)
 	}
-	if !strings.Contains(b, `data-board-filter`) || !strings.Contains(b, `/static/board.js`) {
+	if !strings.Contains(b, `data-board-filter`) || strings.Count(b, `/static/board.js`) != 1 {
 		t.Fatalf("kanban missing board filter: %s", b)
 	}
-	if !strings.Contains(b, `next <a href="/scope/wc/wc-ab2c">wc-ab2c</a>`) {
-		t.Fatalf("kanban missing next control: %s", b)
+	if !strings.Contains(b, `data-board-scope="wc"`) {
+		t.Fatalf("kanban missing per-scope layer key: %s", b)
+	}
+	if !strings.Contains(b, `data-status="todo"`) || !strings.Contains(b, `data-category="active"`) {
+		t.Fatalf("kanban columns must expose status for paper tints: %s", b)
+	}
+	if !strings.Contains(b, `class="order-up"`) || !strings.Contains(b, `class="order-down"`) ||
+		!strings.Contains(b, `<svg viewBox="0 0 16 16"`) ||
+		strings.Contains(b, `>↑</button>`) || strings.Contains(b, `>↓</button>`) {
+		t.Fatalf("order controls must be SVG arrows, not font glyphs: %s", b)
+	}
+	if strings.Contains(b, `class="next"`) || strings.Contains(b, `next <a href="/scope/wc/wc-ab2c">`) {
+		t.Fatalf("kanban toolbar must not repeat next id: %s", b)
 	}
 	if !strings.Contains(b, "Backlog") || !strings.Contains(b, "Archived") ||
 		strings.Count(b, `data-board-switch`) != 2 {
@@ -494,9 +508,6 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	}
 	if !strings.Contains(b, `href="/scope/wc?backlog=1"`) || !strings.Contains(b, `href="/scope/wc?archived=1"`) {
 		t.Fatalf("layer switches should add one query each: %s", b)
-	}
-	if ai, ni := strings.Index(b, `data-board-switch`), strings.Index(b, `class="next"`); ai < 0 || ni < 0 || ai > ni {
-		t.Fatalf("layer switches should sit left of next: %s", b)
 	}
 	if !strings.Contains(b, `<span class="id">ab2c <span class="next-badge">next</span></span>`) {
 		t.Fatalf("next badge should sit on the id row: %s", b)
@@ -655,7 +666,7 @@ func TestKanbanNextRefreshesDependsTargetScope(t *testing.T) {
 	if !strings.Contains(hb, "waiting") || !strings.Contains(hb, "other-ab2c") {
 		t.Fatalf("expected waiting on the other-scope prereq: %s", hb)
 	}
-	if strings.Contains(hb, `href="/scope/wc/wc-de34"`) {
+	if strings.Contains(hb, `next-badge`) {
 		t.Fatalf("next should be empty while the prereq is open: %s", hb)
 	}
 
@@ -672,7 +683,7 @@ func TestKanbanNextRefreshesDependsTargetScope(t *testing.T) {
 	if strings.Contains(rb, "waiting") {
 		t.Fatalf("kanban should refresh the other scope and clear waiting: %s", rb)
 	}
-	if !strings.Contains(rb, `href="/scope/wc/wc-de34"`) {
+	if !strings.Contains(rb, `<span class="id">de34 <span class="next-badge">next</span></span>`) {
 		t.Fatalf("next should be wc-de34 once the prereq is done: %s", rb)
 	}
 }
@@ -701,10 +712,10 @@ func TestSchemaErrorHoldsFromNextAndSurfaces(t *testing.T) {
 		t.Fatalf("kanban = %d %s", board.Code, board.Body.String())
 	}
 	b := board.Body.String()
-	if !strings.Contains(b, `href="/scope/wc/wc-ab2c"`) {
+	if !strings.Contains(b, `<span class="id">ab2c <span class="next-badge">next</span></span>`) {
 		t.Fatalf("kanban next should be the clean todo: %s", b)
 	}
-	if strings.Contains(b, `next <a href="/scope/wc/wc-de34"`) {
+	if strings.Contains(b, `<span class="id">de34 <span class="next-badge">next</span></span>`) {
 		t.Fatalf("kanban next picked the schema_error todo: %s", b)
 	}
 	if !strings.Contains(b, "schema_error:") || !strings.Contains(b, "Broken") {
@@ -904,6 +915,21 @@ func tocNav(t *testing.T, page string) string {
 	return rest[:j+len("</nav>")]
 }
 
+func articleBody(t *testing.T, page string) string {
+	t.Helper()
+	const open = `<article class="body">`
+	i := strings.Index(page, open)
+	if i < 0 {
+		t.Fatalf("missing article body: %s", page)
+	}
+	rest := page[i:]
+	j := strings.Index(rest, "</article>")
+	if j < 0 {
+		t.Fatalf("unclosed article body: %s", page)
+	}
+	return rest[:j+len("</article>")]
+}
+
 func TestGoldmarkDoesNotRenderRawHTML(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
@@ -915,14 +941,18 @@ func TestGoldmarkDoesNotRenderRawHTML(t *testing.T) {
 		t.Fatalf("inspect = %d %s", w.Code, w.Body.String())
 	}
 	got := w.Body.String()
-	if !strings.Contains(got, "<strong>bold</strong>") {
-		t.Fatalf("expected goldmark strong: %s", got)
+	if !strings.Contains(got, `<script src="/static/board.js"`) {
+		t.Fatalf("inspect chrome must still load board.js: %s", got)
 	}
-	if strings.Contains(got, "<script>") || strings.Contains(got, "<script ") {
-		t.Fatalf("raw script leaked: %s", got)
+	article := articleBody(t, got)
+	if !strings.Contains(article, "<strong>bold</strong>") {
+		t.Fatalf("expected goldmark strong: %s", article)
 	}
-	if strings.Contains(got, `<img src=x`) {
-		t.Fatalf("raw img leaked: %s", got)
+	if strings.Contains(article, "<script") || strings.Contains(article, "alert(1)") {
+		t.Fatalf("raw script leaked into article: %s", article)
+	}
+	if strings.Contains(article, `<img src=x`) {
+		t.Fatalf("raw img leaked: %s", article)
 	}
 	if strings.Contains(got, `<textarea name="body"`) {
 		t.Fatalf("inspect must not embed the editor: %s", got)
@@ -947,6 +977,32 @@ func TestStaticCSS(t *testing.T) {
 	css := w.Body.String()
 	if !strings.Contains(css, ".card[hidden]") || !strings.Contains(css, ".col[hidden]") || !strings.Contains(css, ".order[hidden]") {
 		t.Fatalf("hidden cards/columns/order must override display: %s", css)
+	}
+	if !strings.Contains(css, "--order-up: #6d28d9;") ||
+		!strings.Contains(css, "--order-down: #6d28d9;") ||
+		!strings.Contains(css, ".order .write button.order-up { color: var(--order-up); }") ||
+		!strings.Contains(css, ".order .write button.order-down { color: var(--order-down); }") {
+		t.Fatalf("order arrows must be equal-width coloured SVGs: %s", css)
+	}
+	if !strings.Contains(css, "--status-todo: #1d4ed8;") ||
+		!strings.Contains(css, `--status-in-progress: #a16207;`) ||
+		!strings.Contains(css, ".col[data-status=\"todo\"] { background: color-mix(in srgb, var(--card) 88%, var(--status-todo) 12%); }") ||
+		!strings.Contains(css, ".col[data-status=\"blocked\"] { background: color-mix(in srgb, var(--card) 88%, var(--status-blocked) 12%); }") ||
+		!strings.Contains(css, ".dep-node.status-todo rect { stroke: var(--status-todo); }") {
+		t.Fatalf("kanban columns must reuse graph status hues as paper tints: %s", css)
+	}
+	if !strings.Contains(css, ".card-tools {\n  display: flex;\n  align-items: center;") ||
+		!strings.Contains(css, ".card-tools .mark {\n  margin: 0 0 0 auto;") ||
+		!strings.Contains(css, ".card-tools .mark .write { margin: 0; }") ||
+		!strings.Contains(css, ".status-menu {\n  display: inline-flex;") ||
+		!strings.Contains(css, ".status-menu > span {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;") ||
+		!strings.Contains(css, ".status-menu-list:not(:popover-open) { display: none; }") ||
+		!strings.Contains(css, ".status-menu-list:popover-open {\n  display: flex;") ||
+		!strings.Contains(css, "position-anchor: auto;") ||
+		!strings.Contains(css, "top: calc(anchor(bottom) + 0.15rem);") ||
+		!strings.Contains(css, "right: anchor(right);") ||
+		strings.Contains(css, ".status-menu-list {\n  position: absolute;") {
+		t.Fatalf("card tools must put a top-layer status popover opposite the order arrows: %s", css)
 	}
 	if !strings.Contains(css, "--ticket: #fff;") ||
 		!strings.Contains(css, ".card {\n  display: block;") ||
@@ -980,6 +1036,11 @@ func TestStaticCSS(t *testing.T) {
 	if !strings.Contains(css, ".body h2") || !strings.Contains(css, ".body h6") || !strings.Contains(css, "text-transform: none") {
 		t.Fatalf("article headings must override chrome h2: %s", css)
 	}
+	if !strings.Contains(css, "body.edit {\n  height: 100vh;\n  height: 100dvh;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;") ||
+		!strings.Contains(css, "body.edit .chrome-lens { display: none; }") ||
+		!strings.Contains(css, "body.edit .body .splice textarea {\n  flex: 1 1 auto;\n  min-height: 0;\n  height: 0;\n  resize: none;\n  overflow: auto;") {
+		t.Fatalf("edit pages must fill the viewport with the body textarea: %s", css)
+	}
 	js := do(s, "/static/board.js")
 	if js.Code != 200 {
 		t.Fatalf("board.js = %d", js.Code)
@@ -990,6 +1051,17 @@ func TestStaticCSS(t *testing.T) {
 	}
 	if !strings.Contains(jsBody, `querySelector(".order")`) || !strings.Contains(jsBody, "order.hidden = q !== \"\"") {
 		t.Fatalf("board.js must hide order controls while find is active: %s", jsBody)
+	}
+	if !strings.Contains(jsBody, `localStorage.getItem(layersKey)`) ||
+		!strings.Contains(jsBody, `"tkv.board-layers"`) ||
+		!strings.Contains(jsBody, "location.replace(next)") ||
+		!strings.Contains(jsBody, `a.matches("[data-board-switch]")`) {
+		t.Fatalf("board.js must persist backlog/archived per scope in localStorage: %s", jsBody)
+	}
+	saveAt := strings.Index(jsBody, "saveLayers(scope, layersFromSearch(location.search))")
+	rewriteAt := strings.Index(jsBody, `querySelectorAll('a[href^="/scope/"]')`)
+	if saveAt < 0 || rewriteAt < 0 || saveAt > rewriteAt {
+		t.Fatalf("board.js must persist this URL's layers before rewriting board hrefs: %s", jsBody)
 	}
 
 	logo := do(s, "/static/tk-logo.svg")

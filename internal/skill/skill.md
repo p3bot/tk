@@ -1,8 +1,8 @@
 ---
 name: tk
 description: >-
-  Ticket management with the tk CLI: plain markdown tickets in a scope
-  (plans, specs, or feature work). Use when doing feature or ticket work
+  Ticket management with the tk CLI: plain markdown tickets in a scope,
+  designs, implementation, or feature work. Use when doing work
   in a repo, or the user mentions tk, scope, the board, next, claim, mark,
   depends, tickets, or ticket files — even if they only say
   "pick up the next task", "what's on the board", "mark it done",
@@ -78,10 +78,6 @@ tk sync [--scope S] [--all]                                         # Snapshot/i
 tk doctor                                                           # Diagnose integrity (never mutates files)
 tk repair [--re-space-order] [--all]                                # Repair id collisions, equal order, archive layout
 tk reindex                                                          # Rebuild the machine-wide index from files
-tk skill                                                            # Print this agent skill contract
-tk skill install [agents...] [--local]                              # Install into agentdex skills roots
-tk skill list [--local]                                             # List installed skill copies (default agent set)
-tk skill uninstall [agents...] [--local]                            # Remove owned pure skill installs
 ```
 
 ## Identifiers

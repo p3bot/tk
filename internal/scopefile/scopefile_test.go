@@ -6,6 +6,54 @@ import (
 	"testing"
 )
 
+func TestOccupiedShortIDsIgnoresNonIDFiles(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fence := func(id string) string {
+		return "---\nid: " + id + "\nstatus: draft\ncreated: 2026-01-01T00:00:00Z\n---\n# X\n"
+	}
+	write("README.md", fence("wc-ab2c"))
+	write("notes.md", fence("wc-de34"))
+	write("design/scratch.md", fence("wc-gh56"))
+	write("wc-jk89-BAD.md", fence("wc-m4np"))
+	write("design/wc-np23-shape.md", fence("wc-qrst"))
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(fence("wc-ab2c")), 0o000); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := OccupiedShortIDs(dir, "wc")
+	if err != nil {
+		t.Fatalf("unreadable non-ticket must not fail occupancy: %v", err)
+	}
+	for _, short := range []string{"ab2c", "de34", "gh56"} {
+		if _, ok := got[short]; ok {
+			t.Errorf("non-id file occupied %s: %v", short, got)
+		}
+	}
+	for _, short := range []string{"jk89", "m4np", "np23", "qrst"} {
+		if _, ok := got[short]; !ok {
+			t.Errorf("id file missing %s: %v", short, got)
+		}
+	}
+
+	ticket := filepath.Join(dir, "wc-jk89-BAD.md")
+	if err := os.Chmod(ticket, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OccupiedShortIDs(dir, "wc"); err == nil {
+		t.Fatal("unreadable ticket file must fail occupancy")
+	}
+}
+
 func TestTicketIDFromBase(t *testing.T) {
 	id, ok := TicketIDFromBase("wc-ab2c-network-redesign.md")
 	if !ok || id != "wc-ab2c" {
@@ -114,6 +162,12 @@ func TestIsAllowlisted(t *testing.T) {
 		{"notes/foo/bar.md", false}, // nested residue
 		{"note.md", false},          // root *.md stays residue
 		{"archive/note.md", false},
+		{"design/wc-ab2c-x.md", true},
+		{"design/wc-ab2c.md", true},
+		{"design/nested/wc-ab2c-x.md", false},
+		{"design/notes.md", false},
+		{"design/random.txt", false},
+		{"design/wc-ab2c-Not_A_Slug.md", false},
 	}
 	for _, c := range cases {
 		path := filepath.Join(dir, filepath.FromSlash(c.rel))

@@ -100,7 +100,8 @@ func NoteSlug(path, dir string) (string, bool) {
 }
 
 // IsAllowlisted reports whether path is a ticket .md at dir root or archive/,
-// tk.cue/.gitignore at root, or notes/<addressable-slug>.md (one level).
+// tk.cue/.gitignore at root, notes/<addressable-slug>.md, or a design file at
+// design/<id>-<slug>.md (one level). Nested paths and other names stay residue.
 func IsAllowlisted(path, dir string) bool {
 	rel, err := filepath.Rel(dir, path)
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
@@ -115,6 +116,8 @@ func IsAllowlisted(path, dir string) bool {
 	case NoteDir:
 		stem, ok := strings.CutSuffix(base, ".md")
 		return ok && IsAddressableNoteSlug(stem)
+	case DesignDir:
+		return LooksLikeTicket(base)
 	default:
 		return false
 	}

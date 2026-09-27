@@ -107,6 +107,15 @@ const (
 	// set|add|rm, or after mark actually changes status into built-in done.
 	// Soft only: the mutation still succeeds.
 	RequiredMissing = "required_missing:"
+
+	// DesignID marks a short id shared by two or more files in one scope when
+	// at least one of those files is a design. Ticket-only collisions stay
+	// DuplicateID. Diagnose only: repair does not rename a design file.
+	DesignID = "design_id:"
+
+	// ProducesDangling marks a design produces entry that does not resolve to
+	// a ticket. Diagnose only.
+	ProducesDangling = "produces_dangling:"
 )
 
 // Line prefixes msg with tok and a space, forming a stderr diagnostic agents match by prefix.
@@ -145,6 +154,7 @@ var all = []string{
 	SyncDisabled, Uncommitted, SyncNeeded, OrderLong, StatusConflict, DependsCycle,
 	DependsSelf, DependsOnCancelled, DependsOpen, RelatedUnresolvable, StaleInProgress,
 	LastPushError, EdgeVerify, NonAllowlist, TagUnknown, TagNew, RequiredMissing,
+	DesignID, ProducesDangling,
 }
 
 // All returns the closed token catalogue in definition order.

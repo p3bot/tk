@@ -49,6 +49,12 @@ tk mark <status> <id> [id...] [--scope S]                           # Set status
 tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 tk rehome <id> <dest-scope> [--scope S]                             # Prefix-rewrite ticket into dest scope; print dest path
+tk design create <title> [--scope S]                                # Scaffold design/<id>-<slug>.md; print path; no self-commit
+tk design list [status...] [--scope S] [--all]                      # TSV id, status, title, path; default draft and accepted; --all is every parsed design (ls aliases list)
+tk design get <id> [--content] [--scope S]                          # Path or file; refuses a short id held by two design files
+tk design mark <status> <id> [--scope S]                            # draft, accepted, decomposed, superseded; file stays in design/
+tk design meta add <id> produces <ticket-id> [--scope S]            # Append one full ticket id
+tk design meta remove <id> produces <ticket-id> [--scope S]         # Drop one list entry, including a non-id; last removal drops the key
 
 tk list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens). Sorted (order, id); terminal-only status filters reverse that order
 tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
@@ -80,6 +86,20 @@ tk repair [--re-space-order] [--all]                                # Repair id 
 tk reindex                                                          # Rebuild the machine-wide index from files
 ```
 
+## Designs
+
+- A design lives at `design/<id>-<slug>.md` in the scope directory. It is not a board item
+- It does not appear in `tk list`, `tk next`, `tk search`, or the ticket index
+- Statuses: draft, accepted, decomposed, superseded. The file stays in `design/`
+- `tk design list` defaults to draft and accepted. `--all` includes every parsed design, including a status outside those four. A positional outside those four exits 2. Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)`
+- Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`
+- `produces` stores full ticket ids, design to tickets only. There is no back-link on the ticket. `tk design meta remove` drops a list entry even when it is not a full ticket id
+- The slug is frozen at create. Editing the H1 does not rename the file. Body text under the H1 is a direct file edit
+- `tk design get`, `tk design mark`, and `tk design meta` refuse a short id held by two design files and print no path
+- A broken fence stays off `tk design list`. List and get print `parse_error: N unparseable`. Get of that file also prints `parse_error: <id>: <message>` and exits 0. Doctor prints `parse_error: <id>: <message> (<path>)`. Mark and meta refuse and do not write
+- `tk scope rename` rewrites design filenames and fence ids, and rekeys `produces` entries that use the old scope prefix. Entries that name another scope stay and are reported as `edge_verify`
+- `tk design create` does not self-commit. `tk design mark` and `tk design meta add|remove` self-commit on a tk-driven scope and do not push
+
 ## Identifiers
 
 - Full id is `<scope>-<short>`
@@ -109,8 +129,8 @@ Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `ren
 
 Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
-  - Commands that self commit: mark, order, next --claim, rehome, meta set/add/remove, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
-  - Create and file edits never commit; requires `tk sync`
+  - Commands that self commit: mark, order, next --claim, rehome, meta set/add/remove, design mark, design meta add|remove, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
+  - Create, design create, and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
 - repo-driven: host git commit/push (no `tk sync`)
 - plain-files: no git step

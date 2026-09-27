@@ -244,6 +244,35 @@ func TestSkillListsRepair(t *testing.T) {
 	}
 }
 
+func TestSkillDocumentsDesigns(t *testing.T) {
+	text := skill.Text()
+	for _, n := range []string{
+		"tk design create <title> [--scope S]",
+		"tk design list [status...] [--scope S] [--all]",
+		"tk design get <id> [--content] [--scope S]",
+		"tk design mark <status> <id> [--scope S]",
+		"tk design meta add <id> produces <ticket-id> [--scope S]",
+		"tk design meta remove <id> produces <ticket-id> [--scope S]",
+		"drops a list entry even when it is not a full ticket id",
+		"draft, accepted, decomposed, superseded",
+		"--all` includes every parsed design",
+		"A positional outside those four exits 2",
+		`schema_error: <id> has unknown status "<status>" (<path>)`,
+		"design/<id>-<slug>.md",
+		"not a board item",
+		"refuse a short id held by two design files",
+		"parse_error: N unparseable",
+		"rekeys `produces` entries that use the old scope prefix",
+		"reported as `edge_verify`",
+		"design mark, design meta add|remove",
+		"design create, and file edits never commit",
+	} {
+		if !strings.Contains(text, n) {
+			t.Errorf("skill missing design contract %q", n)
+		}
+	}
+}
+
 func TestNoDesignDependency(t *testing.T) {
 	// skill.md is sole runtime contract; body and production sources must not load design.md.
 	text := skill.Text()

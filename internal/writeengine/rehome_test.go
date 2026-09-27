@@ -305,6 +305,24 @@ func TestRehomeDestFilenameIDMismatchExtends(t *testing.T) {
 	}
 }
 
+func TestRehomeSkipsUntrackedDesignShort(t *testing.T) {
+	d := newDualPlain(t, "foo", "bar", "", "")
+	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "# Moved\n")
+	writeFile(t, filepath.Join(d.destDir, "design", "bar-ab2c-shape.md"),
+		"---\nid: bar-ab2c\nstatus: draft\ncreated: 2026-02-01T00:00:00Z\n---\n# Shape\n")
+
+	res, err := rehomeFoo(d, "foo-ab2c")
+	if err != nil {
+		t.Fatalf("rehome: %v", err)
+	}
+	if res.ID != "bar-ab2ca" {
+		t.Errorf("id = %q want bar-ab2ca (design short occupied)", res.ID)
+	}
+	if _, err := os.Stat(filepath.Join(d.destDir, "design", "bar-ab2c-shape.md")); err != nil {
+		t.Errorf("design file must stay put: %v", err)
+	}
+}
+
 func TestRehomeExtendsCollidingShort(t *testing.T) {
 	d := newDualPlain(t, "foo", "bar", "", "")
 	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")

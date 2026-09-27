@@ -16,6 +16,7 @@ import (
 
 	"cuelang.org/go/cue"
 
+	"github.com/p3bot/tk/internal/design"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/gitroot"
@@ -146,6 +147,9 @@ func (d *diagnoser) scope(scope string) error {
 		return err
 	}
 	d.residue(scope, dir)
+	if err := d.designFindings(scope, dir); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -530,6 +534,191 @@ func (d *diagnoser) residue(scope, dir string) {
 		d.add(token.Line(token.NonAllowlist, fmt.Sprintf("%s: %s is under the scope dir but outside the allowlist — move or remove it", scope, path)))
 		return nil
 	})
+}
+
+func (d *diagnoser) designFindings(scope, dir string) error {
+	holders := map[string][]string{}
+	rows, err := d.deps.DB.ScopeTickets(scope)
+	if err != nil {
+		return err
+	}
+	for _, p := range rows {
+		if p.ShortID == "" {
+			continue
+		}
+		holders[p.ShortID] = append(holders[p.ShortID], p.Path)
+	}
+	designs, err := design.Files(dir, scope)
+	if err != nil {
+		return err
+	}
+	broken := make([]design.File, 0)
+	for _, f := range designs {
+		if f.ParseErr != nil {
+			broken = append(broken, f)
+		}
+	}
+	sort.Slice(broken, func(i, j int) bool { return broken[i].Path < broken[j].Path })
+	for _, f := range broken {
+		d.add(token.Line(token.ParseError, fmt.Sprintf("%s: %s (%s)", f.ID, f.ParseErr.Error(), f.Path)))
+	}
+	var unknown []design.File
+	for _, f := range designs {
+		if f.Model == nil || design.KnownStatus(f.Model.Status) {
+			continue
+		}
+		unknown = append(unknown, f)
+	}
+	sort.Slice(unknown, func(i, j int) bool { return unknown[i].Path < unknown[j].Path })
+	for _, f := range unknown {
+		d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has unknown status %q (%s)", f.ID, f.Model.Status, f.Path)))
+	}
+	// Same predicate and sentence as a ticket whose filename disagrees with its fence id.
+	var mismatched []design.File
+	for _, f := range designs {
+		if f.Model == nil {
+			continue
+		}
+		base := filepath.Base(f.Path)
+		idText := f.Model.ID
+		if idText == "" || !strings.HasPrefix(base, idText+"-") && strings.TrimSuffix(base, ".md") != idText {
+			mismatched = append(mismatched, f)
+		}
+	}
+	sort.Slice(mismatched, func(i, j int) bool { return mismatched[i].Path < mismatched[j].Path })
+	for _, f := range mismatched {
+		d.add(fmt.Sprintf("filename/id mismatch: %s does not begin with its frontmatter id %q", filepath.Base(f.Path), f.Model.ID))
+	}
+	for _, f := range designs {
+		claimed := map[string]struct{}{}
+		addShort := func(short string) {
+			if !id.IsShortID(short) {
+				return
+			}
+			if _, ok := claimed[short]; ok {
+				return
+			}
+			claimed[short] = struct{}{}
+			holders[short] = append(holders[short], f.Path)
+		}
+		addShort(strings.TrimPrefix(f.ID, scope+"-"))
+		if filenameShort, ok := scopefile.ShortIDOfBasename(filepath.Base(f.Path), scope); ok {
+			addShort(filenameShort)
+		}
+	}
+	var shorts []string
+	for short, paths := range holders {
+		if len(paths) < 2 || !pathsIncludeDesign(dir, paths) {
+			continue
+		}
+		shorts = append(shorts, short)
+	}
+	sort.Strings(shorts)
+	for _, short := range shorts {
+		paths := append([]string(nil), holders[short]...)
+		sort.Strings(paths)
+		d.add(token.Line(token.DesignID, fmt.Sprintf("%s-%s claimed by %s", scope, short, strings.Join(paths, ", "))))
+	}
+	return d.producesFindings(designs)
+}
+
+func pathsIncludeDesign(dir string, paths []string) bool {
+	design := filepath.Join(dir, scopefile.DesignDir)
+	for _, p := range paths {
+		if filepath.Dir(p) == design {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *diagnoser) producesFindings(designs []design.File) error {
+	files := append([]design.File(nil), designs...)
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	refreshed := map[string]bool{}
+	for _, f := range files {
+		if f.Model == nil {
+			continue
+		}
+		if err := d.producesFile(f.ID, f.Path, f.Model, refreshed); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *diagnoser) producesFile(label, path string, m *frontmatter.Model, refreshed map[string]bool) error {
+	ids, ok, err := producesList(m)
+	if err != nil {
+		d.add(token.Line(token.ProducesDangling, fmt.Sprintf("%s produces is not a list of ticket ids (%s)", label, path)))
+		return nil
+	}
+	if !ok {
+		return nil
+	}
+	for _, target := range ids {
+		resolves, err := d.producesResolves(target, refreshed)
+		if err != nil {
+			return err
+		}
+		if !resolves {
+			d.add(token.Line(token.ProducesDangling, fmt.Sprintf("%s produces %s which has no ticket (%s)", label, target, path)))
+		}
+	}
+	return nil
+}
+
+func producesList(m *frontmatter.Model) ([]string, bool, error) {
+	for _, f := range m.Custom {
+		if f.Key != "produces" {
+			continue
+		}
+		ids, err := frontmatter.StringList(f.Value)
+		return ids, true, err
+	}
+	return nil, false, nil
+}
+
+func (d *diagnoser) producesResolves(target string, refreshed map[string]bool) (bool, error) {
+	if !id.IsFullTicketID(target) {
+		return false, nil
+	}
+	scope := id.ScopeOfFullID(target)
+	if !d.registered[scope] {
+		return false, nil
+	}
+	if !refreshed[scope] {
+		if err := d.refreshScopeRows(scope); err != nil {
+			return false, err
+		}
+		refreshed[scope] = true
+	}
+	return d.hasRow[target], nil
+}
+
+func (d *diagnoser) refreshScopeRows(scope string) error {
+	entry, ok := d.deps.Reg.Scopes[scope]
+	if !ok {
+		return nil
+	}
+	if _, err := d.deps.Rec.Reconcile(map[string]string{scope: entry.Dir}, d.registered, time.Now().UnixNano()); err != nil {
+		return err
+	}
+	for full, p := range d.rowByID {
+		if p.Scope == scope {
+			delete(d.hasRow, full)
+			delete(d.rowByID, full)
+		}
+	}
+	rows, err := d.deps.DB.ScopeTickets(scope)
+	if err != nil {
+		return err
+	}
+	for _, p := range rows {
+		d.hasRow[p.ID] = true
+		d.rowByID[p.ID] = p
+	}
+	return nil
 }
 
 func validRFC3339(s string) bool {

@@ -42,6 +42,17 @@ func TestSnapshotMessageTicketInScopeDirNamedNotes(t *testing.T) {
 	}
 }
 
+func TestSnapshotMessageDesignIsNotTicketShaped(t *testing.T) {
+	dir := filepath.FromSlash("/repo/wc")
+	path := filepath.FromSlash("/repo/wc/design/wc-ab2c-shape.md")
+	for _, code := range []string{"??", " M", "D "} {
+		got := snapshotMessage([]dirtyPath{{path: path, code: code, scope: "wc", dir: dir}})
+		if got != "tk: design wc wc-ab2c" {
+			t.Errorf("code %q = %q", code, got)
+		}
+	}
+}
+
 func TestSnapshotMessageMultiPathUnchanged(t *testing.T) {
 	got := snapshotMessage([]dirtyPath{
 		{path: filepath.FromSlash("/repo/wc/notes/decisions.md"), scope: "wc"},

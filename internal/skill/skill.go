@@ -14,6 +14,7 @@ var embedded string
 var requiredHeadings = []string{
 	"Frontmatter",
 	"Commands",
+	"Designs",
 	"Identifiers",
 	"Workflows",
 }

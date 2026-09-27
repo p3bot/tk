@@ -10,8 +10,8 @@ import (
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/id"
-	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/order"
+	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/slug"
 	"github.com/p3bot/tk/internal/status"
 )
@@ -71,7 +71,11 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 	if src == nil {
 		src = rand.Reader
 	}
-	shortID, err := mintUnusedID(rows, src)
+	taken, err := scopefile.OccupiedShortIDs(in.Dir, in.Scope)
+	if err != nil {
+		return out, err
+	}
+	shortID, err := mintUnusedID(taken, src)
 	if err != nil {
 		return out, err
 	}
@@ -151,13 +155,7 @@ func NormalizeCreateTags(tagArgs []string) ([]string, error) {
 	return out, nil
 }
 
-func mintUnusedID(rows []*index.Ticket, r io.Reader) (string, error) {
-	taken := make(map[string]struct{}, len(rows))
-	for _, p := range rows {
-		if p.ShortID != "" {
-			taken[p.ShortID] = struct{}{}
-		}
-	}
+func mintUnusedID(taken map[string]struct{}, r io.Reader) (string, error) {
 	for {
 		s, err := id.Mint(r)
 		if err != nil {

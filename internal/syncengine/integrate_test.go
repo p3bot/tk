@@ -39,6 +39,9 @@ func TestClassifyConflictNoteKind(t *testing.T) {
 		{".gitignore", kindIgnore},
 		{"wc-ab2c-alpha.md", kindTicket},
 		{"archive/wc-ab2c-alpha.md", kindTicket},
+		{"design/wc-ab2c-shape.md", kindDesign},
+		{"design/nested/wc-ab2c-shape.md", kindOther},
+		{"design/notes.md", kindOther},
 	}
 	for _, c := range cases {
 		got := classifyConflict(filepath.Join(p.Dir, filepath.FromSlash(c.rel)), p)

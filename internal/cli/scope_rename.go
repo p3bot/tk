@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/p3bot/tk/internal/scopefile"
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/design"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/registry"
@@ -28,10 +30,13 @@ func newScopeRenameCmd(app *App) *cobra.Command {
 		Short: "Rename a scope in place (tk.cue, ids, filenames, in-scope edges)",
 		Long: "Rename a scope end to end: rewrite the tk.cue name, the <scope>- prefix of every\n" +
 			"ticket id and filename, and every in-scope depends/related edge, then re-key this\n" +
-			"machine's registry, lens, and note default. The machine-local current-ticket\n" +
-			"pointer is dropped (the stored id would go stale). Cross-scope inbound edges live\n" +
-			"in other repos and are reported as edge_verify, not rewritten. An interrupted\n" +
-			"rename re-runs idempotently.",
+			"machine's registry, lens, and note default. Design files under design/ are renamed\n" +
+			"the same way, and produces entries that use the old scope prefix are rekeyed.\n" +
+			"The machine-local current-ticket pointer is dropped (the stored id would go stale).\n" +
+			"Cross-scope inbound edges live in other repos and are reported as edge_verify, not\n" +
+			"rewritten. A design in another scope that names a ticket here is left unchanged\n" +
+			"and reported as edge_verify.\n" +
+			"An interrupted rename re-runs idempotently.",
 		Args: exactArgs("<old>", "<new>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runScopeRename(app, c, args[0], args[1])
@@ -142,6 +147,9 @@ func runScopeRename(app *App, c *cobra.Command, oldName, newName string) error {
 		}
 		stdoutln(c, token.Line(token.EdgeVerify, fmt.Sprintf("%s %s %s — target scope renamed to %s, update this reference", ed.FromID, ed.Kind, ed.ToID, newName)))
 	}
+	for _, line := range producesVerifyLines(e.reg.Scopes, oldName, newName) {
+		stdoutln(c, token.Line(token.EdgeVerify, line))
+	}
 	stderrln(c, fmt.Sprintf("renamed scope %s -> %s", oldName, newName))
 	return nil
 }
@@ -186,7 +194,135 @@ func renamePlan(dir, oldName, newName string) ([]rewrite.Op, error) {
 		}
 		ops = append(ops, rewrite.Op{OldPath: f, NewPath: newPath, Content: frontmatter.Compose(interiorOut, body)})
 	}
+	designOps, err := renameDesignPlan(dir, oldName, newName)
+	if err != nil {
+		return nil, err
+	}
+	return append(ops, designOps...), nil
+}
+
+// renameDesignPlan rewrites design filenames and fence ids, and rekeys produces
+// entries whose scope prefix is oldName. Ticket rewrite is unchanged.
+func renameDesignPlan(dir, oldName, newName string) ([]rewrite.Op, error) {
+	root := filepath.Join(dir, scopefile.DesignDir)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var ops []rewrite.Op
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		base := ent.Name()
+		if !hasScopePrefix(base, oldName) && !hasScopePrefix(base, newName) {
+			continue
+		}
+		if hasScopePrefix(base, newName) {
+			continue
+		}
+		f := filepath.Join(root, base)
+		data, err := os.ReadFile(f)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", f, err)
+		}
+		interior, body, present := frontmatter.Split(data)
+		if !present {
+			return nil, fmt.Errorf("cannot rename: %s has no frontmatter fence — fix it first", f)
+		}
+		m, err := frontmatter.Parse(interior)
+		if err != nil {
+			return nil, fmt.Errorf("cannot rename: %s has unparseable frontmatter — fix it first: %w", f, err)
+		}
+		if !id.IsFullTicketID(m.ID) || id.ScopeOfFullID(m.ID) != oldName {
+			return nil, fmt.Errorf("cannot rename: %s declares id %q, which is not a design id in scope %q — fix its frontmatter id then re-run", f, m.ID, oldName)
+		}
+		newID := id.RewritePrefix(m.ID, oldName, newName)
+		m.ID = newID
+		rekeyProduces(m, oldName, newName)
+		interiorOut, err := design.Serialize(m)
+		if err != nil {
+			return nil, err
+		}
+		newPath := filepath.Join(root, repair.Basename(base, newID))
+		ops = append(ops, rewrite.Op{OldPath: f, NewPath: newPath, Content: design.Compose(interiorOut, body)})
+	}
 	return ops, nil
+}
+
+// producesVerifyLines reports produces entries in other registered scopes that
+// still name oldName. Those files are not rewritten. An unreadable design
+// directory is skipped so it does not fail a rename that has already landed.
+func producesVerifyLines(scopes map[string]registry.Entry, oldName, newName string) []string {
+	names := make([]string, 0, len(scopes))
+	for name := range scopes {
+		if name == oldName || name == newName {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var lines []string
+	for _, name := range names {
+		files, err := design.Files(scopes[name].Dir, name)
+		if err != nil {
+			continue
+		}
+		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+		for _, f := range files {
+			if f.Model == nil {
+				continue
+			}
+			for _, entry := range producesEntries(f.Model) {
+				if id.RewritePrefix(entry, oldName, newName) == entry {
+					continue
+				}
+				lines = append(lines, fmt.Sprintf("%s produces %s — target scope renamed to %s, update this reference", f.ID, entry, newName))
+			}
+		}
+	}
+	return lines
+}
+
+func producesEntries(m *frontmatter.Model) []string {
+	for _, f := range m.Custom {
+		if f.Key != design.KeyProduces {
+			continue
+		}
+		ids, err := frontmatter.StringList(f.Value)
+		if err != nil {
+			return nil
+		}
+		return ids
+	}
+	return nil
+}
+
+// rekeyProduces rewrites same-scope ids in a produces list. A value that is
+// not a list is left as stored: doctor already reports it, and refusing here
+// would block ticket renames in the same scope.
+func rekeyProduces(m *frontmatter.Model, oldName, newName string) {
+	for i, f := range m.Custom {
+		if f.Key != design.KeyProduces {
+			continue
+		}
+		ids, err := frontmatter.StringList(f.Value)
+		if err != nil {
+			return
+		}
+		for j, e := range ids {
+			ids[j] = id.RewritePrefix(e, oldName, newName)
+		}
+		if len(ids) == 0 {
+			m.RemoveCustom(design.KeyProduces)
+			return
+		}
+		m.Custom[i].Value = ids
+		return
+	}
 }
 
 // rekeyRegistry judges newName uniqueness under the config lock (pre-lock snapshot races).

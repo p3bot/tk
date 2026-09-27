@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/depgate"
+	"github.com/p3bot/tk/internal/design"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/notes"
@@ -68,6 +69,16 @@ func (e *engine) writeDeps(ctx context.Context) writeengine.Deps {
 		Reg:       e.reg,
 		DB:        e.db,
 		Rec:       e.rec,
+	}
+}
+
+func (e *engine) designDeps(c *cobra.Command) design.Deps {
+	return design.Deps{
+		Ctx:      c.Context(),
+		StateDir: e.app.StateDir,
+		Reg:      e.reg,
+		DB:       e.db,
+		Rec:      e.rec,
 	}
 }
 

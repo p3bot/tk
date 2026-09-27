@@ -130,7 +130,10 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 		destPath = left.path
 		destContent = left.content
 	} else {
-		occupied := destOccupiedShorts(destRows)
+		occupied, err := destOccupiedShorts(destDir, in.DestScope, destRows)
+		if err != nil {
+			return Result{}, err
+		}
 		destShort := sourceShort
 		if _, taken := occupied[destShort]; taken {
 			destShort, err = id.Extend(sourceShort, occupied)
@@ -299,21 +302,20 @@ func allScopeDirs(reg *registry.Registry) map[string]string {
 	return out
 }
 
-func destOccupiedShorts(rows []*index.Ticket) map[string]struct{} {
-	taken := make(map[string]struct{}, len(rows)*2)
+func destOccupiedShorts(dir, scope string, rows []*index.Ticket) (map[string]struct{}, error) {
+	taken, err := scopefile.OccupiedShortIDs(dir, scope)
+	if err != nil {
+		return nil, err
+	}
+	if taken == nil {
+		taken = map[string]struct{}{}
+	}
 	for _, p := range rows {
 		if p.ShortID != "" {
 			taken[p.ShortID] = struct{}{}
 		}
-		// Filename short occupies even when frontmatter id disagrees, so dest
-		// cannot land on that basename.
-		if full, ok := scopefile.TicketIDFromBase(filepath.Base(p.Path)); ok {
-			if i := strings.IndexByte(full, '-'); i >= 0 {
-				taken[full[i+1:]] = struct{}{}
-			}
-		}
 	}
-	return taken
+	return taken, nil
 }
 
 func findLeftoverDest(src *frontmatter.Model, body []byte, oldID, sourceShort, destScope, destDir string) (*leftoverDest, error) {

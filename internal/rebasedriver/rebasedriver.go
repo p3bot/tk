@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -25,6 +24,7 @@ import (
 	"github.com/p3bot/tk/internal/repair"
 	"github.com/p3bot/tk/internal/rewrite"
 	"github.com/p3bot/tk/internal/scopeconfig"
+	"github.com/p3bot/tk/internal/scopefile"
 )
 
 const fileMode = 0o644
@@ -280,7 +280,7 @@ func (d *Driver) applyRename(ctx context.Context, c Conflict, ours, theirs fmmer
 }
 
 // occupiedShortIDs derives short-ids taken in a scope for add/add extension:
-// tracked files under scope, on-disk files (root + archive/), plus minted this rebase.
+// tracked files under scope, on-disk ticket and design files, plus minted this rebase.
 // Re-derived per file — a pre-fetch set is blind to incoming ids; a once-mid-rebase set is blind to later mints.
 func (d *Driver) occupiedShortIDs(ctx context.Context, scopeDir, scope string) (map[string]struct{}, error) {
 	occ := map[string]struct{}{}
@@ -291,19 +291,12 @@ func (d *Driver) occupiedShortIDs(ctx context.Context, scopeDir, scope string) (
 	for _, f := range tracked {
 		addShortID(occ, filepath.Base(f), scope)
 	}
-	for _, sub := range []string{scopeDir, filepath.Join(scopeDir, "archive")} {
-		entries, err := os.ReadDir(sub)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, fmt.Errorf("scan %s: %w", sub, err)
-		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				addShortID(occ, e.Name(), scope)
-			}
-		}
+	disk, err := scopefile.OccupiedShortIDs(scopeDir, scope)
+	if err != nil {
+		return nil, fmt.Errorf("scan on-disk ids under %s: %w", scopeDir, err)
+	}
+	for s := range disk {
+		occ[s] = struct{}{}
 	}
 	for s := range d.minted {
 		occ[s] = struct{}{}

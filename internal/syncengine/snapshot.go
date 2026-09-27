@@ -82,6 +82,9 @@ func snapshotMessage(staged []dirtyPath) string {
 	if slug, ok := scopefile.NoteSlug(d.path, d.dir); ok {
 		return "tk: note " + d.scope + " " + slug
 	}
+	if fullID, ok := scopefile.DesignFullID(d.path, d.dir); ok {
+		return "tk: design " + d.scope + " " + fullID
+	}
 	fullID, slug := parseTicketBasename(base)
 	switch {
 	case strings.ContainsRune(d.code, 'D'):

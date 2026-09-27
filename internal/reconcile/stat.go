@@ -8,7 +8,8 @@ import (
 	"github.com/p3bot/tk/internal/id"
 )
 
-// archiveDir is the lone tool-managed subdirectory reconcile scans (immediate children only).
+// archiveDir is the only subdirectory reconcile scans (immediate children only).
+// design/ and notes/ are scope-owned and stay out of the ticket index.
 const archiveDir = "archive"
 
 type statEntry struct {

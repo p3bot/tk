@@ -168,6 +168,15 @@ func repairCollisions(deps Deps, rep Reporter, t *Target) error {
 		return err
 	}
 	occupied := shortIDPaths(rows)
+	disk, err := scopefile.OccupiedShortPaths(t.Dir, t.Scope)
+	if err != nil {
+		return err
+	}
+	for short, path := range disk {
+		if _, ok := occupied[short]; !ok {
+			occupied[short] = path
+		}
+	}
 	byPath := map[string]*index.Ticket{}
 	for _, p := range rows {
 		byPath[p.Path] = p

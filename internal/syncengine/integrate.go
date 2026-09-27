@@ -38,13 +38,16 @@ const (
 	kindIgnore
 	kindTicket
 	kindNote
+	kindDesign
 )
 
 // isConfig: tk.cue or .gitignore; only kindSchema gates .md merges.
 func (k conflictKind) isConfig() bool { return k == kindSchema || k == kindIgnore }
 
 // skipDriveMD: human-resolved kinds reported on the first loop; never the ticket driver.
-func (k conflictKind) skipDriveMD() bool { return k.isConfig() || k == kindNote }
+func (k conflictKind) skipDriveMD() bool {
+	return k.isConfig() || k == kindNote || k == kindDesign
+}
 
 type conflictItem struct {
 	path  string // repo-relative
@@ -169,6 +172,11 @@ func reportHumanConflict(r Reporter, it conflictItem, deletedSide string) {
 			"conflicted note: resolve the conflict markers in %s, then run tk sync", it.path))
 		return
 	}
+	if it.kind == kindDesign {
+		r.Err(fmt.Sprintf(
+			"conflicted design: resolve the conflict markers in %s, then run tk sync", it.path))
+		return
+	}
 	r.Err(fmt.Sprintf(
 		"conflicted .gitignore: resolve the conflict markers in %s, then run tk sync", it.path))
 }
@@ -181,7 +189,7 @@ func mdItemBlocked(r Reporter, it conflictItem, schemaConflicted map[string]bool
 			"unresolvable conflict: resolve the conflict markers in %s, then run tk sync", it.path))
 		*allStaged = false
 		return true
-	case kindSchema, kindIgnore, kindNote:
+	case kindSchema, kindIgnore, kindNote, kindDesign:
 		return true
 	}
 	if schemaConflicted[it.owner.Dir] {
@@ -373,6 +381,9 @@ func classifyConflict(abs string, p Participant) conflictKind {
 	}
 	if _, ok := scopefile.NoteSlug(abs, p.Dir); ok {
 		return kindNote
+	}
+	if _, ok := scopefile.DesignFullID(abs, p.Dir); ok {
+		return kindDesign
 	}
 	return kindTicket
 }

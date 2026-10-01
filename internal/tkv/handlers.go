@@ -139,7 +139,7 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 	}
 	row.Dangling = dangling
 
-	integ, err := scopeIntegrity(s.db, name, schema)
+	integ, err := scopeIntegrity(s.db, name, entry.Dir, schema)
 	if err != nil {
 		return row, err
 	}

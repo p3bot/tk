@@ -688,6 +688,25 @@ func TestKanbanNextRefreshesDependsTargetScope(t *testing.T) {
 	}
 }
 
+func TestOverviewIntegrityFlagsForeignPrefix(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "at-a575", "shape", "todo", "a0", "# Shape\n", false, "")
+	s := mustServer(t, app)
+
+	home := do(s, "/")
+	if home.Code != 200 {
+		t.Fatalf("overview = %d %s", home.Code, home.Body.String())
+	}
+	if !strings.Contains(home.Body.String(), `class="integrity-issues"`) {
+		t.Fatalf("overview must flag a foreign id prefix: %s", home.Body.String())
+	}
+	board := do(s, "/scope/wc")
+	if board.Code != 200 || !strings.Contains(board.Body.String(), `class="integrity-issues"`) {
+		t.Fatalf("scope chrome must flag a foreign id prefix: %d %s", board.Code, board.Body.String())
+	}
+}
+
 func TestSchemaErrorHoldsFromNextAndSurfaces(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")

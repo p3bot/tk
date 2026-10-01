@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/p3bot/tk/internal/design"
+	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/gitstate"
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
@@ -96,6 +101,11 @@ func RepairScope(deps Deps, rep Reporter, scope, dir string, f Flags) error {
 // Caller must hold the scope flock and, for auto-commit git-roots, the commit lock.
 func RunBatches(deps Deps, rep Reporter, t *Target, f Flags) error {
 	if f.Repair {
+		// Prefix adoption first, so a file that was invisible becomes a ticket
+		// the archive and collision passes can see.
+		if err := repairPrefixes(deps, rep, t); err != nil {
+			return err
+		}
 		if err := repairArchive(deps, rep, t, false); err != nil {
 			return err
 		}
@@ -315,7 +325,14 @@ func applyRepairBatch(deps Deps, rep Reporter, t *Target, ops []rewrite.Op, mess
 	if err != nil {
 		return err
 	}
-	if err := deps.Rec.SyncPaths(t.Scope, touched); err != nil {
+	return finishRepairBatch(deps, rep, t, touched, message)
+}
+
+// finishRepairBatch indexes ticket paths and self-commits the touched set.
+// The ticket index stores files at the scope root and under archive/ only.
+// A design path in the same batch is committed with the rest and not upserted.
+func finishRepairBatch(deps Deps, rep Reporter, t *Target, touched []string, message string) error {
+	if err := deps.Rec.SyncPaths(t.Scope, ticketIndexPaths(t.Dir, touched)); err != nil {
 		return err
 	}
 	if !t.AutoCommit {
@@ -405,6 +422,247 @@ func rowsForPaths(byPath map[string]*index.Ticket, paths []string) []*index.Tick
 		if row, ok := byPath[p]; ok {
 			out = append(out, row)
 		}
+	}
+	return out
+}
+
+func repairPrefixes(deps Deps, rep Reporter, t *Target) error {
+	// Other scopes are read only when this scope has a foreign prefix. The
+	// held set is that guard; failing it must happen before any write.
+	mismatched, err := scopefile.PrefixMismatches(t.Dir, t.Scope)
+	if err != nil || len(mismatched) == 0 {
+		return err
+	}
+	held, err := heldElsewhere(deps, t.Scope)
+	if err != nil {
+		return err
+	}
+	ops, renames, err := repair.AdoptPrefix(t.Scope, t.Dir, held)
+	if err != nil || len(ops) == 0 {
+		return err
+	}
+	// Cross-scope produces lines are known before the write. A read error here
+	// must stop the repair, or a second run will not print them: the prefix
+	// already matches.
+	produces, err := prefixProducesLines(deps, t.Scope, claimedIDs(renames))
+	if err != nil {
+		return err
+	}
+	// Plant new files and same-scope edges while the old names remain, report
+	// from that full set, then delete the old names. One commit covers both.
+	plant, unlink := splitPrefixOps(ops)
+	plantTouched, err := rewrite.Apply(plant)
+	if err != nil {
+		return err
+	}
+	for _, r := range renames {
+		rep.Out(fmt.Sprintf("repaired id prefix: %s -> %s (%s)", r.OldID, r.NewID, r.NewPath))
+	}
+	if err := reportPrefixEdges(deps, rep, renames, produces); err != nil {
+		return err
+	}
+	unlinkTouched, err := rewrite.Apply(unlink)
+	if err != nil {
+		return err
+	}
+	return finishRepairBatch(deps, rep, t, append(plantTouched, unlinkTouched...), prefixMessage(renames))
+}
+
+// splitPrefixOps separates plants (new files and in-place edge rewrites) from
+// the trailing removals of the old names.
+func splitPrefixOps(ops []rewrite.Op) (plant, unlink []rewrite.Op) {
+	for _, op := range ops {
+		if op.OldPath != "" && op.OldPath != op.NewPath {
+			unlink = append(unlink, op)
+			continue
+		}
+		plant = append(plant, op)
+	}
+	return plant, unlink
+}
+
+func claimedIDs(renames []repair.PrefixRename) map[string]string {
+	mapped := map[string]string{}
+	for _, r := range renames {
+		for _, old := range r.Claimed {
+			mapped[old] = r.NewID
+		}
+	}
+	return mapped
+}
+
+// heldElsewhere lists full ids owned by a ticket or design in any registered
+// scope other than scope. Tickets are read from disk because this path
+// reconciles only the scope being repaired, and a stale index would let a
+// stray file claim an id that still has a file. A same-scope filename id and
+// a same-scope fence id both count. An unreadable scope fails the repair
+// before any write.
+func heldElsewhere(deps Deps, scope string) (map[string]struct{}, error) {
+	var others []string
+	for name := range deps.Reg.Scopes {
+		if name != scope {
+			others = append(others, name)
+		}
+	}
+	sort.Strings(others)
+	held := map[string]struct{}{}
+	for _, name := range others {
+		entry := deps.Reg.Scopes[name]
+		if err := holdTicketIDs(held, entry.Dir, name); err != nil {
+			return nil, err
+		}
+		files, err := design.Files(entry.Dir, name)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range files {
+			holdID(held, f.ID)
+			if full, ok := scopefile.TicketIDFromBase(filepath.Base(f.Path)); ok {
+				holdID(held, full)
+			}
+		}
+	}
+	return held, nil
+}
+
+func holdTicketIDs(held map[string]struct{}, dir, scope string) error {
+	paths, err := scopefile.ListTickets(dir)
+	if err != nil {
+		return err
+	}
+	for _, p := range paths {
+		if full, ok := scopefile.TicketIDFromBase(filepath.Base(p)); ok && id.ScopeOfFullID(full) == scope {
+			holdID(held, full)
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		interior, _, present := frontmatter.Split(data)
+		if !present {
+			continue
+		}
+		m, err := frontmatter.Parse(interior)
+		if err != nil {
+			continue
+		}
+		if id.IsFullTicketID(m.ID) && id.ScopeOfFullID(m.ID) == scope {
+			holdID(held, m.ID)
+		}
+	}
+	return nil
+}
+
+func holdID(held map[string]struct{}, id string) {
+	if id != "" {
+		held[id] = struct{}{}
+	}
+}
+
+func prefixMessage(renames []repair.PrefixRename) string {
+	parts := make([]string, len(renames))
+	for i, r := range renames {
+		parts[i] = r.OldID + " -> " + r.NewID
+	}
+	return "tk: repair id prefix " + strings.Join(parts, ", ")
+}
+
+// reportPrefixEdges surfaces inbound references outside this scope. Same-scope
+// depends, related, and produces were rewritten in the batch.
+func reportPrefixEdges(deps Deps, rep Reporter, renames []repair.PrefixRename, produces []string) error {
+	targets := make(map[string]string, len(deps.Reg.Scopes))
+	for name, entry := range deps.Reg.Scopes {
+		targets[name] = entry.Dir
+	}
+	if _, err := deps.Rec.Reconcile(targets, registeredSet(deps.Reg), time.Now().UnixNano()); err != nil {
+		return err
+	}
+	mapped := claimedIDs(renames)
+	olds := make([]string, 0, len(mapped))
+	for old := range mapped {
+		olds = append(olds, old)
+	}
+	sort.Strings(olds)
+
+	var lines []string
+	for _, old := range olds {
+		inbound, err := deps.DB.EdgesByTarget(old)
+		if err != nil {
+			return err
+		}
+		newID := mapped[old]
+		for _, ed := range inbound {
+			lines = append(lines, token.Line(token.EdgeVerify, fmt.Sprintf("%s %s %s — id prefix repaired to %s, verify this reference", ed.FromID, ed.Kind, old, newID)))
+		}
+	}
+	lines = append(lines, produces...)
+	sort.Strings(lines)
+	for _, line := range lines {
+		rep.Out(line)
+	}
+	return nil
+}
+
+func prefixProducesLines(deps Deps, scope string, mapped map[string]string) ([]string, error) {
+	names := make([]string, 0, len(deps.Reg.Scopes))
+	for name := range deps.Reg.Scopes {
+		if name != scope {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	var lines []string
+	for _, name := range names {
+		files, err := design.Files(deps.Reg.Scopes[name].Dir, name)
+		if err != nil {
+			return nil, err
+		}
+		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+		for _, f := range files {
+			if f.Model == nil {
+				continue
+			}
+			for _, entry := range producesIDs(f.Model) {
+				newID, ok := mapped[entry]
+				if !ok {
+					continue
+				}
+				lines = append(lines, token.Line(token.EdgeVerify, fmt.Sprintf("%s produces %s — id prefix repaired to %s, verify this reference", f.ID, entry, newID)))
+			}
+		}
+	}
+	return lines, nil
+}
+
+func producesIDs(m *frontmatter.Model) []string {
+	for _, f := range m.Custom {
+		if f.Key != design.KeyProduces {
+			continue
+		}
+		ids, err := frontmatter.StringList(f.Value)
+		if err != nil {
+			return nil
+		}
+		return ids
+	}
+	return nil
+}
+
+// ticketIndexPaths keeps paths the ticket index can store: the scope root and archive/.
+func ticketIndexPaths(dir string, paths []string) []string {
+	arch := filepath.Join(dir, "archive")
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range paths {
+		if p == "" || seen[p] {
+			continue
+		}
+		parent := filepath.Dir(p)
+		if parent != dir && parent != arch {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
 	}
 	return out
 }

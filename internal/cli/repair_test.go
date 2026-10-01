@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/p3bot/tk/internal/token"
 )
 
 func assertNoDoctorCatalogue(t *testing.T, out, errOut string) {
@@ -126,6 +128,284 @@ func TestRepairEqualOrder(t *testing.T) {
 	}
 	if ka >= kb || kb >= kc || kc >= kd || kb == kc {
 		t.Errorf("tied keys must become distinct and ordered: %q %q %q %q", ka, kb, kc, kd)
+	}
+}
+
+func TestRepairAdoptsForeignIDPrefix(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir := initScope(t, app, "wc")
+	api := initScope(t, app, "api")
+	addTicket(t, dir, "at-a575", "shape", "todo", "a0", "# Shape\n", false, "depends: [at-b999]\n")
+	addTicket(t, dir, "at-b999", "old", "done", "a1", "# Old\n", true, "")
+	addTicket(t, api, "api-mm22", "ref", "todo", "a0", "# Ref\n", false, "depends: [at-a575]\n")
+	if err := os.MkdirAll(filepath.Join(dir, "design"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	designBody := "---\nid: at-qrst\nstatus: draft\ncreated: 2026-01-01T00:00:00Z\nproduces: [at-a575]\n---\n# Shape\n"
+	if err := os.WriteFile(filepath.Join(dir, "design", "at-qrst-shape.md"), []byte(designBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(api, "design"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	apiDesign := "---\nid: api-xy99\nstatus: draft\ncreated: 2026-01-01T00:00:00Z\nproduces: [at-a575]\n---\n# Note\n"
+	if err := os.WriteFile(filepath.Join(api, "design", "api-xy99-note.md"), []byte(apiDesign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	pulse, _, err := run(t, app, "pulse", "--scope", "wc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsePulse(pulse)["total"] != "0" || parsePulse(pulse)["integrity"] != "issues" {
+		t.Fatalf("foreign-prefix tickets must be invisible and not integrity-ok: %s", pulse)
+	}
+	_, _, err = run(t, app, "get", "at-a575", "--scope", "wc")
+	if err == nil || !strings.Contains(err.Error(), `scope "at" is not registered`) {
+		t.Fatalf("get = %v", err)
+	}
+
+	doc, _, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"at-a575", "at-b999", "at-qrst"} {
+		if !strings.Contains(doc, "id_prefix: "+id+" is in scope wc") || !strings.Contains(doc, "— run tk repair") {
+			t.Errorf("doctor missing %s: %s", id, doc)
+		}
+	}
+	if strings.Contains(doc, "non_allowlist:") {
+		t.Errorf("a ticket-shaped foreign prefix is not residue: %s", doc)
+	}
+	if !fileExists(dir, "at-a575-shape.md") {
+		t.Fatal("doctor must not rewrite")
+	}
+
+	out, errOut, err := run(t, app, "repair")
+	if err != nil {
+		t.Fatalf("repair: %v\n%s", err, errOut)
+	}
+	assertNoDoctorCatalogue(t, out, errOut)
+	for _, line := range []string{
+		"repaired id prefix: at-a575 -> wc-a575",
+		"repaired id prefix: at-b999 -> wc-b999",
+		"repaired id prefix: at-qrst -> wc-qrst",
+		"edge_verify: api-mm22 depends at-a575 — id prefix repaired to wc-a575, verify this reference",
+		"edge_verify: api-xy99 produces at-a575 — id prefix repaired to wc-a575, verify this reference",
+	} {
+		if !strings.Contains(out, line) {
+			t.Errorf("missing %q in %s", line, out)
+		}
+	}
+	if strings.Count(out, "edge_verify:") != 2 {
+		t.Errorf("edge_verify lines = %s", out)
+	}
+	if fileExists(dir, "at-a575-shape.md") || !fileExists(dir, "wc-a575-shape.md") {
+		t.Fatalf("root files = %v", ticketFiles(t, dir))
+	}
+	if !fileExists(dir, filepath.Join("archive", "wc-b999-old.md")) {
+		t.Fatalf("done ticket must stay archived, files = %v", ticketFiles(t, dir))
+	}
+	if !fileExists(dir, filepath.Join("design", "wc-qrst-shape.md")) {
+		t.Fatal("design file was not renamed")
+	}
+	shape, err := os.ReadFile(filepath.Join(dir, "wc-a575-shape.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(shape), "id: wc-a575") || !strings.Contains(string(shape), "wc-b999") || strings.Contains(string(shape), "at-") {
+		t.Fatalf("adopted ticket = %s", shape)
+	}
+	if fmValue(t, filepath.Join(dir, "wc-a575-shape.md"), "order") != "a0" {
+		t.Fatal("order must be kept")
+	}
+	old, err := os.ReadFile(filepath.Join(dir, "archive", "wc-b999-old.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(old), "id: wc-b999") || strings.Contains(string(old), "at-") {
+		t.Fatalf("archived ticket = %s", old)
+	}
+	gotDesign, err := os.ReadFile(filepath.Join(dir, "design", "wc-qrst-shape.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(gotDesign), "at-a575") || !strings.Contains(string(gotDesign), "wc-a575") || !strings.Contains(string(gotDesign), "id: wc-qrst") {
+		t.Fatalf("design = %s", gotDesign)
+	}
+	apiBody, err := os.ReadFile(filepath.Join(api, "api-mm22-ref.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(apiBody), "at-a575") {
+		t.Fatalf("other scope must not be rewritten: %s", apiBody)
+	}
+
+	got, _, err := run(t, app, "get", "a575")
+	if err != nil || !strings.Contains(got, "wc-a575-shape.md") {
+		t.Fatalf("get = %q %v", got, err)
+	}
+	listed, _, err := run(t, app, "design", "list")
+	if err != nil || !strings.Contains(listed, "wc-qrst") {
+		t.Fatalf("design list = %q %v", listed, err)
+	}
+	board, _, err := run(t, app, "list", "--all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(board, "at-") || strings.Contains(board, "wc-qrst") || !strings.Contains(board, "wc-a575") || !strings.Contains(board, "wc-b999") {
+		t.Fatalf("board = %s", board)
+	}
+	pulse, _, err = run(t, app, "pulse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsePulse(pulse)["total"] != "2" || parsePulse(pulse)["done"] != "1" || parsePulse(pulse)["integrity"] != "ok" {
+		t.Fatalf("pulse after repair = %s", pulse)
+	}
+	doc, docErr, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc, "id_prefix:") || !strings.Contains(docErr, "no integrity issues found") {
+		t.Fatalf("doctor after repair = %s / %s", doc, docErr)
+	}
+	again, _, err := run(t, app, "repair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(again, "repaired id prefix:") {
+		t.Fatalf("second repair must be a no-op, got %s", again)
+	}
+}
+
+func TestRepairLeavesLiveForeignID(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir := initScope(t, app, "wc")
+	api := initScope(t, app, "api")
+	addTicket(t, api, "api-mm22", "real", "todo", "a0", "# Real\n", false, "")
+	if err := os.MkdirAll(filepath.Join(api, "design"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	designBody := "---\nid: api-xy99\nstatus: draft\ncreated: 2026-01-01T00:00:00Z\n---\n# Note\n"
+	if err := os.WriteFile(filepath.Join(api, "design", "api-xy99-note.md"), []byte(designBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	strayTicket := "---\nid: api-mm22\nstatus: todo\norder: \"a1\"\ncreated: 2026-01-01T00:00:00Z\n---\n# Stray ticket\n"
+	strayDesign := "---\nid: api-xy99\nstatus: todo\norder: \"a2\"\ncreated: 2026-01-01T00:00:00Z\n---\n# Stray design\n"
+	if err := os.WriteFile(filepath.Join(dir, "at-a575-slug.md"), []byte(strayTicket), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "at-b999-slug.md"), []byte(strayDesign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "wc-cccc", "ref", "todo", "a0", "# Ref\n", false, "depends: [at-a575, api-mm22]\nrelated: [at-b999, api-xy99]\n")
+
+	out, errOut, err := run(t, app, "repair")
+	if err != nil {
+		t.Fatalf("repair: %v\n%s", err, errOut)
+	}
+	assertNoDoctorCatalogue(t, out, errOut)
+	if strings.Contains(out, "edge_verify:") {
+		t.Fatalf("live ids must not be reported as moved: %s", out)
+	}
+	ref, err := os.ReadFile(filepath.Join(dir, "wc-cccc-ref.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"depends: [wc-mm22, api-mm22]", "related: [wc-xy99, api-xy99]"} {
+		if !strings.Contains(string(ref), want) {
+			t.Fatalf("ref = %s", ref)
+		}
+	}
+	if strings.Contains(string(ref), "at-") {
+		t.Fatalf("filename ids must follow the stray files: %s", ref)
+	}
+	real, err := os.ReadFile(filepath.Join(api, "api-mm22-real.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(real), "id: api-mm22") {
+		t.Fatalf("live ticket = %s", real)
+	}
+	note, err := os.ReadFile(filepath.Join(api, "design", "api-xy99-note.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(note), "id: api-xy99") {
+		t.Fatalf("live design = %s", note)
+	}
+	adopted, err := os.ReadFile(filepath.Join(dir, "wc-mm22-slug.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(adopted), "id: wc-mm22") || strings.Contains(string(adopted), "api-mm22") {
+		t.Fatalf("stray ticket = %s", adopted)
+	}
+}
+
+func TestRepairStopsWhenOtherDesignUnreadable(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir := initScope(t, app, "wc")
+	api := initScope(t, app, "api")
+	addTicket(t, dir, "at-a575", "shape", "todo", "a0", "# Shape\n", false, "")
+	if err := os.MkdirAll(filepath.Join(api, "design"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	note := filepath.Join(api, "design", "api-xy99-note.md")
+	body := "---\nid: api-xy99\nstatus: draft\ncreated: 2026-01-01T00:00:00Z\nproduces: [at-a575]\n---\n# Note\n"
+	if err := os.WriteFile(note, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(note, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(note, 0o644) })
+
+	_, errOut, err := run(t, app, "repair")
+	if err == nil {
+		t.Fatal("unreadable design must stop repair")
+	}
+	if !strings.Contains(err.Error(), "permission denied") && !strings.Contains(errOut, "permission denied") {
+		t.Fatalf("err = %v %s", err, errOut)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "at-a575-shape.md")); statErr != nil {
+		t.Fatal("repair must not write")
+	}
+}
+
+func TestRepairAdoptsPrefixWhenDesignIsFile(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir := initScope(t, app, "wc")
+	if err := os.WriteFile(filepath.Join(dir, "design"), []byte("not a directory\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "at-a575", "shape", "todo", "a0", "# Shape\n", false, "")
+
+	doc, docErr, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v %s", err, docErr)
+	}
+	if !strings.Contains(doc, "id_prefix: at-a575 is in scope wc") || !strings.Contains(doc, token.NonAllowlist) {
+		t.Fatalf("doctor = %q", doc)
+	}
+	out, errOut, err := run(t, app, "repair")
+	if err != nil {
+		t.Fatalf("repair: %v %s", err, errOut)
+	}
+	if !strings.Contains(out, "repaired id prefix: at-a575 -> wc-a575") {
+		t.Fatalf("out = %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "wc-a575-shape.md")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "design"))
+	if err != nil || info.IsDir() {
+		t.Fatalf("parked design file = %v %v", info, err)
 	}
 }
 

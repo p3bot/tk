@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 
@@ -260,8 +262,17 @@ func pulseMode(schema *scopeconfig.Schema, configUnusable bool, hasRoot bool) st
 	return scopeadmin.DeriveMode(schema.AutoCommit, hasRoot)
 }
 
-// ambientIntegrity: parse_error/duplicate/equal_order/archive drift → issues.
+// ambientIntegrity: parse_error/duplicate/equal_order/archive drift/id prefix → issues.
 func ambientIntegrity(e *engine, scope string, schema *scopeconfig.Schema) (string, error) {
+	if entry, ok := e.reg.Scopes[scope]; ok {
+		mismatched, err := scopefile.PrefixMismatches(entry.Dir, scope)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		if len(mismatched) > 0 {
+			return "issues", nil
+		}
+	}
 	scopes := []string{scope}
 	n, err := e.db.ParseErrorCount(scopes)
 	if err != nil {

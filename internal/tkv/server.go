@@ -434,7 +434,7 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 		ok := true
 		for _, name := range c.Scopes {
 			entry := reg.Scopes[name]
-			st, err := scopeIntegrity(s.db, name, s.rec.SchemaCached(name, entry.Dir))
+			st, err := scopeIntegrity(s.db, name, entry.Dir, s.rec.SchemaCached(name, entry.Dir))
 			if err != nil {
 				return c, err
 			}
@@ -464,7 +464,7 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 		return c, err
 	}
 	c.Tags = tags
-	st, err := scopeIntegrity(s.db, selected, schema)
+	st, err := scopeIntegrity(s.db, selected, entry.Dir, schema)
 	if err != nil {
 		return c, err
 	}
@@ -503,7 +503,16 @@ func pulseMode(schema *scopeconfig.Schema, configUnusable bool, hasRoot bool) st
 	return scopeadmin.DeriveMode(schema.AutoCommit, hasRoot)
 }
 
-func scopeIntegrity(db *index.DB, scope string, schema *scopeconfig.Schema) (string, error) {
+func scopeIntegrity(db *index.DB, scope, dir string, schema *scopeconfig.Schema) (string, error) {
+	if dir != "" {
+		mismatched, err := scopefile.PrefixMismatches(dir, scope)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		if len(mismatched) > 0 {
+			return "issues", nil
+		}
+	}
 	scopes := []string{scope}
 	n, err := db.ParseErrorCount(scopes)
 	if err != nil {

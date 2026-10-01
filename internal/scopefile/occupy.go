@@ -57,7 +57,8 @@ func fullIDOfBasename(base, scope string) (string, bool) {
 // OccupiedShortIDs is the on-disk short-id set for one scope: ticket files at
 // the root and under archive/, plus design files under design/. Each file
 // contributes its filename short id and, when the fence parses, a same-scope
-// fence id. Untracked files count. Missing archive/ or design/ is empty.
+// fence id. Untracked files count. A missing archive/ or design/, or a file
+// parked at either name, is empty.
 func OccupiedShortIDs(dir, scope string) (map[string]struct{}, error) {
 	paths, err := OccupiedShortPaths(dir, scope)
 	if err != nil {
@@ -84,17 +85,18 @@ func OccupiedShortPaths(dir, scope string) (map[string]string, error) {
 		{filepath.Join(dir, DesignDir), true},
 	}
 	for _, root := range roots {
-		if err := occupyDir(out, scope, root.path, root.design); err != nil {
+		optional := root.path != dir
+		if err := occupyDir(out, scope, root.path, root.design, optional); err != nil {
 			return nil, err
 		}
 	}
 	return out, nil
 }
 
-func occupyDir(out map[string]string, scope, root string, design bool) error {
+func occupyDir(out map[string]string, scope, root string, design, optional bool) error {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if os.IsNotExist(err) || (optional && OptionalDirMiss(root)) {
 			return nil
 		}
 		return err

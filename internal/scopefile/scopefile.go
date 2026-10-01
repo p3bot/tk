@@ -150,15 +150,28 @@ func TicketIDFromBase(base string) (string, bool) {
 	return full, true
 }
 
+// OptionalDirMiss reports whether path cannot be scanned as an optional
+// directory. archive/ and design/ are optional: missing, or a file parked at
+// that name, is an empty root. Any other error, including permission, is not
+// a miss — the caller returns it.
+func OptionalDirMiss(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return os.IsNotExist(err)
+	}
+	return !info.IsDir()
+}
+
 // ListTickets returns allowlisted ticket markdown at dir root and archive/,
-// sorted. Missing archive/ is normal. Nested residue and notes are omitted.
+// sorted. A missing archive/, or a file parked at that name, is empty.
+// Nested residue and notes are omitted.
 func ListTickets(dir string) ([]string, error) {
 	var out []string
 	if err := collectTickets(dir, dir, &out); err != nil {
 		return nil, err
 	}
 	arch := filepath.Join(dir, "archive")
-	if err := collectTickets(dir, arch, &out); err != nil && !os.IsNotExist(err) {
+	if err := collectTickets(dir, arch, &out); err != nil && !OptionalDirMiss(arch) {
 		return nil, err
 	}
 	sort.Strings(out)

@@ -82,7 +82,7 @@ tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # U
 tk scope field unset <name> [--strip] [--scope S]                   # Remove field declaration; --strip also drops the key from all tickets
 tk sync [--scope S] [--all]                                         # Snapshot/integrate/push auto-commit roots (claim also pushes)
 tk doctor                                                           # Diagnose integrity (never mutates files)
-tk repair [--re-space-order] [--all]                                # Repair id collisions, equal order, archive layout
+tk repair [--re-space-order] [--all]                                # Repair id collisions, id prefix, equal order, archive layout
 tk reindex                                                          # Rebuild the machine-wide index from files
 ```
 
@@ -103,6 +103,7 @@ tk reindex                                                          # Rebuild th
 ## Identifiers
 
 - Full id is `<scope>-<short>`
+- A filename whose id prefix is not the scope name is invisible to list, pulse, and get. `tk doctor` reports `id_prefix:`; `tk repair` rewrites that prefix in place
 - Short ids resolve in the ambient scope
 - Full id resolves in any registered scope
 - Prefer full ids on depends/related

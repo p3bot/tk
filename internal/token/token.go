@@ -27,6 +27,11 @@ const (
 	// DuplicateID marks two or more ticket files in one scope claiming the same full id.
 	DuplicateID = "duplicate_id:"
 
+	// IDPrefix marks a ticket or design file whose filename id prefix is not the
+	// scope it is filed in. The allowlist keeps it, and the indexer skips it, so
+	// the file is invisible until repair rewrites the prefix in place.
+	IDPrefix = "id_prefix:"
+
 	// EqualOrder marks two or more tickets in one scope sharing an order key.
 	EqualOrder = "equal_order:"
 
@@ -149,7 +154,7 @@ func FormatRequiredMissing(id string, keys []string) string {
 
 var all = []string{
 	NameDrift, ConfigUnparseable, AutoCommitMismatch, UnreachableScope,
-	ParseError, DuplicateID, EqualOrder, ArchiveNonTerminal, ArchiveTerminalAtRoot,
+	ParseError, DuplicateID, IDPrefix, EqualOrder, ArchiveNonTerminal, ArchiveTerminalAtRoot,
 	DependsDangling, DependsUnresolvable, SchemaError, SchemaWarn,
 	SyncDisabled, Uncommitted, SyncNeeded, OrderLong, StatusConflict, DependsCycle,
 	DependsSelf, DependsOnCancelled, DependsOpen, RelatedUnresolvable, StaleInProgress,

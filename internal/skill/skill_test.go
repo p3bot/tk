@@ -80,6 +80,8 @@ func TestRequiredGuidancePresent(t *testing.T) {
 		"--open",
 		"terminal-only status filters reverse that order",
 		"tk rehome <id> <dest-scope> [--scope S]",
+		"id_prefix:",
+		"rewrites that prefix in place",
 		"tk create, get, next, and rehome print a cleaned absolute path",
 		"next --claim, rehome, meta set/add/remove",
 	}

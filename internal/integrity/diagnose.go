@@ -147,6 +147,9 @@ func (d *diagnoser) scope(scope string) error {
 		return err
 	}
 	d.residue(scope, dir)
+	if err := d.prefixMismatches(scope, dir); err != nil {
+		return err
+	}
 	if err := d.designFindings(scope, dir); err != nil {
 		return err
 	}
@@ -511,6 +514,17 @@ func (d *diagnoser) configUnparseable(scope string, cfgErr *scopeconfig.ConfigEr
 	}
 	d.cfgReported[scope] = true
 	d.add(token.Line(token.ConfigUnparseable, fmt.Sprintf("%s (%s): %s — fix tk.cue", scope, cfgErr.Dir, cfgErr.Reason)))
+}
+
+func (d *diagnoser) prefixMismatches(scope, dir string) error {
+	files, err := scopefile.PrefixMismatches(dir, scope)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		d.add(token.Line(token.IDPrefix, fmt.Sprintf("%s is in scope %s (%s) — run tk repair", f.ID, scope, f.Path)))
+	}
+	return nil
 }
 
 func (d *diagnoser) residue(scope, dir string) {

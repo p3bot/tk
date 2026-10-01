@@ -11,12 +11,12 @@ func newRepairCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repair [--re-space-order] [--all]",
 		Short: "Repair integrity issues across scopes",
-		Long: "Repair id collisions, equal order keys, and archive layout drift. Needs a\n" +
-			"scope (ambient, TK_SCOPE, or --all) and never mutates silently machine-wide.\n" +
-			"Refuses on a mid-rebase auto-commit git-root unless --all, which skips that\n" +
-			"root. --re-space-order also shortens a band of over-long order keys (additive;\n" +
-			"default classes still run). There is no --scope flag. Does not diagnose — run\n" +
-			"tk doctor afterwards for remaining issues.",
+		Long: "Repair id collisions, mismatched id prefixes, equal order keys, and archive\n" +
+			"layout drift. Needs a scope (ambient, TK_SCOPE, or --all) and never mutates\n" +
+			"silently machine-wide. Refuses on a mid-rebase auto-commit git-root unless\n" +
+			"--all, which skips that root. --re-space-order also shortens a band of\n" +
+			"over-long order keys (additive; default classes still run). There is no\n" +
+			"--scope flag. Does not diagnose — run tk doctor afterwards for remaining issues.",
 		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runRepair(app, c, reSpaceOrder, all)

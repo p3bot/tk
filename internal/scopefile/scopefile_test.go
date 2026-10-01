@@ -107,6 +107,45 @@ func TestListTickets(t *testing.T) {
 	}
 }
 
+func TestListTicketsArchiveIsFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "archive"), []byte("parked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "wc-ab2c-root.md"), []byte("root"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ListTickets(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || filepath.Base(got[0]) != "wc-ab2c-root.md" {
+		t.Fatalf("ListTickets = %v", got)
+	}
+}
+
+func TestOccupiedShortPathsParkedOptionalDir(t *testing.T) {
+	for _, name := range []string{"archive", "design"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("parked\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			body := "---\nid: wc-ab2c\nstatus: todo\ncreated: 2026-01-01T00:00:00Z\n---\n# X\n"
+			if err := os.WriteFile(filepath.Join(dir, "wc-ab2c-root.md"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, err := OccupiedShortPaths(dir, "wc")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := got["ab2c"]; !ok {
+				t.Fatalf("occupied = %v", got)
+			}
+		})
+	}
+}
+
 func TestLooksLikeTicket(t *testing.T) {
 	cases := []struct {
 		base string

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -569,6 +570,69 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	if !strings.Contains(db, "depends on") || !strings.Contains(db, "wc-ab2c") {
 		t.Fatalf("depends neighbourhood: %s", db)
 	}
+}
+
+func TestChangedDwellOnInspectAndKanban(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	now := time.Now()
+	past := now.Add(-36 * time.Hour).Format(time.RFC3339)
+	future := now.Add(time.Hour).Format(time.RFC3339)
+	addTicket(t, dir, "wc-ab2c", "aged", "todo", "a0", "# Aged\n", false, "changed: "+past+"\n")
+	addTicket(t, dir, "wc-cd34", "plain", "todo", "a1", "# Plain\n", false, "")
+	addTicket(t, dir, "wc-ef34", "bad", "todo", "a2", "# Bad\n", false, "changed: not-a-time\n")
+	addTicket(t, dir, "wc-gh56", "ahead", "todo", "a3", "# Ahead\n", false, "changed: "+future+"\n")
+	s := mustServer(t, app)
+
+	board := do(s, "/scope/wc")
+	if board.Code != 200 {
+		t.Fatalf("kanban = %d %s", board.Code, board.Body.String())
+	}
+	b := board.Body.String()
+	var title bytes.Buffer
+	if err := template.Must(template.New("title").Parse(`title="{{.}}"`)).Execute(&title, past); err != nil {
+		t.Fatal(err)
+	}
+	wantAged := `<span class="id">ab2c <span class="dwell" ` + title.String() + `>1d</span> <span class="next-badge">next</span></span>`
+	if !strings.Contains(b, wantAged) {
+		t.Fatalf("aged card dwell:\nwant %s\nbody %s", wantAged, b)
+	}
+	if strings.Count(b, `class="dwell"`) != 1 {
+		t.Fatalf("only a past stamp gets a duration: %s", b)
+	}
+	if !strings.Contains(b, `<span class="id">cd34</span>`) || !strings.Contains(b, `<span class="id">ef34</span>`) || !strings.Contains(b, `<span class="id">gh56</span>`) {
+		t.Fatalf("absent, bad, and future stamps must omit the duration: %s", b)
+	}
+	if strings.Contains(b, "not-a-time") {
+		t.Fatalf("card must not show an unusable stamp: %s", b)
+	}
+
+	aged := do(s, "/scope/wc/ab2c").Body.String()
+	if !strings.Contains(aged, `<div><dt>created</dt><dd>2026-01-01T00:00:00Z</dd></div>`) ||
+		!strings.Contains(aged, `<div><dt>changed</dt><dd>`+htmlText(t, past)+`</dd></div>`) {
+		t.Fatalf("inspect changed row: %s", aged)
+	}
+	plain := do(s, "/scope/wc/cd34").Body.String()
+	if !strings.Contains(plain, `<div><dt>changed</dt><dd></dd></div>`) {
+		t.Fatalf("absent changed must be an empty cell: %s", plain)
+	}
+	bad := do(s, "/scope/wc/ef34").Body.String()
+	if !strings.Contains(bad, `<div><dt>changed</dt><dd>not-a-time</dd></div>`) {
+		t.Fatalf("unparseable changed must stay verbatim: %s", bad)
+	}
+	ahead := do(s, "/scope/wc/gh56").Body.String()
+	if !strings.Contains(ahead, `<div><dt>changed</dt><dd>`+htmlText(t, future)+`</dd></div>`) {
+		t.Fatalf("future changed must stay verbatim: %s", ahead)
+	}
+}
+
+func htmlText(t *testing.T, s string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := template.Must(template.New("text").Parse(`{{.}}`)).Execute(&buf, s); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
 }
 
 func TestKanbanColumns(t *testing.T) {

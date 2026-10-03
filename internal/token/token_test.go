@@ -59,7 +59,10 @@ func TestFormatRequiredMissing(t *testing.T) {
 
 func TestCatalogueIncludesSoftWriteTokens(t *testing.T) {
 	got := All()
-	want := map[string]bool{TagUnknown: false, TagNew: false, DependsOpen: false, RequiredMissing: false}
+	want := map[string]bool{
+		TagUnknown: false, TagNew: false, DependsOpen: false, RequiredMissing: false,
+		StaleReview: false, StaleBlocked: false,
+	}
 	for _, tkn := range got {
 		if _, ok := want[tkn]; ok {
 			want[tkn] = true

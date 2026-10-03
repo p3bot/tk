@@ -253,6 +253,7 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
 .card a:hover { text-decoration: none; }
 .card:hover { border-color: var(--accent); }
 .card .id { display: block; font-size: 0.8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.card .dwell { margin-left: 0.35rem; }
 .card .title { display: block; font-weight: 650; margin: 0.15rem 0; }
 .card .waiting { display: block; font-size: 0.875rem; color: var(--issues); }
 .card-tools {

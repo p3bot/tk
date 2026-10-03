@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/frontmatter"
@@ -209,6 +210,10 @@ type kanbanCard struct {
 	UpID         string
 	DownName     string
 	DownID       string
+	// Dwell is the status-entry duration. DwellStamp is the raw fence value
+	// and the card tooltip. Both stay empty when the stamp is not a past time.
+	Dwell      string
+	DwellStamp string
 }
 
 func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
@@ -274,6 +279,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 	}
 	colNames := kanbanColumns(custom, backlog, archived, present)
 	cols := make([]kanbanCol, 0, len(colNames))
+	now := time.Now()
 	for _, st := range colNames {
 		cards := byStatus[st]
 		reverse := index.SortListing(cards, []string{st}, custom)
@@ -295,6 +301,10 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 				Status:      p.Status,
 			}
 			card.CanClaim, card.MarkStatuses = ticketWriteControls(schema, p.Status, p.ParseError)
+			if label, ok := statusDwell(p.Changed, now); ok {
+				card.Dwell = label
+				card.DwellStamp = p.Changed
+			}
 			if ticketWritable(schema, p.ParseError) {
 				setColumnOrderDests(&card, cards, i, reverse)
 			}
@@ -459,6 +469,7 @@ type inspectPage struct {
 	Summary      string
 	Tags         []string
 	Created      string
+	Changed      string
 	Custom       []customField
 	Archived     bool
 	SchemaErr    bool
@@ -652,6 +663,7 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 		Summary:     p.Summary,
 		Tags:        p.Tags,
 		Created:     p.Created,
+		Changed:     p.Changed,
 		Custom:      inspectCustoms(schema, p.Custom, writable),
 		Archived:    p.Archived,
 		SchemaErr:   p.SchemaError,

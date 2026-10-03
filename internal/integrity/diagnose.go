@@ -34,7 +34,9 @@ import (
 	"github.com/p3bot/tk/internal/token"
 )
 
-const staleInProgress = 72 * time.Hour
+// staleFor is the soft-warn cutoff. In-progress measures file quiet time.
+// Review and blocked measure the status stamp, because those files are supposed to sit.
+const staleFor = 72 * time.Hour
 
 // Deps are the machine-local services diagnose and repair orchestration need.
 type Deps struct {
@@ -201,15 +203,44 @@ func (d *diagnoser) perRow(dir string, rows []*index.Ticket, schema *scopeconfig
 		if len(p.StatusConflict) > 0 {
 			d.add(d.statusConflictLine(p, dir, autoCommit, autoCommitKnown))
 		}
-		if p.Status == status.InProgress && p.MtimeNS > 0 && d.now.Sub(time.Unix(0, p.MtimeNS)) > staleInProgress {
-			age := d.now.Sub(time.Unix(0, p.MtimeNS)).Round(time.Hour)
-			d.add(token.Line(token.StaleInProgress, fmt.Sprintf("%s has been in-progress for %s (%s) — inspect; maybe reopen to todo", p.ID, age, p.Path)))
-		}
+		d.stale(p)
 		if p.SchemaError {
 			d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has a depends/related entry that is not a legal full ticket id (%s)", p.ID, p.Path)))
 		}
 		d.frontmatterChecks(p, schema)
 	}
+}
+
+// stale warns on two clocks. An in-progress file that has sat unwritten is an
+// abandoned claim. Review and blocked are supposed to sit, so only an old
+// status stamp counts, and a missing or unusable stamp is unknown rather than old.
+func (d *diagnoser) stale(p *index.Ticket) {
+	if p.Status == status.InProgress && p.MtimeNS > 0 {
+		quiet := d.now.Sub(time.Unix(0, p.MtimeNS))
+		if quiet > staleFor {
+			d.add(token.Line(token.StaleInProgress, fmt.Sprintf(
+				"%s has not been modified for %s (%s) — inspect; maybe reopen to todo",
+				p.ID, quiet.Round(time.Hour), p.Path)))
+		}
+	}
+	var tok, how string
+	switch p.Status {
+	case status.Review:
+		tok, how = token.StaleReview, "has been in review for"
+	case status.Blocked:
+		tok, how = token.StaleBlocked, "has been blocked for"
+	default:
+		return
+	}
+	at, err := time.Parse(time.RFC3339, p.Changed)
+	if err != nil {
+		return
+	}
+	dwell := d.now.Sub(at)
+	if dwell <= staleFor {
+		return
+	}
+	d.add(token.Line(tok, fmt.Sprintf("%s %s %s (%s) — inspect", p.ID, how, dwell.Round(time.Hour), p.Path)))
 }
 
 // statusConflictLine: mid-rebase tail only for known autoCommit; unknown autoCommit omits both tails.

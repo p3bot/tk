@@ -87,8 +87,17 @@ const (
 	// RelatedUnresolvable marks a soft related target that cannot be resolved (cosmetic).
 	RelatedUnresolvable = "related_unresolvable:"
 
-	// StaleInProgress marks built-in in-progress with mtime older than 72h; never auto-reopened.
+	// StaleInProgress marks built-in in-progress whose file has not been
+	// modified for more than 72h. Never auto-reopened.
 	StaleInProgress = "stale_in_progress:"
+
+	// StaleReview marks built-in review whose status stamp is more than 72h
+	// old. A missing or unusable stamp stays quiet.
+	StaleReview = "stale_review:"
+
+	// StaleBlocked marks built-in blocked whose status stamp is more than 72h
+	// old. A missing or unusable stamp stays quiet.
+	StaleBlocked = "stale_blocked:"
 
 	// LastPushError marks a git-root whose last auto-commit push failed; cleared on next success.
 	LastPushError = "last_push_error:"
@@ -158,6 +167,7 @@ var all = []string{
 	DependsDangling, DependsUnresolvable, SchemaError, SchemaWarn,
 	SyncDisabled, Uncommitted, SyncNeeded, OrderLong, StatusConflict, DependsCycle,
 	DependsSelf, DependsOnCancelled, DependsOpen, RelatedUnresolvable, StaleInProgress,
+	StaleReview, StaleBlocked,
 	LastPushError, EdgeVerify, NonAllowlist, TagUnknown, TagNew, RequiredMissing,
 	DesignID, ProducesDangling,
 }

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/p3bot/tk/internal/token"
 )
@@ -276,6 +277,61 @@ func TestDoctorStructuralAndCreatedClasses(t *testing.T) {
 	}
 	if fmValue(t, filepath.Join(dir, "wc-ab2c-x.md"), "created") != "2026-06-20" {
 		t.Errorf("bare doctor must not rewrite created")
+	}
+}
+
+func TestDoctorStaleReviewAndBlocked(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir := initScope(t, app, "wc")
+	now := time.Now()
+	old := now.Add(-73 * time.Hour).Format(time.RFC3339)
+	fresh := now.Add(-71 * time.Hour).Format(time.RFC3339)
+	future := now.Add(time.Hour).Format(time.RFC3339)
+	stamp := func(at string) string { return "changed: " + at + "\n" }
+
+	addTicket(t, dir, "wc-ab2c", "review", "review", "a0", "# Review\n", false, stamp(old))
+	addTicket(t, dir, "wc-cd34", "blocked", "blocked", "a1", "# Blocked\n", false, stamp(old))
+	addTicket(t, dir, "wc-ef56", "young", "review", "a2", "# Young\n", false, stamp(fresh))
+	addTicket(t, dir, "wc-gh78", "bare", "review", "a3", "# Bare\n", false, "")
+	addTicket(t, dir, "wc-jk9m", "bad", "review", "a4", "# Bad\n", false, "changed: not-a-time\n")
+	addTicket(t, dir, "wc-np2q", "ahead", "review", "a5", "# Ahead\n", false, stamp(future))
+	addTicket(t, dir, "wc-rs3t", "todo", "todo", "a6", "# Todo\n", false, stamp(old))
+	addTicket(t, dir, "wc-uv4w", "draft", "draft", "a7", "# Draft\n", false, stamp(old))
+	addTicket(t, dir, "wc-xy5z", "live", "in-progress", "a8", "# Live\n", false, stamp(old))
+	addTicket(t, dir, "wc-zm6n", "quiet", "in-progress", "a9", "# Quiet\n", false, stamp(fresh))
+	quiet := filepath.Join(dir, "wc-zm6n-quiet.md")
+	ago := now.Add(-73 * time.Hour)
+	if err := os.Chtimes(quiet, ago, ago); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"stale_review: wc-ab2c has been in review for 73h0m0s ",
+		"stale_blocked: wc-cd34 has been blocked for 73h0m0s ",
+		"stale_in_progress: wc-zm6n has not been modified for 73h0m0s ",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "has been in-progress for") {
+		t.Errorf("in-progress warning must name file quiet time, got %q", out)
+	}
+	for _, id := range []string{"wc-ef56", "wc-gh78", "wc-jk9m", "wc-np2q", "wc-rs3t", "wc-uv4w", "wc-xy5z"} {
+		if strings.Contains(out, "stale_review: "+id) || strings.Contains(out, "stale_blocked: "+id) || strings.Contains(out, "stale_in_progress: "+id) {
+			t.Errorf("%s must not be a stale warning\n%s", id, out)
+		}
+	}
+	if !strings.Contains(out, `schema_error: wc-jk9m changed "not-a-time" is not RFC3339`) {
+		t.Errorf("bad stamp stays a schema error, got %q", out)
+	}
+	if fmValue(t, filepath.Join(dir, "wc-ab2c-review.md"), "changed") != old {
+		t.Fatal("doctor must not rewrite changed")
 	}
 }
 

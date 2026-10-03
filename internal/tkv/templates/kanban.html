@@ -53,7 +53,7 @@
     <h2>{{.Status}} <span class="count">{{len .Cards}}</span></h2>
     {{range .Cards}}
     <article class="card" data-filter="{{.FilterText}}">
-      <a href="{{.Href}}"><span class="id">{{.ShortID}}{{if .Next}} <span class="next-badge">next</span>{{end}}</span><span class="title">{{.Title}}</span></a>
+      <a href="{{.Href}}"><span class="id">{{.ShortID}}{{if .Dwell}} <span class="dwell" title="{{.DwellStamp}}">{{.Dwell}}</span>{{end}}{{if .Next}} <span class="next-badge">next</span>{{end}}</span><span class="title">{{.Title}}</span></a>
       {{if .Tags}}<span class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</span>{{end}}
       {{if .SchemaError}}<span class="waiting">schema_error: a depends/related entry is not a legal full ticket id</span>{{end}}
       {{if .WaitingOn}}<span class="waiting">waiting {{range .WaitingOn}}<a href="{{.Href}}">{{.ID}}</a> {{end}}</span>{{end}}

@@ -92,16 +92,16 @@ func upsertTicketTx(tx *sql.Tx, p *Ticket) error {
 	}
 
 	_, err = tx.Exec(`
-INSERT INTO tickets (path, scope, id, short_id, status, order_key, title, summary, created,
+INSERT INTO tickets (path, scope, id, short_id, status, order_key, title, summary, created, changed,
                       custom, status_conflict, archived, parse_error, parse_msg, schema_error, mtime_ns, size)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(path) DO UPDATE SET
     scope=excluded.scope, id=excluded.id, short_id=excluded.short_id, status=excluded.status,
     order_key=excluded.order_key, title=excluded.title, summary=excluded.summary, created=excluded.created,
-    custom=excluded.custom, status_conflict=excluded.status_conflict,
+    changed=excluded.changed, custom=excluded.custom, status_conflict=excluded.status_conflict,
     archived=excluded.archived, parse_error=excluded.parse_error, parse_msg=excluded.parse_msg,
     schema_error=excluded.schema_error, mtime_ns=excluded.mtime_ns, size=excluded.size`,
-		p.Path, p.Scope, p.ID, p.ShortID, p.Status, p.OrderKey, p.Title, p.Summary, p.Created,
+		p.Path, p.Scope, p.ID, p.ShortID, p.Status, p.OrderKey, p.Title, p.Summary, p.Created, p.Changed,
 		customJSON, conflictJSON, boolToInt(p.Archived), boolToInt(p.ParseError),
 		p.ParseMsg, boolToInt(p.SchemaError), p.MtimeNS, p.Size)
 	if err != nil {

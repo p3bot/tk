@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/frontmatter"
@@ -150,8 +151,13 @@ func writePreparedMarks(deps Deps, res *reconcile.Result, schema *scopeconfig.Sc
 }
 
 func relocateAndWrite(deps Deps, scope, dir, newStatus string, custom map[string]status.Category, path string, m *frontmatter.Model, body []byte) (newPath, oldPath string, err error) {
-	wasTerminal := status.IsTerminal(m.Status, custom)
+	oldStatus := m.Status
+	wasTerminal := status.IsTerminal(oldStatus, custom)
 	nowTerminal := status.IsTerminal(newStatus, custom)
+	// Same-status rewrites leave changed alone, including when the key is absent.
+	if oldStatus != newStatus {
+		m.Changed = clock(deps).Format(time.RFC3339)
+	}
 	m.Status = newStatus
 
 	newPath, oldPath = path, ""

@@ -187,10 +187,38 @@ func TestSerializeQuotesOrder(t *testing.T) {
 func TestSerializeOmitsEmptyOptionalKeys(t *testing.T) {
 	m := &Model{ID: "wc-ab2c", Status: "draft", Order: "a0", Created: "2026-01-01T00:00:00Z"}
 	out, _ := Serialize(m)
-	for _, absent := range []string{"depends", "related", "tags", "links", "summary", "status_conflict"} {
+	for _, absent := range []string{"changed", "depends", "related", "tags", "links", "summary", "status_conflict"} {
 		if bytes.Contains(out, []byte(absent+":")) {
 			t.Errorf("Serialize emitted empty optional key %q:\n%s", absent, out)
 		}
+	}
+}
+
+func TestSerializeChangedFollowsStatus(t *testing.T) {
+	m := &Model{
+		ID: "wc-ab2c", Status: "todo", Changed: "2026-02-02T03:04:05Z",
+		Order: "a0", Created: "2026-01-01T00:00:00Z",
+	}
+	out, err := Serialize(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	statusAt := strings.Index(text, "status:")
+	changedAt := strings.Index(text, "changed:")
+	orderAt := strings.Index(text, "order:")
+	if statusAt < 0 || changedAt < 0 || orderAt < 0 || statusAt >= changedAt || changedAt >= orderAt {
+		t.Fatalf("changed must follow status and precede order:\n%s", text)
+	}
+	back, err := Parse(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Changed != m.Changed {
+		t.Fatalf("changed = %q", back.Changed)
+	}
+	if len(back.Custom) != 0 {
+		t.Fatalf("changed leaked into custom: %#v", back.Custom)
 	}
 }
 

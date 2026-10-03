@@ -331,6 +331,11 @@ func applyDriverOutcome(r Reporter, o rebasedriver.Outcome, rep *syncReport) boo
 			"%s: merge failed closed on key %q (%s) — resolve %s in place, then run tk sync",
 			o.Path, o.FailClosed.Key, o.FailClosed.Reason, o.Path)))
 		return false
+	case rebasedriver.ClassAmbiguousBase:
+		r.Err(fmt.Sprintf(
+			"ambiguous base: more than one deleted file has id %s for %s — resolve %s in place, then run tk sync",
+			o.AmbiguousBase.ID, o.Path, o.Path))
+		return false
 	default:
 		return false
 	}

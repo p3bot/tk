@@ -2,8 +2,44 @@ package syncengine
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/p3bot/tk/internal/rebasedriver"
+	"github.com/p3bot/tk/internal/token"
 )
+
+type capture struct {
+	err []string
+}
+
+func (c *capture) Out(string) {}
+
+func (c *capture) Err(line string) { c.err = append(c.err, line) }
+
+func TestAmbiguousBasePausesInProse(t *testing.T) {
+	var rep capture
+	cont := applyDriverOutcome(&rep, rebasedriver.Outcome{
+		Path:          "wc/wc-ab2c-gamma.md",
+		Class:         rebasedriver.ClassAmbiguousBase,
+		AmbiguousBase: &rebasedriver.AmbiguousBase{ID: "wc-ab2c"},
+	}, &syncReport{})
+	if cont {
+		t.Fatal("ambiguous base must pause the sync")
+	}
+	if len(rep.err) != 1 {
+		t.Fatalf("stderr lines = %v", rep.err)
+	}
+	got := rep.err[0]
+	for _, want := range []string{"wc-ab2c", "wc/wc-ab2c-gamma.md", "tk sync"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("message %q lacks %q", got, want)
+		}
+	}
+	if strings.Contains(got, token.ConfigUnparseable) || strings.HasPrefix(got, token.SchemaError) {
+		t.Errorf("ambiguous base must not use an error token, got %q", got)
+	}
+}
 
 func TestHasConflictMarkerStartOnly(t *testing.T) {
 	cases := []struct {

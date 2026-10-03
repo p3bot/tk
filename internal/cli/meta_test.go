@@ -164,7 +164,7 @@ func TestMetaGetUnknownKeyListsCatalogue(t *testing.T) {
 		t.Fatalf("unknown key exit = %v want 2", err)
 	}
 	msg := err.Error()
-	for _, k := range []string{"id", "status", "order", "depends", "related", "tags", "created", "links", "summary", "status_conflict", "area", "estimate"} {
+	for _, k := range []string{"id", "status", "changed", "order", "depends", "related", "tags", "created", "links", "summary", "status_conflict", "area", "estimate"} {
 		if !strings.Contains(msg, k) {
 			t.Errorf("catalogue missing %q in %q", k, msg)
 		}
@@ -668,7 +668,7 @@ func TestMetaWrongClassAndImmutable(t *testing.T) {
 	if _, _, err := run(t, app, "meta", "add", "wc-ab2c", "summary", "x"); ExitCodeFromError(err) != exitUsage {
 		t.Errorf("add summary should exit 2, got %v", err)
 	}
-	for _, key := range []string{"status", "order", "id", "created", "status_conflict"} {
+	for _, key := range []string{"status", "order", "id", "created", "changed", "status_conflict"} {
 		_, _, err := run(t, app, "meta", "set", "wc-ab2c", key, "todo")
 		if ExitCodeFromError(err) != exitUsage {
 			t.Errorf("immutable %s exit = %v want 2", key, err)

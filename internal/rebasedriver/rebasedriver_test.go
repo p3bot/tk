@@ -320,6 +320,86 @@ func TestAddAddRenameTwoFiles(t *testing.T) {
 	}
 }
 
+// Both sides archive a short ticket. The changed line drops rename similarity
+// under 50%, so git reports add/add with no stage :1. The id still names the
+// pre-image file: the dispute keeps that status and changed, and does not mint.
+func TestArchiveAddAddRecoversPreImageStatusDispute(t *testing.T) {
+	requireGit(t)
+	repo := newRepo(t)
+	scopeDir := filepath.Join(repo, "wc")
+	writeF(t, filepath.Join(scopeDir, "tk.cue"), tkcue(""))
+	rootRel := "wc/wc-ab2c-alpha.md"
+	archRel := "wc/archive/wc-ab2c-alpha.md"
+	base := proj("id: wc-ab2c\nstatus: todo\nchanged: 2026-01-02T00:00:00Z\norder: \"a0\"\ncreated: 2026-01-01T00:00:00Z\n", "# alpha\n")
+	writeF(t, filepath.Join(repo, rootRel), base)
+	commitAll(t, repo, "base", "2026-01-01T00:00:00Z")
+	mainBranch := gitCapture(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+	// Side bodies diverge so the pair stays under the rename limit even when the
+	// pre-image already carries changed. The real short-ticket case is covered
+	// by the sync dispute test; this one pins a present base value.
+	done := proj("id: wc-ab2c\nstatus: done\nchanged: \"2026-05-01T00:00:00Z\"\norder: \"a0\"\ncreated: \"2026-01-01T00:00:00Z\"\n", strings.Repeat("done side\n", 40))
+	cancelled := proj("id: wc-ab2c\nstatus: cancelled\nchanged: \"2026-06-01T00:00:00Z\"\norder: \"a0\"\ncreated: \"2026-01-01T00:00:00Z\"\n", strings.Repeat("cancel side\n", 40))
+
+	gitRun(t, repo, nil, "checkout", "-b", "feature")
+	if err := os.Remove(filepath.Join(repo, rootRel)); err != nil {
+		t.Fatal(err)
+	}
+	writeF(t, filepath.Join(repo, archRel), cancelled)
+	featTip := commitAll(t, repo, "feature cancel", "2026-06-01T00:00:00Z")
+
+	gitRun(t, repo, nil, "checkout", mainBranch)
+	if err := os.Remove(filepath.Join(repo, rootRel)); err != nil {
+		t.Fatal(err)
+	}
+	writeF(t, filepath.Join(repo, archRel), done)
+	mainTip := commitAll(t, repo, "main done", "2026-05-01T00:00:00Z")
+
+	gitRun(t, repo, nil, "checkout", "feature")
+	if !startRebase(t, repo, mainBranch) {
+		t.Fatal("expected paused rebase")
+	}
+	unmerged := git.UnmergedFiles(context.Background(), repo)
+	if len(unmerged) != 1 || unmerged[0] != archRel {
+		t.Fatalf("unmerged = %v, want [%s]", unmerged, archRel)
+	}
+	stages, err := git.ConflictStages(context.Background(), repo, archRel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stages.Base || !stages.Ours || !stages.Theirs {
+		t.Fatalf("want add/add stages, got %+v", stages)
+	}
+
+	d := New(repo, freshLoader())
+	out, err := d.Resolve(context.Background(), Conflict{
+		Path: archRel, ScopeDir: scopeDir, OursRev: mainTip, TheirsRev: featTip,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Class != ClassStatusDispute || out.Staged {
+		t.Fatalf("want status dispute unstaged, got class=%v staged=%v rename=%+v", out.Class, out.Staged, out.Rename)
+	}
+	m := parseFile(t, filepath.Join(repo, archRel))
+	if m.Status != "todo" {
+		t.Errorf("status = %q, want base todo", m.Status)
+	}
+	if m.Changed != "2026-01-02T00:00:00Z" {
+		t.Errorf("changed = %q, want the pre-image timestamp", m.Changed)
+	}
+	if m.ID != "wc-ab2c" {
+		t.Errorf("id = %q, want wc-ab2c", m.ID)
+	}
+	matches, err := filepath.Glob(filepath.Join(repo, "wc", "archive", "wc-ab2c*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Errorf("archive files = %v, want the original id only", matches)
+	}
+}
+
 // Per-file author dates, not branch-tip dates, decide LWW for another ticket's fields.
 func TestPerFileAuthorDateNotBranchTip(t *testing.T) {
 	requireGit(t)
@@ -363,6 +443,51 @@ func TestPerFileAuthorDateNotBranchTip(t *testing.T) {
 		t.Errorf("summary = %q, want FEAT (per-file date, not branch tip)", m.Summary)
 	}
 	_ = out
+}
+
+// Same new status with differing changed follows the per-file author date.
+// A later commit on another file must not decide it.
+func TestChangedPerFileAuthorDateNotBranchTip(t *testing.T) {
+	requireGit(t)
+	repo := newRepo(t)
+	scopeDir := filepath.Join(repo, "wc")
+	writeF(t, filepath.Join(scopeDir, "tk.cue"), tkcue(""))
+	aPath := filepath.Join(repo, "wc", "wc-ab2c-a.md")
+	bPath := filepath.Join(repo, "wc", "wc-cd3e-b.md")
+	writeF(t, aPath, proj("id: wc-ab2c\nstatus: todo\norder: \"a0\"\nchanged: 2026-01-01T00:00:00Z\ncreated: 2026-01-01T00:00:00Z\n", "x\n"))
+	writeF(t, bPath, proj("id: wc-cd3e\nstatus: todo\norder: \"a0\"\n", "y\n"))
+	commitAll(t, repo, "base", "2026-01-01T00:00:00Z")
+	mainBranch := gitCapture(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+	gitRun(t, repo, nil, "checkout", "-b", "feature")
+	writeF(t, aPath, proj("id: wc-ab2c\nstatus: in-progress\norder: \"a0\"\nchanged: 2026-05-01T00:00:00Z\ncreated: 2026-01-01T00:00:00Z\n", "x\n"))
+	featTip := commitAll(t, repo, "feature A edit", "2026-05-01T00:00:00Z")
+
+	gitRun(t, repo, nil, "checkout", mainBranch)
+	writeF(t, aPath, proj("id: wc-ab2c\nstatus: in-progress\norder: \"a0\"\nchanged: 2026-03-01T00:00:00Z\ncreated: 2026-01-01T00:00:00Z\n", "x\n"))
+	commitAll(t, repo, "main A edit", "2026-03-01T00:00:00Z")
+	writeF(t, bPath, proj("id: wc-cd3e\nstatus: done\norder: \"a0\"\n", "y\n"))
+	mainTip := commitAll(t, repo, "main B edit", "2026-09-01T00:00:00Z")
+
+	gitRun(t, repo, nil, "checkout", "feature")
+	if !startRebase(t, repo, mainBranch) {
+		t.Fatal("expected paused rebase")
+	}
+
+	d := New(repo, freshLoader())
+	if _, err := d.Resolve(context.Background(), Conflict{
+		Path: "wc/wc-ab2c-a.md", ScopeDir: scopeDir, OursRev: mainTip, TheirsRev: featTip,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	m := parseFile(t, aPath)
+	if m.Status != "in-progress" {
+		t.Fatalf("status = %q, want in-progress", m.Status)
+	}
+	// Per-file: feature A is May, main A is March. Branch tip is September on B.
+	if m.Changed != "2026-05-01T00:00:00Z" {
+		t.Errorf("changed = %q, want 2026-05-01T00:00:00Z (per-file date, not branch tip)", m.Changed)
+	}
 }
 
 // Driver types the merge from on-disk schema: a key only incoming tk.cue declares as strings set-merges.
@@ -444,6 +569,128 @@ func TestOccupiedAccumulatesAcrossAddAdds(t *testing.T) {
 	}
 	if outA.Rename.NewID == outB.Rename.NewID {
 		t.Errorf("second extension must not collide with the first: both %s", outA.Rename.NewID)
+	}
+}
+
+// Both sides add a second file for an id the original file still has.
+// That is a collision rename: both new summaries survive.
+func TestSameIDAddAddKeepsBothCopiesWhenOriginalRemains(t *testing.T) {
+	requireGit(t)
+	repo := newRepo(t)
+	scopeDir := filepath.Join(repo, "wc")
+	writeF(t, filepath.Join(scopeDir, "tk.cue"), tkcue(""))
+	alpha := "wc/wc-ab2c-alpha.md"
+	beta := "wc/wc-ab2c-beta.md"
+	fm := func(summary string) string {
+		return "id: wc-ab2c\nstatus: todo\norder: \"a0\"\nsummary: " + summary + "\ncreated: 2026-01-01T00:00:00Z\n"
+	}
+	writeF(t, filepath.Join(repo, alpha), proj(fm("OLD"), "original\n"))
+	commitAll(t, repo, "base", "2026-01-01T00:00:00Z")
+	mainBranch := gitCapture(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+	gitRun(t, repo, nil, "checkout", "-b", "feature")
+	writeF(t, filepath.Join(repo, beta), proj(fm("FEAT"), "original\n"))
+	featTip := commitAll(t, repo, "feature copy", "2026-06-01T00:00:00Z")
+
+	gitRun(t, repo, nil, "checkout", mainBranch)
+	writeF(t, filepath.Join(repo, beta), proj(fm("MAIN"), "original\n"))
+	mainTip := commitAll(t, repo, "main copy", "2026-03-01T00:00:00Z")
+
+	gitRun(t, repo, nil, "checkout", "feature")
+	if !startRebase(t, repo, mainBranch) {
+		t.Fatal("expected paused rebase")
+	}
+
+	d := New(repo, freshLoader())
+	out, err := d.Resolve(context.Background(), Conflict{
+		Path: beta, ScopeDir: scopeDir, OursRev: mainTip, TheirsRev: featTip,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Class != ClassRename || !out.Staged || out.Rename == nil {
+		t.Fatalf("want a staged rename, got class=%v staged=%v rename=%+v", out.Class, out.Staged, out.Rename)
+	}
+	keep := parseFile(t, filepath.Join(repo, beta))
+	loser := parseFile(t, filepath.Join(repo, out.Rename.NewPath))
+	got := map[string]bool{keep.Summary: true, loser.Summary: true}
+	if !got["MAIN"] || !got["FEAT"] {
+		t.Fatalf("both new summaries must survive, keep=%q loser=%q", keep.Summary, loser.Summary)
+	}
+	if keep.ID != "wc-ab2c" || loser.ID == "wc-ab2c" {
+		t.Fatalf("loser must leave the shared id, keep=%s loser=%s", keep.ID, loser.ID)
+	}
+	if parseFile(t, filepath.Join(repo, alpha)).Summary != "OLD" {
+		t.Fatal("the original file must be left alone")
+	}
+}
+
+// Two deleted files share the id, and both sides added one new path.
+// Sync must stop without minting a second id.
+func TestTwoDeletedAncestorsDoNotMint(t *testing.T) {
+	requireGit(t)
+	repo := newRepo(t)
+	scopeDir := filepath.Join(repo, "wc")
+	writeF(t, filepath.Join(scopeDir, "tk.cue"), tkcue(""))
+	alpha := "wc/wc-ab2c-alpha.md"
+	archived := "wc/archive/wc-ab2c-beta.md"
+	gamma := "wc/wc-ab2c-gamma.md"
+	writeF(t, filepath.Join(repo, alpha), proj("id: wc-ab2c\nstatus: todo\norder: \"a0\"\n", "# alpha\n"))
+	writeF(t, filepath.Join(repo, archived), proj("id: wc-ab2c\nstatus: todo\norder: \"a0\"\n", "# beta\n"))
+	commitAll(t, repo, "base", "2026-01-01T00:00:00Z")
+	mainBranch := gitCapture(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+	divergent := func(line string) string {
+		return proj("id: wc-ab2c\nstatus: todo\norder: \"a0\"\n", strings.Repeat(line, 40))
+	}
+	gitRun(t, repo, nil, "checkout", "-b", "feature")
+	if err := os.Remove(filepath.Join(repo, alpha)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(repo, archived)); err != nil {
+		t.Fatal(err)
+	}
+	writeF(t, filepath.Join(repo, gamma), divergent("feat side\n"))
+	featTip := commitAll(t, repo, "feature replace", "2026-06-01T00:00:00Z")
+
+	gitRun(t, repo, nil, "checkout", mainBranch)
+	if err := os.Remove(filepath.Join(repo, alpha)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(repo, archived)); err != nil {
+		t.Fatal(err)
+	}
+	writeF(t, filepath.Join(repo, gamma), divergent("main side\n"))
+	mainTip := commitAll(t, repo, "main replace", "2026-03-01T00:00:00Z")
+
+	gitRun(t, repo, nil, "checkout", "feature")
+	if !startRebase(t, repo, mainBranch) {
+		t.Fatal("expected paused rebase")
+	}
+	stages, err := git.ConflictStages(context.Background(), repo, gamma)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stages.Base || !stages.Ours || !stages.Theirs {
+		t.Fatalf("want add/add stages, got %+v", stages)
+	}
+
+	d := New(repo, freshLoader())
+	out, err := d.Resolve(context.Background(), Conflict{
+		Path: gamma, ScopeDir: scopeDir, OursRev: mainTip, TheirsRev: featTip,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Class != ClassAmbiguousBase || out.Staged || out.AmbiguousBase == nil || out.AmbiguousBase.ID != "wc-ab2c" {
+		t.Fatalf("want an unstaged ambiguous base for wc-ab2c, got class=%v staged=%v base=%+v", out.Class, out.Staged, out.AmbiguousBase)
+	}
+	matches, err := filepath.Glob(filepath.Join(repo, "wc", "wc-ab2c*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || filepath.Base(matches[0]) != "wc-ab2c-gamma.md" {
+		t.Fatalf("minted or moved files: %v", matches)
 	}
 }
 

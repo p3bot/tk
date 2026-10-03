@@ -29,6 +29,8 @@ type Deps struct {
 	Reg       *registry.Registry
 	DB        *index.DB
 	Rec       *reconcile.Reconciler
+	// Now pins the status-write clock. The zero value reads time.Now.
+	Now time.Time
 }
 
 // Reporter receives progress lines (stdout-class Out, stderr-class Err).
@@ -159,6 +161,15 @@ func (r Result) Tickets() []Member {
 }
 
 func nowNS() int64 { return time.Now().UnixNano() }
+
+// clock is the status-write instant. Create does not use it; it stamps
+// created and changed from CreateInput.Now so the two fields share one read.
+func clock(deps Deps) time.Time {
+	if !deps.Now.IsZero() {
+		return deps.Now
+	}
+	return time.Now()
+}
 
 func registeredSet(reg *registry.Registry) map[string]bool {
 	out := make(map[string]bool, len(reg.Scopes))

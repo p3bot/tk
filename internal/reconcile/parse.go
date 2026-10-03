@@ -56,6 +56,7 @@ func indexFromModel(base *index.Ticket, m *frontmatter.Model) (*index.Ticket, []
 	base.OrderKey = m.Order
 	base.Summary = m.Summary
 	base.Created = m.Created
+	base.Changed = m.Changed
 	base.Tags = m.Tags
 	base.StatusConflict = m.StatusConflict
 	base.Title = title.Extract(base.Body)

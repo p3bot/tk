@@ -79,6 +79,26 @@ func TestReconcileIndexesAndReflectsEdit(t *testing.T) {
 	}
 }
 
+func TestReconcileCopiesChanged(t *testing.T) {
+	r, db := newReconciler(t)
+	dir := mkScope(t, "wc")
+	writeFile(t, filepath.Join(dir, "wc-ab2c-a.md"), "---\nid: wc-ab2c\nstatus: todo\norder: \"a0\"\ncreated: 2026-01-01T00:00:00Z\nchanged: 2026-02-02T03:04:05Z\n---\n# A\n")
+	writeFile(t, filepath.Join(dir, "wc-cd3e-b.md"), projFile("wc-cd3e", "todo", "a1", "# B\n"))
+	reconcileOne(t, r, "wc", dir, time.Now().UnixNano())
+
+	rows, err := db.ScopeTickets("wc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]string{}
+	for _, row := range rows {
+		byID[row.ID] = row.Changed
+	}
+	if byID["wc-ab2c"] != "2026-02-02T03:04:05Z" || byID["wc-cd3e"] != "" {
+		t.Fatalf("changed column = %v", byID)
+	}
+}
+
 func TestReconcileClosureWalksDependsTargets(t *testing.T) {
 	r, db := newReconciler(t)
 	up := mkScope(t, "up")

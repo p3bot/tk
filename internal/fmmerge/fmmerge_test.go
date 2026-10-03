@@ -424,3 +424,133 @@ func TestBothSidesDeletedIsMalformed(t *testing.T) {
 		t.Fatalf("base present with both sides absent must be malformed: got %v", err)
 	}
 }
+
+func fmStatus(status, changed string) string {
+	s := "id: wc-ab2c\nstatus: " + status + "\norder: \"a0\"\n"
+	if changed != "" {
+		s += "changed: " + changed + "\n"
+	}
+	return s
+}
+
+func wantChanged(t *testing.T, r Result, want string) {
+	t.Helper()
+	got := "<nil model>"
+	if r.Model != nil {
+		got = r.Model.Changed
+	}
+	if got != want {
+		t.Errorf("changed = %q, want %q", got, want)
+	}
+}
+
+func TestChangedFollowsStatusOutcome(t *testing.T) {
+	const (
+		baseC = "2026-01-01T00:00:00Z"
+		oursC = "2026-04-01T00:00:00Z"
+		thC   = "2026-07-01T00:00:00Z"
+	)
+	oursOld := MergeMeta{OursDate: date("2026-02-01T00:00:00Z"), TheirsDate: date("2026-09-01T00:00:00Z")}
+	tests := []struct {
+		name            string
+		base, ours, th  string
+		meta            MergeMeta
+		status, changed string
+		dispute         bool
+	}{
+		{
+			name: "one side status takes that changed even when the other timestamp is newer",
+			base: fmStatus("todo", baseC), ours: fmStatus("done", oursC), th: fmStatus("todo", thC),
+			meta: oursOld, status: "done", changed: oursC,
+		},
+		{
+			name: "the other side status wins the same way",
+			base: fmStatus("todo", baseC), ours: fmStatus("todo", oursC), th: fmStatus("done", thC),
+			meta: oursNewer(), status: "done", changed: thC,
+		},
+		{
+			name: "one side status with the key omitted clears it",
+			base: fmStatus("todo", baseC), ours: fmStatus("done", ""), th: fmStatus("todo", thC),
+			meta: oursOld, status: "done", changed: "",
+		},
+		{
+			name: "different non-terminal statuses take the kept side",
+			base: fmStatus("draft", baseC), ours: fmStatus("todo", oursC), th: fmStatus("in-progress", thC),
+			meta: oursNewer(), status: "todo", changed: oursC,
+		},
+		{
+			name: "different non-terminal omitted winner stays omitted",
+			base: fmStatus("draft", baseC), ours: fmStatus("todo", ""), th: fmStatus("in-progress", thC),
+			meta: oursNewer(), status: "todo", changed: "",
+		},
+		{
+			name: "same new status and same changed takes that value",
+			base: fmStatus("todo", baseC), ours: fmStatus("in-progress", oursC), th: fmStatus("in-progress", oursC),
+			meta: oursNewer(), status: "in-progress", changed: oursC,
+		},
+		{
+			name: "same new status both omitted stays omitted",
+			base: fmStatus("todo", baseC), ours: fmStatus("in-progress", ""), th: fmStatus("in-progress", ""),
+			meta: oursNewer(), status: "in-progress", changed: "",
+		},
+		{
+			name: "same new status differing changed takes the later author date",
+			base: fmStatus("todo", baseC), ours: fmStatus("in-progress", oursC), th: fmStatus("in-progress", thC),
+			meta: oursNewer(), status: "in-progress", changed: oursC,
+		},
+		{
+			name: "same new status later omitted side stays omitted",
+			base: fmStatus("todo", baseC), ours: fmStatus("in-progress", ""), th: fmStatus("in-progress", thC),
+			meta: oursNewer(), status: "in-progress", changed: "",
+		},
+		{
+			name: "terminal dispute keeps base changed",
+			base: fmStatus("todo", baseC), ours: fmStatus("done", oursC), th: fmStatus("cancelled", thC),
+			meta: oursNewer(), status: "todo", changed: baseC, dispute: true,
+		},
+		{
+			name: "timestamp rewrite without a status change keeps base",
+			base: fmStatus("todo", baseC), ours: fmStatus("todo", oursC), th: fmStatus("todo", thC),
+			meta: oursNewer(), status: "todo", changed: baseC,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := mustMerge(t, present(blob(tc.base, "b\n")), present(blob(tc.ours, "b\n")), present(blob(tc.th, "b\n")), tc.meta)
+			if tc.dispute && r.Outcome != OutcomeStatusConflict {
+				t.Fatalf("outcome = %v, want status conflict", r.Outcome)
+			}
+			wantStatus(t, r, tc.status)
+			wantChanged(t, r, tc.changed)
+		})
+	}
+}
+
+func TestChangedSameStatusHashTie(t *testing.T) {
+	base := blob(fmStatus("todo", "2026-01-01T00:00:00Z"), "b\n")
+	a := blob(fmStatus("in-progress", "2026-02-02T00:00:00Z"), "body A\n")
+	b := blob(fmStatus("in-progress", "2026-03-03T00:00:00Z"), "body B\n")
+	aSum := sha256.Sum256(a)
+	bSum := sha256.Sum256(b)
+	want := "2026-02-02T00:00:00Z"
+	if string(bSum[:]) > string(aSum[:]) {
+		want = "2026-03-03T00:00:00Z"
+	}
+	r1 := mustMerge(t, present(base), present(a), present(b), equalDates())
+	wantChanged(t, r1, want)
+	r2 := mustMerge(t, present(base), present(b), present(a), equalDates())
+	wantChanged(t, r2, want)
+
+	omitted := blob(fmStatus("in-progress", ""), "body A\n")
+	presentSide := blob(fmStatus("in-progress", "2026-03-03T00:00:00Z"), "body B\n")
+	oSum := sha256.Sum256(omitted)
+	pSum := sha256.Sum256(presentSide)
+	want = ""
+	if string(pSum[:]) > string(oSum[:]) {
+		want = "2026-03-03T00:00:00Z"
+	}
+	r3 := mustMerge(t, present(base), present(omitted), present(presentSide), equalDates())
+	wantChanged(t, r3, want)
+	r4 := mustMerge(t, present(base), present(presentSide), present(omitted), equalDates())
+	wantChanged(t, r4, want)
+}

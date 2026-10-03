@@ -33,6 +33,7 @@ description: >-
 - status → tk mark
 - order → tk order
 - id, created: never invent or "repair"
+- changed: the time the current status was entered. Edits and `tk meta` do not move it. Absent on tickets written before the field existed
 - status_conflict: not via meta; see Recovery
 - summary / scalar customs → tk meta set
 - depends, related, tags, links → tk meta add|remove

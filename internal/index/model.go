@@ -11,8 +11,10 @@ type Ticket struct {
 	Title    string
 	Summary  string
 	Created  string
-	Tags     []string
-	Custom   map[string]any
+	// Changed is the fence string, or empty when the key is absent.
+	Changed string
+	Tags    []string
+	Custom  map[string]any
 	// StatusConflict holds disputed terminal statuses from a merge conflict; empty otherwise.
 	StatusConflict []string
 	// Archived is true when the file lives under archive/.

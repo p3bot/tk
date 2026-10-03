@@ -15,6 +15,7 @@ import (
 const (
 	KeyID             = "id"
 	KeyStatus         = "status"
+	KeyChanged        = "changed"
 	KeyOrder          = "order"
 	KeyDepends        = "depends"
 	KeyRelated        = "related"
@@ -26,7 +27,7 @@ const (
 )
 
 var builtinKeys = map[string]struct{}{
-	KeyID: {}, KeyStatus: {}, KeyOrder: {}, KeyDepends: {}, KeyRelated: {},
+	KeyID: {}, KeyStatus: {}, KeyChanged: {}, KeyOrder: {}, KeyDepends: {}, KeyRelated: {},
 	KeyTags: {}, KeyCreated: {}, KeyLinks: {}, KeySummary: {}, KeyStatusConflict: {},
 }
 
@@ -94,8 +95,11 @@ func (m *Model) RemoveCustom(key string) bool {
 // Model is the decoded frontmatter: built-in keys as typed fields plus undeclared keys in Custom.
 // A nil slice or empty string means the key was absent; Serialize omits absent optional keys.
 type Model struct {
-	ID             string
-	Status         string
+	ID     string
+	Status string
+	// Changed is the RFC3339 time the current status was entered.
+	// Empty means the key is absent. Serialize omits it.
+	Changed        string
 	Order          string
 	Depends        []string
 	Related        []string
@@ -172,6 +176,8 @@ func (m *Model) assignBuiltin(key string, value any) error {
 		m.ID = asScalarString(value)
 	case KeyStatus:
 		m.Status = asScalarString(value)
+	case KeyChanged:
+		m.Changed = asScalarString(value)
 	case KeyOrder:
 		m.Order = asScalarString(value)
 	case KeyCreated:
@@ -207,8 +213,11 @@ func Serialize(m *Model) ([]byte, error) {
 	items := yaml.MapSlice{
 		{Key: KeyID, Value: m.ID},
 		{Key: KeyStatus, Value: m.Status},
-		{Key: KeyOrder, Value: quotedString(m.Order)},
 	}
+	if m.Changed != "" {
+		items = append(items, yaml.MapItem{Key: KeyChanged, Value: m.Changed})
+	}
+	items = append(items, yaml.MapItem{Key: KeyOrder, Value: quotedString(m.Order)})
 	items = appendList(items, KeyDepends, m.Depends)
 	items = appendList(items, KeyRelated, m.Related)
 	items = appendList(items, KeyTags, m.Tags)

@@ -42,7 +42,7 @@ type MetaKeyClass int
 const (
 	// MetaKeyUnknown is an undeclared or unsupported key.
 	MetaKeyUnknown MetaKeyClass = iota
-	// MetaKeyImmutable is id, status, order, created, or status_conflict.
+	// MetaKeyImmutable is id, status, order, created, changed, or status_conflict.
 	MetaKeyImmutable
 	// MetaKeyScalar is summary or a custom string/int/bool field.
 	MetaKeyScalar
@@ -53,6 +53,7 @@ const (
 var builtinMetaKeyOrder = []string{
 	frontmatter.KeyID,
 	frontmatter.KeyStatus,
+	frontmatter.KeyChanged,
 	frontmatter.KeyOrder,
 	frontmatter.KeyDepends,
 	frontmatter.KeyRelated,
@@ -268,7 +269,7 @@ func nonQuarantinedExists(deps Deps, scope, fullID string) (bool, error) {
 func ClassifyMetaKey(key string, schema *scopeconfig.Schema) (MetaKeyClass, scopeconfig.Field, error) {
 	switch key {
 	case frontmatter.KeyID, frontmatter.KeyStatus, frontmatter.KeyOrder,
-		frontmatter.KeyCreated, frontmatter.KeyStatusConflict:
+		frontmatter.KeyCreated, frontmatter.KeyChanged, frontmatter.KeyStatusConflict:
 		return MetaKeyImmutable, scopeconfig.Field{}, nil
 	case frontmatter.KeySummary:
 		return MetaKeyScalar, scopeconfig.Field{Type: scopeconfig.FieldString}, nil
@@ -331,6 +332,8 @@ func MetaGetValue(m *frontmatter.Model, key string, class MetaKeyClass, field sc
 		return m.Order, nil
 	case frontmatter.KeyCreated:
 		return m.Created, nil
+	case frontmatter.KeyChanged:
+		return m.Changed, nil
 	case frontmatter.KeySummary:
 		return m.Summary, nil
 	case frontmatter.KeyDepends:

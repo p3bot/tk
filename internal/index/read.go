@@ -17,7 +17,7 @@ var ErrSearchQuery = errors.New("malformed full-text search query")
 const sqliteError = 1
 
 // ticketColumns is the fixed list scanTicket expects; Body is never selected.
-const ticketColumns = `path, scope, id, short_id, status, order_key, title, summary, created,
+const ticketColumns = `path, scope, id, short_id, status, order_key, title, summary, created, changed,
     custom, status_conflict, archived, parse_error, parse_msg, schema_error, mtime_ns, size`
 
 func scanTicket(sc interface{ Scan(...any) error }) (*Ticket, error) {
@@ -27,7 +27,7 @@ func scanTicket(sc interface{ Scan(...any) error }) (*Ticket, error) {
 		archived, perr, serr int
 	)
 	if err := sc.Scan(&p.Path, &p.Scope, &p.ID, &p.ShortID, &p.Status, &p.OrderKey, &p.Title, &p.Summary,
-		&p.Created, &custom, &conflict, &archived, &perr, &p.ParseMsg, &serr, &p.MtimeNS, &p.Size); err != nil {
+		&p.Created, &p.Changed, &custom, &conflict, &archived, &perr, &p.ParseMsg, &serr, &p.MtimeNS, &p.Size); err != nil {
 		return nil, err
 	}
 	if err := fillTicket(&p, custom, conflict, archived, perr, serr); err != nil {
@@ -215,7 +215,7 @@ func scanSearchHit(rows *sql.Rows) (SearchHit, error) {
 		score                float64
 	)
 	if err := rows.Scan(&p.Path, &p.Scope, &p.ID, &p.ShortID, &p.Status, &p.OrderKey, &p.Title, &p.Summary,
-		&p.Created, &custom, &conflict, &archived, &perr, &p.ParseMsg, &serr, &p.MtimeNS, &p.Size, &score); err != nil {
+		&p.Created, &p.Changed, &custom, &conflict, &archived, &perr, &p.ParseMsg, &serr, &p.MtimeNS, &p.Size, &score); err != nil {
 		return SearchHit{}, err
 	}
 	if err := fillTicket(&p, custom, conflict, archived, perr, serr); err != nil {

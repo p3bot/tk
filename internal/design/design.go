@@ -153,10 +153,11 @@ func (f flowStrings) MarshalYAML() ([]byte, error) {
 	return yaml.MarshalWithOptions([]string(f), yaml.Flow(true))
 }
 
-// Serialize encodes a design fence. Empty order is omitted so a design does
-// not gain the ticket order key. A produces list is flow-styled. A produces
-// value that is not a list is emitted unchanged so a later write does not
-// drop residue doctor already reports.
+// Serialize encodes a design fence. Empty order and changed are omitted so a
+// design does not gain those ticket keys. A present changed value is kept
+// because the parser stores it as a builtin rather than an extra key.
+// A produces list is flow-styled. A produces value that is not a list is
+// emitted unchanged so a later write does not drop residue doctor already reports.
 func Serialize(m *frontmatter.Model) ([]byte, error) {
 	if m == nil {
 		return nil, fmt.Errorf("serialize design: nil model")
@@ -164,6 +165,9 @@ func Serialize(m *frontmatter.Model) ([]byte, error) {
 	items := yaml.MapSlice{
 		{Key: frontmatter.KeyID, Value: m.ID},
 		{Key: frontmatter.KeyStatus, Value: m.Status},
+	}
+	if m.Changed != "" {
+		items = append(items, yaml.MapItem{Key: frontmatter.KeyChanged, Value: m.Changed})
 	}
 	if m.Order != "" {
 		items = append(items, yaml.MapItem{Key: frontmatter.KeyOrder, Value: quoted(m.Order)})

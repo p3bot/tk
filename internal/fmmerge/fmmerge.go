@@ -230,6 +230,7 @@ func threeWay(base, ours, theirs *frontmatter.Model, oursRaw, theirsRaw []byte, 
 	}
 	res.Status = st.status
 	res.StatusConflict = st.statusConflict
+	res.Changed = mergeChanged(base, ours, theirs, st, oursRaw, theirsRaw, meta)
 
 	mergeCustom(res, base, ours, theirs, oursRaw, theirsRaw, schema, meta)
 
@@ -341,6 +342,46 @@ func mergeStatus(base, ours, theirs *frontmatter.Model, oursRaw, theirsRaw []byt
 		return statusMerge{}, err
 	}
 	return statusMerge{status: mergeScalar(bs, os, ts, oursRaw, theirsRaw, meta), statusConflict: sc}, nil
+}
+
+// mergeChanged follows the status result. It is not its own last-writer-wins
+// scalar. A timestamp-only edit and a terminal dispute keep the base value.
+// Both sides choosing the same new status with different values, including an
+// omitted key, take the later author date, then the greater stage-byte hash.
+// An omitted winner stays omitted. The caller supplies per-file dates, so a
+// later commit on another file does not decide the tie.
+func mergeChanged(base, ours, theirs *frontmatter.Model, st statusMerge, oursRaw, theirsRaw []byte, meta MergeMeta) string {
+	if st.dispute {
+		return base.Changed
+	}
+	bs, os, ts := base.Status, ours.Status, theirs.Status
+	oursMoved := os != bs
+	theirsMoved := ts != bs
+	switch {
+	case !oursMoved && !theirsMoved:
+		return base.Changed
+	case oursMoved && !theirsMoved:
+		return ours.Changed
+	case !oursMoved && theirsMoved:
+		return theirs.Changed
+	default:
+		if os == ts {
+			if ours.Changed == theirs.Changed {
+				return ours.Changed
+			}
+			if pickOurs(meta, oursRaw, theirsRaw) {
+				return ours.Changed
+			}
+			return theirs.Changed
+		}
+		if st.status == os {
+			return ours.Changed
+		}
+		if st.status == ts {
+			return theirs.Changed
+		}
+		return base.Changed
+	}
 }
 
 // mergeInherited merges inherited status_conflict as one value on the one-side-changed shape.

@@ -115,6 +115,50 @@ func ListFiles(ctx context.Context, gitRoot, dir string) ([]string, error) {
 	return nonEmptyLines(string(out)), nil
 }
 
+// ListTree lists repo-relative paths in rev under rel.
+// An empty rel, or ".", lists the whole tree. A path absent from rev is an empty list.
+func ListTree(ctx context.Context, gitRoot, rev, rel string) ([]string, error) {
+	args := []string{"ls-tree", "-r", "--name-only", rev}
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel != "" && rel != "." {
+		args = append(args, "--", rel)
+	}
+	out, err := run(ctx, gitRoot, args...)
+	if err != nil {
+		return nil, err
+	}
+	return nonEmptyLines(string(out)), nil
+}
+
+// ShowBlob returns the raw blob of path in rev. path is repo-relative.
+func ShowBlob(ctx context.Context, gitRoot, rev, path string) ([]byte, error) {
+	return run(ctx, gitRoot, "show", rev+":"+filepath.ToSlash(path))
+}
+
+// TreeContains reports whether path is present in rev.
+// A missing path is false. A bad rev is an error.
+func TreeContains(ctx context.Context, gitRoot, rev, path string) (bool, error) {
+	out, err := run(ctx, gitRoot, "ls-tree", "--name-only", rev, "--", filepath.ToSlash(path))
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(out)) != "", nil
+}
+
+// FirstParent returns the first parent of rev.
+// ok is false when rev is a root commit.
+func FirstParent(ctx context.Context, gitRoot, rev string) (string, bool, error) {
+	out, err := run(ctx, gitRoot, "log", "-1", "--format=%P", rev)
+	if err != nil {
+		return "", false, err
+	}
+	parents := strings.Fields(strings.TrimSpace(string(out)))
+	if len(parents) == 0 {
+		return "", false, nil
+	}
+	return parents[0], true, nil
+}
+
 // AuthorDate returns the author date of the last commit on rev that touched path.
 // Per-file, never branch-tip, so an unrelated later commit cannot decide another
 // ticket's fields. Empty when no commit touched path (zero time).

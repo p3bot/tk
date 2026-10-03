@@ -73,6 +73,8 @@ const (
 	ClassRename
 	// ClassFailClosed is a fail-closed merge; unstaged, key named.
 	ClassFailClosed
+	// ClassAmbiguousBase is a same-id add/add with more than one deleted ancestor. Unstaged.
+	ClassAmbiguousBase
 )
 
 // Outcome is the driver's report for one conflicted file.
@@ -81,10 +83,16 @@ type Outcome struct {
 	Class          Class
 	Staged         bool
 	Warnings       []string
-	StatusConflict []string    // ClassStatusDispute: the disputed pair
-	DeleteEdit     *DeleteEdit // ClassDeleteEdit
-	Rename         *Rename     // ClassRename
-	FailClosed     *FailClosed // ClassFailClosed
+	StatusConflict []string       // ClassStatusDispute: the disputed pair
+	DeleteEdit     *DeleteEdit    // ClassDeleteEdit
+	Rename         *Rename        // ClassRename
+	FailClosed     *FailClosed    // ClassFailClosed
+	AmbiguousBase  *AmbiguousBase // ClassAmbiguousBase
+}
+
+// AmbiguousBase is the id that matched more than one deleted ancestor.
+type AmbiguousBase struct {
+	ID string
 }
 
 // DeleteEdit reports which side deleted and the surviving post-edit status.
@@ -131,6 +139,24 @@ func (d *Driver) Resolve(ctx context.Context, c Conflict) (Outcome, error) {
 	theirs, err := d.readStage(ctx, stages.Theirs, 3, c.Path)
 	if err != nil {
 		return Outcome{}, err
+	}
+	// Rename detection stops at 50%. An archive move of a short ticket (a changed
+	// line is enough) arrives as add/add with no stage :1 and would mint a second id.
+	if !base.Present && ours.Present && theirs.Present {
+		recovered, ambiguousID, err := d.recoverRenameBase(ctx, c, ours, theirs)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if ambiguousID != "" {
+			return Outcome{
+				Path:          c.Path,
+				Class:         ClassAmbiguousBase,
+				AmbiguousBase: &AmbiguousBase{ID: ambiguousID},
+			}, nil
+		}
+		if recovered.Present {
+			base = recovered
+		}
 	}
 
 	schema, err := d.load(c.ScopeDir)
@@ -186,6 +212,115 @@ func (d *Driver) Resolve(ctx context.Context, c Conflict) (Outcome, error) {
 	default:
 		return Outcome{}, fmt.Errorf("unknown merge outcome %d for %s", res.Outcome, c.Path)
 	}
+}
+
+// recoverRenameBase supplies the missing stage :1 when both sides deleted the
+// ticket's previous path. The parent of the replayed commit holds that blob.
+// A same-id file either side still has is a different file, so the add/add
+// stays a rename. ambiguousID is set when more than one deleted path matches,
+// which the caller pauses on instead of guessing a base or minting an id.
+func (d *Driver) recoverRenameBase(ctx context.Context, c Conflict, ours, theirs fmmerge.Stage) (fmmerge.Stage, string, error) {
+	if c.TheirsRev == "" || c.OursRev == "" {
+		return fmmerge.Stage{}, "", nil
+	}
+	idOurs, ok := fenceID(ours.Data)
+	if !ok {
+		return fmmerge.Stage{}, "", nil
+	}
+	idTheirs, ok := fenceID(theirs.Data)
+	if !ok || idOurs != idTheirs {
+		return fmmerge.Stage{}, "", nil
+	}
+	parent, ok, err := git.FirstParent(ctx, d.gitRoot, c.TheirsRev)
+	if err != nil {
+		return fmmerge.Stage{}, "", fmt.Errorf("pre-image parent of %s: %w", c.Path, err)
+	}
+	if !ok {
+		return fmmerge.Stage{}, "", nil
+	}
+	scopeRel, err := filepath.Rel(d.gitRoot, c.ScopeDir)
+	if err != nil {
+		return fmmerge.Stage{}, "", fmt.Errorf("scope path for %s: %w", c.Path, err)
+	}
+	paths, err := git.ListTree(ctx, d.gitRoot, parent, scopeRel)
+	if err != nil {
+		return fmmerge.Stage{}, "", fmt.Errorf("pre-image tree of %s: %w", c.Path, err)
+	}
+	var match string
+	for _, p := range paths {
+		if !ticketPathInScope(scopeRel, p) {
+			continue
+		}
+		full, ok := scopefile.TicketIDFromBase(filepath.Base(p))
+		if !ok || full != idOurs {
+			continue
+		}
+		gone, err := d.bothSidesLack(ctx, c, p)
+		if err != nil {
+			return fmmerge.Stage{}, "", fmt.Errorf("pre-image path %s: %w", p, err)
+		}
+		if !gone {
+			continue
+		}
+		if match != "" {
+			return fmmerge.Stage{}, idOurs, nil
+		}
+		match = p
+	}
+	if match == "" {
+		return fmmerge.Stage{}, "", nil
+	}
+	data, err := git.ShowBlob(ctx, d.gitRoot, parent, match)
+	if err != nil {
+		return fmmerge.Stage{}, "", fmt.Errorf("pre-image blob of %s: %w", c.Path, err)
+	}
+	return fmmerge.Stage{Present: true, Data: data}, "", nil
+}
+
+// bothSidesLack reports whether path is absent from both side revisions.
+// Absence is what makes the path the source of a rename rather than a live file.
+func (d *Driver) bothSidesLack(ctx context.Context, c Conflict, path string) (bool, error) {
+	for _, rev := range []string{c.OursRev, c.TheirsRev} {
+		has, err := git.TreeContains(ctx, d.gitRoot, rev, path)
+		if err != nil {
+			return false, err
+		}
+		if has {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// fenceID reads a legal full ticket id from a stage blob.
+// Unparseable bytes are skipped so the pure merge reports that fault itself.
+func fenceID(data []byte) (string, bool) {
+	interior, _, present := frontmatter.Split(data)
+	if !present {
+		return "", false
+	}
+	m, err := frontmatter.Parse(interior)
+	if err != nil || !id.IsFullTicketID(m.ID) {
+		return "", false
+	}
+	return m.ID, true
+}
+
+// ticketPathInScope reports a ticket file at the scope root or in archive/.
+// design/ uses the same filename grammar and must not supply a merge base.
+func ticketPathInScope(scopeRel, p string) bool {
+	scopeRel = filepath.Clean(scopeRel)
+	if scopeRel == "." {
+		scopeRel = ""
+	}
+	dir := filepath.Clean(filepath.Dir(filepath.FromSlash(p)))
+	root := "."
+	archive := "archive"
+	if scopeRel != "" {
+		root = scopeRel
+		archive = filepath.Join(scopeRel, "archive")
+	}
+	return dir == root || dir == archive
 }
 
 // readStage loads one stage blob when present. Non-zero exit is a genuine fault —

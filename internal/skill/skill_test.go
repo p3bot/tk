@@ -207,6 +207,19 @@ func TestSkillListsScopeAutoCommit(t *testing.T) {
 	}
 }
 
+func TestSkillChangedContract(t *testing.T) {
+	text := skill.Text()
+	for _, want := range []string{
+		"the time the current status was entered",
+		"do not move it",
+		"Absent on tickets written before the field existed",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("skill missing changed contract %q", want)
+		}
+	}
+}
+
 func TestSkillDoesNotTeachMe(t *testing.T) {
 	text := skill.Text()
 	for _, line := range strings.Split(text, "\n") {

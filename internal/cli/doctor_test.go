@@ -279,6 +279,44 @@ func TestDoctorStructuralAndCreatedClasses(t *testing.T) {
 	}
 }
 
+func TestDoctorChangedRFC3339(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir := initScope(t, app, "wc")
+	badPath := filepath.Join(dir, "wc-ab2c-bad.md")
+	bad := "---\nid: wc-ab2c\nstatus: todo\norder: \"a0\"\ncreated: 2026-01-01T00:00:00Z\nchanged: not-a-time\n---\n# Bad\n"
+	if err := os.WriteFile(badPath, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "wc-cd3e", "bare", "todo", "a1", "# Bare\n", false, "")
+	addTicket(t, dir, "wc-ef4g", "ok", "todo", "a2", "# Ok\n", false, "changed: 2026-02-02T03:04:05Z\n")
+
+	out, _, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	if !strings.Contains(out, "schema_error: wc-ab2c changed \"not-a-time\" is not RFC3339") {
+		t.Fatalf("doctor should flag a non-RFC3339 changed, got %q", out)
+	}
+	if strings.Contains(out, "wc-cd3e") || strings.Contains(out, "wc-ef4g") {
+		t.Fatalf("absent or valid changed must be silent, got %q", out)
+	}
+	if fmValue(t, badPath, "changed") != "not-a-time" {
+		t.Fatal("doctor must not rewrite changed")
+	}
+	got, _, err := run(t, app, "get", "wc-ab2c")
+	if err != nil || !strings.Contains(got, badPath) {
+		t.Fatalf("unparseable changed must stay readable, path %q err %v", got, err)
+	}
+	q, _, err := run(t, app, "query", "SELECT id, parse_error FROM tickets WHERE id = 'wc-ab2c'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(q, "wc-ab2c\t0") {
+		t.Fatalf("changed schema_error must not quarantine, query %q", q)
+	}
+}
+
 func TestDoctorSchemaWarnClasses(t *testing.T) {
 	app := newApp(t)
 	t.Setenv("TK_SCOPE", "wc")

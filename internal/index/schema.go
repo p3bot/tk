@@ -1,7 +1,7 @@
 package index
 
 // SchemaVersion is the on-disk schema version. A mismatch triggers full rebuild (no migrations).
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 // schemaSQL is the complete DDL for a fresh index. Path is the physical key so
 // duplicate ids are two rows and archive moves are delete+insert. FTS is
@@ -23,6 +23,7 @@ CREATE TABLE tickets (
     title           TEXT NOT NULL DEFAULT '',
     summary         TEXT NOT NULL DEFAULT '',
     created         TEXT NOT NULL DEFAULT '',
+    changed         TEXT NOT NULL DEFAULT '',
     custom          TEXT NOT NULL DEFAULT '{}',
     status_conflict TEXT NOT NULL DEFAULT '[]',
     archived        INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
@@ -77,16 +78,17 @@ CREATE TABLE config_cache (
 `
 
 // SchemaText is the human-facing description for tk query --schema (not a stable API).
-const SchemaText = `tk index schema (version 6)
+const SchemaText = `tk index schema (version 7)
 
 NOT A STABLE API: the index is a derived cache, rebuilt on any schema_version
 bump, and may reshape between releases with no migration. Do not script against
 it — agents use tk depends / list / search / next / get / meta instead.
 
 tickets(path, scope, id, short_id, status, order_key, title, summary, created,
-         custom, status_conflict, archived, parse_error, parse_msg,
+         changed, custom, status_conflict, archived, parse_error, parse_msg,
          schema_error, mtime_ns, size)
-    One row per ticket file, keyed by absolute path. custom is a JSON object
+    One row per ticket file, keyed by absolute path. changed is the fence
+    string, or '' when the key is absent. custom is a JSON object
     (empty {}); status_conflict is a JSON array (empty []);
     archived/parse_error/schema_error are 0/1. There is no tags column.
 

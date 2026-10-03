@@ -1559,7 +1559,7 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 			t.Fatalf("inspect missing %s: %s", label, ins)
 		}
 	}
-	for _, key := range []string{"id", "status", "order", "created", "status_conflict"} {
+	for _, key := range []string{"id", "status", "order", "created", "changed", "status_conflict"} {
 		if strings.Contains(ins, `name="key" value="`+key+`"`) {
 			t.Fatalf("inspect offered immutable key %s: %s", key, ins)
 		}

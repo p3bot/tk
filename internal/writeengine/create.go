@@ -90,12 +90,14 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 	if now.IsZero() {
 		now = time.Now()
 	}
+	stamp := now.Format(time.RFC3339)
 	model := &frontmatter.Model{
 		ID:      fullID,
 		Status:  newStatus,
+		Changed: stamp,
 		Order:   orderKey,
 		Tags:    tags,
-		Created: now.Format(time.RFC3339),
+		Created: stamp,
 	}
 	interior, err := frontmatter.Serialize(model)
 	if err != nil {

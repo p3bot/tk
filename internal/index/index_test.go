@@ -63,6 +63,78 @@ func TestOpenStampsVersionAndRebuildsOnMismatch(t *testing.T) {
 	}
 }
 
+func TestOpenRebuildsSchemaVersion6(t *testing.T) {
+	if SchemaVersion != 7 {
+		t.Fatalf("SchemaVersion = %d, want 7", SchemaVersion)
+	}
+	if !strings.Contains(SchemaText, "version 7") || !strings.Contains(SchemaText, "changed") {
+		t.Fatalf("SchemaText must name version 7 and changed:\n%s", SchemaText)
+	}
+	dir := t.TempDir()
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := proj("wc", "ab2c", "todo", "a0")
+	p.Changed = "2026-02-02T03:04:05Z"
+	if err := db.UpsertTicket(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`UPDATE meta SET value = '6' WHERE key = 'schema_version'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db2, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db2.Close() }()
+	ver, ok, err := db2.readSchemaVersion()
+	if err != nil || !ok || ver != 7 {
+		t.Fatalf("reopened version = %d ok=%v err=%v, want 7", ver, ok, err)
+	}
+	rows, err := db2.ScopeTickets("wc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("version 6 must rebuild and drop rows, got %d", len(rows))
+	}
+	var name, ctype string
+	var notnull int
+	var dflt any
+	if err := db2.sql.QueryRow(`SELECT name, type, "notnull", dflt_value FROM pragma_table_info('tickets') WHERE name = 'changed'`).Scan(&name, &ctype, &notnull, &dflt); err != nil {
+		t.Fatal(err)
+	}
+	if ctype != "TEXT" || notnull != 1 || dflt != "''" {
+		t.Fatalf("changed column = type %s notnull %d default %v", ctype, notnull, dflt)
+	}
+
+	stored := proj("wc", "cd3e", "todo", "a0")
+	stored.Changed = "2026-02-02T03:04:05Z"
+	if err := db2.UpsertTicket(stored); err != nil {
+		t.Fatal(err)
+	}
+	empty := proj("wc", "ef4g", "todo", "a1")
+	if err := db2.UpsertTicket(empty); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db2.ScopeTickets("wc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]string{}
+	for _, row := range got {
+		byID[row.ID] = row.Changed
+	}
+	if byID["wc-cd3e"] != "2026-02-02T03:04:05Z" || byID["wc-ef4g"] != "" {
+		t.Fatalf("changed round-trip = %v", byID)
+	}
+}
+
 func TestUpsertReplacesRowAndEdges(t *testing.T) {
 	db := openTemp(t)
 	p := proj("wc", "ab2c", "todo", "a0")

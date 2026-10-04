@@ -601,63 +601,53 @@ func (d *diagnoser) designFindings(scope, dir string) error {
 		}
 		holders[p.ShortID] = append(holders[p.ShortID], p.Path)
 	}
-	designs, err := design.Files(dir, scope)
+	designs, err := d.deps.DB.ScopeDesigns(scope)
 	if err != nil {
 		return err
 	}
-	broken := make([]design.File, 0)
-	for _, f := range designs {
-		if f.ParseErr != nil {
-			broken = append(broken, f)
+	var broken []*index.Design
+	for _, p := range designs {
+		if p.ParseError {
+			broken = append(broken, p)
 		}
 	}
 	sort.Slice(broken, func(i, j int) bool { return broken[i].Path < broken[j].Path })
-	for _, f := range broken {
-		d.add(token.Line(token.ParseError, fmt.Sprintf("%s: %s (%s)", f.ID, f.ParseErr.Error(), f.Path)))
+	for _, p := range broken {
+		d.add(token.Line(token.ParseError, fmt.Sprintf("%s: %s (%s)", p.ID, p.ParseMsg, p.Path)))
 	}
-	var unknown []design.File
-	for _, f := range designs {
-		if f.Model == nil || design.KnownStatus(f.Model.Status) {
+	var unknown []*index.Design
+	for _, p := range designs {
+		if p.ParseError || design.KnownStatus(p.Status) {
 			continue
 		}
-		unknown = append(unknown, f)
+		unknown = append(unknown, p)
 	}
 	sort.Slice(unknown, func(i, j int) bool { return unknown[i].Path < unknown[j].Path })
-	for _, f := range unknown {
-		d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has unknown status %q (%s)", f.ID, f.Model.Status, f.Path)))
+	for _, p := range unknown {
+		d.add(token.Line(token.SchemaError, fmt.Sprintf("%s has unknown status %q (%s)", p.ID, p.Status, p.Path)))
 	}
-	// Same predicate and sentence as a ticket whose filename disagrees with its fence id.
-	var mismatched []design.File
-	for _, f := range designs {
-		if f.Model == nil {
-			continue
-		}
-		base := filepath.Base(f.Path)
-		idText := f.Model.ID
+	// The row stores the adopted id, not the raw fence id or a non-list produces value.
+	opened, err := openDesignRows(designs)
+	if err != nil {
+		return err
+	}
+	var mismatched []openedDesign
+	for _, f := range opened {
+		base := filepath.Base(f.row.Path)
+		idText := f.model.ID
 		if idText == "" || !strings.HasPrefix(base, idText+"-") && strings.TrimSuffix(base, ".md") != idText {
 			mismatched = append(mismatched, f)
 		}
 	}
-	sort.Slice(mismatched, func(i, j int) bool { return mismatched[i].Path < mismatched[j].Path })
+	sort.Slice(mismatched, func(i, j int) bool { return mismatched[i].row.Path < mismatched[j].row.Path })
 	for _, f := range mismatched {
-		d.add(fmt.Sprintf("filename/id mismatch: %s does not begin with its frontmatter id %q", filepath.Base(f.Path), f.Model.ID))
+		d.add(fmt.Sprintf("filename/id mismatch: %s does not begin with its frontmatter id %q", filepath.Base(f.row.Path), f.model.ID))
 	}
-	for _, f := range designs {
-		claimed := map[string]struct{}{}
-		addShort := func(short string) {
-			if !id.IsShortID(short) {
-				return
-			}
-			if _, ok := claimed[short]; ok {
-				return
-			}
-			claimed[short] = struct{}{}
-			holders[short] = append(holders[short], f.Path)
+	for _, p := range designs {
+		if !id.IsShortID(p.ShortID) {
+			continue
 		}
-		addShort(strings.TrimPrefix(f.ID, scope+"-"))
-		if filenameShort, ok := scopefile.ShortIDOfBasename(filepath.Base(f.Path), scope); ok {
-			addShort(filenameShort)
-		}
+		holders[p.ShortID] = append(holders[p.ShortID], p.Path)
 	}
 	var shorts []string
 	for short, paths := range holders {
@@ -672,7 +662,37 @@ func (d *diagnoser) designFindings(scope, dir string) error {
 		sort.Strings(paths)
 		d.add(token.Line(token.DesignID, fmt.Sprintf("%s-%s claimed by %s", scope, short, strings.Join(paths, ", "))))
 	}
-	return d.producesFindings(designs)
+	return d.producesFindings(opened)
+}
+
+// openedDesign is one indexed design whose fence parsed. Mismatch and
+// produces_dangling read this file; they do not walk design/.
+type openedDesign struct {
+	row   *index.Design
+	model *frontmatter.Model
+}
+
+func openDesignRows(designs []*index.Design) ([]openedDesign, error) {
+	var out []openedDesign
+	for _, p := range designs {
+		data, err := os.ReadFile(p.Path)
+		if err != nil {
+			return nil, err
+		}
+		if p.ParseError {
+			continue
+		}
+		interior, _, present := frontmatter.Split(data)
+		if !present {
+			continue
+		}
+		m, err := frontmatter.Parse(interior)
+		if err != nil {
+			continue
+		}
+		out = append(out, openedDesign{row: p, model: m})
+	}
+	return out, nil
 }
 
 func pathsIncludeDesign(dir string, paths []string) bool {
@@ -685,15 +705,12 @@ func pathsIncludeDesign(dir string, paths []string) bool {
 	return false
 }
 
-func (d *diagnoser) producesFindings(designs []design.File) error {
-	files := append([]design.File(nil), designs...)
-	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+func (d *diagnoser) producesFindings(designs []openedDesign) error {
+	files := append([]openedDesign(nil), designs...)
+	sort.Slice(files, func(i, j int) bool { return files[i].row.Path < files[j].row.Path })
 	refreshed := map[string]bool{}
 	for _, f := range files {
-		if f.Model == nil {
-			continue
-		}
-		if err := d.producesFile(f.ID, f.Path, f.Model, refreshed); err != nil {
+		if err := d.producesFile(f.row.ID, f.row.Path, f.model, refreshed); err != nil {
 			return err
 		}
 	}

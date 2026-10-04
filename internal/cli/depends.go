@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/p3bot/tk/internal/design"
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/status"
 )
@@ -22,11 +25,18 @@ func newDependsCmd(app *App) *cobra.Command {
 		Use:     "depends [<id>] [--scope S] [--transitive] [--tree] [--no-lens]",
 		Aliases: []string{"deps", "dep"},
 		Short:   "TSV neighbourhood, or --tree forest (id optional)",
-		Long: "Two modes. Without --tree, id is required and stdout is TSV: three sections —\n" +
-			"depends on, is depended on by, related (both directions, non-gating) — each\n" +
-			"neighbour line carrying id, status, and a short label, with (none) for empty\n" +
-			"sides. --transitive expands depends both ways as a flat list. --tree pretty-prints\n" +
-			"a box-drawing forest of short ids (full id when a node is foreign); not TSV.\n" +
+		Long: "Two modes. Without --tree, id is required and stdout is TSV. A ticket id\n" +
+			"prints depends on, is depended on by, related (both directions, non-gating),\n" +
+			"then produced by. Each neighbour line carries id, status, and a short label.\n" +
+			"produced by carries design id, status, and title. (none) marks an empty side.\n" +
+			"Several design files on one id print (ambiguous).\n" +
+			"When that id is also one design, produces is appended. When several designs\n" +
+			"share it, the ticket report stays and stderr carries design_id. A design id\n" +
+			"with no ticket prints one section, produces, using the ticket neighbour lines,\n" +
+			"and does not print depends or related. A short id held by two design files\n" +
+			"and no ticket refuses and prints no path. --transitive expands depends both\n" +
+			"ways and does not walk produces. --tree pretty-prints a box-drawing forest of\n" +
+			"short ids (full id when a node is foreign) and does not include designs; not TSV.\n" +
 			"With --tree and no id, print the scope forest: roots are the default board\n" +
 			"(lens unless --no-lens) tickets that have outbound depends and no inbound depends\n" +
 			"from that board; a cycle cluster with no entry starts at the lexicographically\n" +
@@ -81,45 +91,196 @@ func runDepends(app *App, c *cobra.Command, idArg, scope string, transitive, tre
 		return runDependsForest(e, c, scope, noLens)
 	}
 
-	r, err := e.resolveTicket(c, idArg, scope)
+	sub, err := e.resolveDependsSubject(c, idArg, scope, tree)
 	if err != nil {
 		return err
 	}
-	if len(r.rows) > 1 {
-		return duplicateRefusal(r.rows)
+	if len(sub.tickets) > 1 {
+		return duplicateRefusal(sub.tickets)
 	}
-	subject := r.rows[0].ID
+	if len(sub.tickets) == 1 {
+		subject := sub.tickets[0].ID
+		g, err := e.buildDependsGraph(subject, transitive, tree)
+		if err != nil {
+			return err
+		}
+		if g.subjectInCycle(subject) {
+			stderrln(c, fmt.Sprintf("%s is in a depends cycle — run tk doctor for detail", subject))
+		}
+		switch {
+		case tree:
+			g.printSubtree(c, subject, sub.scope)
+		case transitive:
+			g.printSection(c, "depends on (transitive)", g.transitiveDepends(subject))
+			g.printSection(c, "is depended on by (transitive)", g.transitiveDependedOnBy(subject))
+			g.printSection(c, "related", g.relatedBoth(subject))
+			g.printProducedBy(c, subject)
+		default:
+			g.printSection(c, "depends on", g.outDep[subject])
+			g.printSection(c, "is depended on by", g.inDep[subject])
+			g.printSection(c, "related", g.relatedBoth(subject))
+			g.printProducedBy(c, subject)
+		}
+		return appendDesignProduces(e, c, sub.designs)
+	}
+	if len(sub.designs) > 1 {
+		return sharedDesignRefusal(sub.designs)
+	}
+	return runDependsOnDesign(e, c, sub.designs[0])
+}
 
-	g, err := e.buildDependsGraph(subject, transitive, tree)
+type dependsSubject struct {
+	scope   string
+	tickets []*index.Ticket
+	designs []*index.Design
+}
+
+// resolveDependsSubject reconciles once. One ticket keeps its report. A single
+// design on that id contributes produces, except --tree, which stays ticket-only.
+// With no ticket, the design is the subject, except --tree and me.
+func (e *engine) resolveDependsSubject(c *cobra.Command, idArg, scopeFlag string, tree bool) (*dependsSubject, error) {
+	form, ok := parseIDArg(idArg)
+	if !ok {
+		return nil, usageErrorf("%q is not a valid ticket id", idArg)
+	}
+	scope, err := e.scopeForID(idArg, form, scopeFlag)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	if g.subjectInCycle(subject) {
-		stderrln(c, fmt.Sprintf("%s is in a depends cycle — run tk doctor for detail", subject))
+	entry, registered := e.reg.Scopes[scope]
+	if !registered {
+		return nil, fmt.Errorf("unknown ticket id %q: scope %q is not registered here", idArg, scope)
 	}
-
-	switch {
-	case tree:
-		g.printSubtree(c, subject, r.scope)
-	case transitive:
-		g.printSection(c, "depends on (transitive)", g.transitiveDepends(subject))
-		g.printSection(c, "is depended on by (transitive)", g.transitiveDependedOnBy(subject))
-		g.printSection(c, "related", g.relatedBoth(subject))
+	res, err := e.reconcileResult(map[string]string{scope: entry.Dir})
+	if err != nil {
+		return nil, err
+	}
+	if res.Unreachable[scope] {
+		e.printWarnings(c, res.Warnings)
+		return nil, fmt.Errorf("cannot resolve %q: scope %q is not reachable", idArg, scope)
+	}
+	lookupArg, lookupForm, err := e.expandReservedID(scope, idArg, form)
+	if err != nil {
+		e.printWarnings(c, res.Warnings)
+		return nil, err
+	}
+	var tickets []*index.Ticket
+	switch lookupForm {
+	case id.FormFull:
+		tickets, err = e.db.TicketsByID(scope, lookupArg)
 	default:
-		g.printSection(c, "depends on", g.outDep[subject])
-		g.printSection(c, "is depended on by", g.inDep[subject])
-		g.printSection(c, "related", g.relatedBoth(subject))
+		tickets, err = e.db.TicketsByShortID(scope, lookupArg)
 	}
+	if err != nil {
+		e.printWarnings(c, res.Warnings)
+		return nil, err
+	}
+	if len(tickets) > 0 {
+		warnings := res.Warnings
+		if len(tickets) > 1 {
+			warnings = suppressDuplicateID(warnings, tickets[0].ID)
+		}
+		e.printWarnings(c, warnings)
+		sub := &dependsSubject{scope: scope, tickets: tickets}
+		if tree || len(tickets) > 1 {
+			return sub, nil
+		}
+		designs, err := e.designsByForm(scope, lookupArg, lookupForm)
+		if err != nil {
+			return nil, err
+		}
+		sub.designs = designs
+		return sub, nil
+	}
+	if tree || lookupForm == id.FormMe {
+		e.printWarnings(c, res.Warnings)
+		return nil, fmt.Errorf("unknown ticket id %q", idArg)
+	}
+	designs, err := e.designsByForm(scope, lookupArg, lookupForm)
+	if err != nil {
+		e.printWarnings(c, res.Warnings)
+		return nil, err
+	}
+	e.printWarnings(c, res.Warnings)
+	if len(designs) == 0 {
+		return nil, fmt.Errorf("unknown ticket id %q", idArg)
+	}
+	return &dependsSubject{scope: scope, designs: designs}, nil
+}
+
+func (e *engine) designsByForm(scope, arg string, form id.Form) ([]*index.Design, error) {
+	if form == id.FormFull {
+		return e.db.DesignsByID(scope, arg)
+	}
+	return e.db.DesignsByShortID(scope, arg)
+}
+
+// A produces list needs one design file. Several files on the ticket's id are
+// design_id on stderr, and the ticket report stays.
+func appendDesignProduces(e *engine, c *cobra.Command, designs []*index.Design) error {
+	switch len(designs) {
+	case 0:
+		return nil
+	case 1:
+		return runDependsOnDesign(e, c, designs[0])
+	default:
+		err := sharedDesignRefusal(designs)
+		var shared *design.SharedIDError
+		if !errors.As(err, &shared) {
+			return err
+		}
+		stderrln(c, err.Error())
+		return nil
+	}
+}
+
+func sharedDesignRefusal(rows []*index.Design) error {
+	paths := make([]string, len(rows))
+	for i, r := range rows {
+		abs, err := absPath(r.Path)
+		if err != nil {
+			return err
+		}
+		paths[i] = abs
+	}
+	sort.Strings(paths)
+	return &design.SharedIDError{ID: rows[0].ID, Paths: paths}
+}
+
+func runDependsOnDesign(e *engine, c *cobra.Command, d *index.Design) error {
+	edges, err := e.db.EdgesFromID(d.ID)
+	if err != nil {
+		return err
+	}
+	g := newDependsGraph()
+	var ids []string
+	for _, ed := range edges {
+		if ed.Kind != index.EdgeProduces {
+			continue
+		}
+		ids = appendUnique(ids, ed.ToID)
+	}
+	tickets, err := e.db.TicketsByFullIDs(ids)
+	if err != nil {
+		return err
+	}
+	for _, p := range tickets {
+		if _, ok := g.byID[p.ID]; !ok {
+			g.byID[p.ID] = p
+		}
+	}
+	g.printSection(c, "produces", ids)
 	return nil
 }
 
 type dependsGraph struct {
-	outDep map[string][]string
-	inDep  map[string][]string
-	outRel map[string][]string
-	inRel  map[string][]string
-	byID   map[string]*index.Ticket
+	outDep      map[string][]string
+	inDep       map[string][]string
+	outRel      map[string][]string
+	inRel       map[string][]string
+	producers   map[string][]string
+	byID        map[string]*index.Ticket
+	designsByID map[string][]*index.Design
 }
 
 func (e *engine) buildDependsGraph(subject string, transitive, tree bool) (*dependsGraph, error) {
@@ -136,7 +297,14 @@ func (e *engine) buildDependsGraph(subject string, transitive, tree bool) (*depe
 		g.addEdge(ed)
 	}
 	for _, ed := range to {
+		if ed.Kind == index.EdgeProduces {
+			g.producers[subject] = appendUnique(g.producers[subject], ed.FromID)
+			continue
+		}
 		g.addEdge(ed)
+	}
+	if err := e.loadProducerDesigns(g, g.producers[subject]); err != nil {
+		return nil, err
 	}
 	// Cycle and --tree walk outbound; a 3-cycle's close is hop-2, not inbound at hop 1.
 	if err := e.expandOutboundDepends(g, subject, g.outDep[subject]); err != nil {
@@ -257,8 +425,21 @@ func newDependsGraph() *dependsGraph {
 	return &dependsGraph{
 		outDep: map[string][]string{}, inDep: map[string][]string{},
 		outRel: map[string][]string{}, inRel: map[string][]string{},
-		byID: map[string]*index.Ticket{},
+		producers:   map[string][]string{},
+		byID:        map[string]*index.Ticket{},
+		designsByID: map[string][]*index.Design{},
 	}
+}
+
+func (e *engine) loadProducerDesigns(g *dependsGraph, ids []string) error {
+	found, err := e.db.DesignsByFullIDs(ids)
+	if err != nil {
+		return err
+	}
+	for _, p := range found {
+		g.designsByID[p.ID] = append(g.designsByID[p.ID], p)
+	}
+	return nil
 }
 
 func (g *dependsGraph) addEdge(ed index.Edge) {
@@ -374,6 +555,35 @@ func (g *dependsGraph) printSection(c *cobra.Command, title string, ids []string
 	sort.Strings(sorted)
 	for _, id := range sorted {
 		stdoutln(c, "  "+g.neighbourLine(id))
+	}
+}
+
+func (g *dependsGraph) printProducedBy(c *cobra.Command, subject string) {
+	stdoutln(c, "produced by:")
+	ids := g.producers[subject]
+	if len(ids) == 0 {
+		stdoutln(c, "  (none)")
+		return
+	}
+	sorted := append([]string(nil), ids...)
+	sort.Strings(sorted)
+	for _, id := range sorted {
+		stdoutln(c, "  "+g.designLine(id))
+	}
+}
+
+// designLine labels a producer. Several rows can share the id and disagree on
+// status and title, so the line names the id and does not pick one file.
+func (g *dependsGraph) designLine(id string) string {
+	rows := g.designsByID[id]
+	switch len(rows) {
+	case 0:
+		return id + "\t(unresolved)"
+	case 1:
+		p := rows[0]
+		return id + "\t" + p.Status + "\t" + p.Title
+	default:
+		return id + "\t(ambiguous)"
 	}
 }
 

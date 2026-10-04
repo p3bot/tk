@@ -72,8 +72,28 @@ func TestDesignIndexStaysOffBoard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(depends, "wc-ab2c") {
-		t.Fatalf("depends listed the design: %q", depends)
+	if !strings.Contains(depends, "produced by:\n  wc-ab2c\tdraft\tShape") {
+		t.Fatalf("produced by = %q", depends)
+	}
+	if strings.Contains(depends, "depends on:\n  wc-ab2c") || strings.Contains(depends, "is depended on by:\n  wc-ab2c") || strings.Contains(depends, "related:\n  wc-ab2c") {
+		t.Fatalf("design leaked into ticket sections: %q", depends)
+	}
+	onDesign, _, err := run(t, app, "depends", "wc-ab2c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(onDesign, "depends on:") || strings.Contains(onDesign, "related:") || strings.Contains(onDesign, "produced by:") {
+		t.Fatalf("design depends must be produces only: %q", onDesign)
+	}
+	if !strings.Contains(onDesign, "produces:\n  wc-m4np\ttodo\tTarget\n  wc-zzzz\t(unresolved)") {
+		t.Fatalf("produces = %q", onDesign)
+	}
+	tree, _, err := run(t, app, "depends", "wc-m4np", "--tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(tree, "ab2c") || strings.Contains(tree, "produced by") {
+		t.Fatalf("tree included the design: %q", tree)
 	}
 	searchDesign, _, err := run(t, app, "search", "designonlyterm")
 	if err != nil {

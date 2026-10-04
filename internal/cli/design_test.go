@@ -538,8 +538,8 @@ func TestDesignFilenameIDMismatchAndRepairLeavesIt(t *testing.T) {
 	if strings.Contains(doc, token.DesignID+" wc-qrst") {
 		t.Fatalf("fence-only short must not be a collision: %q", doc)
 	}
-	if !strings.Contains(doc, token.DesignID+" wc-zz9y claimed by") || !strings.Contains(doc, "wc-zz9y-ticket.md") || !strings.Contains(doc, "wc-zz9y-shape.md") {
-		t.Fatalf("filename short collision = %q", doc)
+	if strings.Contains(doc, token.DesignID+" wc-zz9y") {
+		t.Fatalf("filename short must not be design_id: %q", doc)
 	}
 	if strings.Contains(doc, "run tk repair") {
 		t.Fatalf("mismatch must not send the user to repair: %q", doc)

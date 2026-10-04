@@ -24,7 +24,6 @@ import (
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/selfcommit"
 	"github.com/p3bot/tk/internal/slug"
-	"github.com/p3bot/tk/internal/title"
 	"github.com/p3bot/tk/internal/token"
 )
 
@@ -128,9 +127,10 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 	return Result{ID: fullID, Path: abs, SyncNeeded: deps.syncNeeded(in.Scope, in.Dir)}, nil
 }
 
-// List prints design rows. A missing design/ directory is an empty result.
-// A positional outside the closed status set is a usage error before any row.
-func List(_ Deps, in ListInput) (Result, error) {
+// List prints design rows from the index after reconcile. A missing design/
+// directory is an empty result. A positional outside the closed status set is
+// a usage error before any row.
+func List(deps Deps, in ListInput) (Result, error) {
 	for _, status := range in.Statuses {
 		if !KnownStatus(status) {
 			return Result{}, &UnknownStatusError{Status: status}
@@ -139,28 +139,30 @@ func List(_ Deps, in ListInput) (Result, error) {
 	if err := scopefileRequire(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
-	files, err := Files(in.Dir, in.Scope)
+	indexed, err := deps.designRows(in.Scope, in.Dir)
 	if err != nil {
 		return Result{}, err
 	}
 	var rows []Row
-	for _, f := range files {
-		if f.Model == nil {
+	n := 0
+	for _, p := range indexed {
+		if p.ParseError {
+			n++
 			continue
 		}
-		if !listKeeps(f.Model.Status, in.Statuses, in.All) {
+		if !listKeeps(p.Status, in.Statuses, in.All) {
 			continue
 		}
-		abs, err := absPath(f.Path)
+		abs, err := absPath(p.Path)
 		if err != nil {
 			return Result{}, err
 		}
 		rows = append(rows, Row{
-			ID:      f.ID,
-			Status:  f.Model.Status,
-			Title:   title.Extract(f.Body),
+			ID:      p.ID,
+			Status:  p.Status,
+			Title:   p.Title,
 			Path:    abs,
-			Created: f.Model.Created,
+			Created: p.Created,
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -172,7 +174,7 @@ func List(_ Deps, in ListInput) (Result, error) {
 		}
 		return rows[i].ID < rows[j].ID
 	})
-	return Result{Rows: rows, Unparseable: unparseableCount(files)}, nil
+	return Result{Rows: rows, Unparseable: n}, nil
 }
 
 // createdBefore reports whether a is older than b. A value that is not RFC3339
@@ -200,27 +202,64 @@ func parseCreated(s string) (time.Time, bool) {
 	return t, true
 }
 
-// Get resolves one design. A shared short id refuses with no path.
-// An unparseable fence still returns the path.
-func Get(_ Deps, in IDInput) (Result, error) {
-	files, err := resolveFiles(in)
+// Get resolves one design from the index after reconcile. A shared short id
+// refuses with no path. An unparseable fence still returns the path.
+func Get(deps Deps, in IDInput) (Result, error) {
+	if err := scopefileRequire(in.Scope, in.Dir); err != nil {
+		return Result{}, err
+	}
+	indexed, err := deps.designRows(in.Scope, in.Dir)
 	if err != nil {
 		return Result{}, err
 	}
-	n := unparseableCount(files)
-	f, err := pickDesign(files, in)
-	if err != nil {
-		return Result{Unparseable: n}, err
+	n := 0
+	var hits []*index.Design
+	for _, p := range indexed {
+		if p.ParseError {
+			n++
+		}
+		if designMatches(p, in) {
+			hits = append(hits, p)
+		}
 	}
-	abs, err := absPath(f.Path)
+	if len(hits) == 0 {
+		return Result{Unparseable: n}, &UnknownError{Arg: in.Arg}
+	}
+	if len(hits) > 1 {
+		paths := make([]string, len(hits))
+		for i, p := range hits {
+			paths[i], err = absPath(p.Path)
+			if err != nil {
+				return Result{}, err
+			}
+		}
+		sort.Strings(paths)
+		return Result{Unparseable: n}, &SharedIDError{ID: hits[0].ID, Paths: paths}
+	}
+	p := hits[0]
+	abs, err := absPath(p.Path)
 	if err != nil {
 		return Result{}, err
 	}
-	res := Result{ID: f.ID, Path: abs, Parse: f.parseError(), Unparseable: n}
+	res := Result{ID: p.ID, Path: abs, Unparseable: n}
+	if p.ParseError {
+		res.Parse = &ParseError{ID: p.ID, Msg: p.ParseMsg}
+	}
 	if in.Content {
-		res.Body = f.Raw
+		body, err := os.ReadFile(p.Path)
+		if err != nil {
+			return Result{}, err
+		}
+		res.Body = body
 	}
 	return res, nil
+}
+
+func designMatches(p *index.Design, in IDInput) bool {
+	if in.Full {
+		return p.ID == in.Arg
+	}
+	return p.ShortID == in.Arg
 }
 
 // Mark sets status. The file stays in design/. It self-commits on a tk-driven scope.
@@ -362,16 +401,6 @@ func mintUnused(taken map[string]struct{}, r io.Reader) (string, error) {
 			return s, nil
 		}
 	}
-}
-
-func unparseableCount(files []File) int {
-	n := 0
-	for _, f := range files {
-		if f.ParseErr != nil {
-			n++
-		}
-	}
-	return n
 }
 
 func resolveFiles(in IDInput) ([]File, error) {
@@ -608,6 +637,33 @@ func (d Deps) commit(scope, dir, message string, paths []string) (string, string
 		return "", "", fmt.Errorf("self-commit %s: %w", scope, err)
 	}
 	return "", gitstate.SyncNeededReason(d.ctx(), d.StateDir, dir, root), nil
+}
+
+// designRows reconciles one scope and returns its design rows. An unreachable
+// scope is an error so a successful list is not a stale index.
+func (d Deps) designRows(scope, dir string) ([]*index.Design, error) {
+	if d.Rec == nil || d.DB == nil {
+		return nil, fmt.Errorf("design index is not available")
+	}
+	res, err := d.Rec.Reconcile(map[string]string{scope: dir}, d.registered(), time.Now().UnixNano())
+	if err != nil {
+		return nil, err
+	}
+	if res.Unreachable[scope] {
+		return nil, fmt.Errorf("%s", token.Line(token.UnreachableScope, fmt.Sprintf("%s: dir %s is not reachable", scope, dir)))
+	}
+	return d.DB.ScopeDesigns(scope)
+}
+
+func (d Deps) registered() map[string]bool {
+	registered := map[string]bool{}
+	if d.Reg == nil {
+		return registered
+	}
+	for name := range d.Reg.Scopes {
+		registered[name] = true
+	}
+	return registered
 }
 
 func (d Deps) ticketResolves(full string) (bool, error) {

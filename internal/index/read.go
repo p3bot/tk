@@ -64,7 +64,31 @@ const designColumns = `path, scope, id, short_id, status, title, summary, create
 
 // ScopeDesigns returns every design row in one scope, ordered by id then path.
 func (d *DB) ScopeDesigns(scope string) ([]*Design, error) {
-	rows, err := d.sql.Query(`SELECT `+designColumns+` FROM designs WHERE scope = ? ORDER BY id, path`, scope)
+	return d.queryDesigns(`SELECT `+designColumns+` FROM designs WHERE scope = ? ORDER BY id, path`, scope)
+}
+
+// DesignsByID returns design rows in a scope with the given full id.
+func (d *DB) DesignsByID(scope, id string) ([]*Design, error) {
+	return d.queryDesigns(`SELECT `+designColumns+` FROM designs WHERE scope = ? AND id = ?`, scope, id)
+}
+
+// DesignsByShortID returns design rows in a scope with the given short id.
+func (d *DB) DesignsByShortID(scope, shortID string) ([]*Design, error) {
+	return d.queryDesigns(`SELECT `+designColumns+` FROM designs WHERE scope = ? AND short_id = ?`, scope, shortID)
+}
+
+// DesignsByFullIDs returns every design row whose full id is in ids.
+func (d *DB) DesignsByFullIDs(ids []string) ([]*Design, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var args []any
+	q := `SELECT ` + designColumns + ` FROM designs WHERE ` + inPred("id", ids, &args)
+	return d.queryDesigns(q, args...)
+}
+
+func (d *DB) queryDesigns(q string, args ...any) ([]*Design, error) {
+	rows, err := d.sql.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +216,58 @@ func (d *DB) attachTags(tickets []*Ticket) error {
 type SearchHit struct {
 	Ticket *Ticket
 	Score  float64
+}
+
+// DesignHit is one design FTS result with its bm25 score (smaller is better).
+type DesignHit struct {
+	Design *Design
+	Score  float64
+}
+
+// SearchDesigns runs FTS5 MATCH over design titles and bodies (bm25, id tie-break).
+// Empty scope is machine-wide. It does not join the ticket search index.
+func (d *DB) SearchDesigns(scope, match string) ([]DesignHit, error) {
+	q := `SELECT ` + prefixed("p.", designColumns) + `, bm25(design_fts) AS score
+          FROM design_fts JOIN designs p ON p.rowid = design_fts.rowid
+          WHERE design_fts MATCH ?`
+	args := []any{match}
+	if scope != "" {
+		q += ` AND p.scope = ?`
+		args = append(args, scope)
+	}
+	q += ` ORDER BY score ASC, p.id ASC`
+
+	rows, err := d.sql.Query(q, args...)
+	if err != nil {
+		if isQuerySyntaxErr(err) {
+			return nil, fmt.Errorf("%w: %w", ErrSearchQuery, err)
+		}
+		return nil, fmt.Errorf("design fts search: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []DesignHit
+	for rows.Next() {
+		hit, err := scanDesignHit(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, hit)
+	}
+	return out, rows.Err()
+}
+
+func scanDesignHit(rows *sql.Rows) (DesignHit, error) {
+	var (
+		p     Design
+		perr  int
+		score float64
+	)
+	if err := rows.Scan(&p.Path, &p.Scope, &p.ID, &p.ShortID, &p.Status, &p.Title, &p.Summary,
+		&p.Created, &p.Changed, &perr, &p.ParseMsg, &p.MtimeNS, &p.Size, &score); err != nil {
+		return DesignHit{}, err
+	}
+	p.ParseError = perr != 0
+	return DesignHit{Design: &p, Score: score}, nil
 }
 
 // Search runs FTS5 MATCH over titles and bodies (bm25, id tie-break). Empty scope is machine-wide.

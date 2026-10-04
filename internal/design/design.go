@@ -1,5 +1,5 @@
 // Package design is cobra-free scope design documents under design/.
-// The index stores each design beside tickets. List, next, and search ignore them.
+// The index stores each design beside tickets. Ticket list, next, and search ignore them.
 package design
 
 import (

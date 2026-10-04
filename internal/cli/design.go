@@ -9,6 +9,7 @@ import (
 
 	"github.com/p3bot/tk/internal/design"
 	"github.com/p3bot/tk/internal/id"
+	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/token"
 )
 
@@ -18,7 +19,8 @@ func newDesignCmd(app *App) *cobra.Command {
 		Short: "Create and update scope design documents",
 		Long: "Scope design documents live at <scope-dir>/design/<id>-<slug>.md.\n" +
 			"They are not board items: tk list, next, and search ignore them. The index\n" +
-			"stores each design as its own row.\n" +
+			"stores each design as its own row. list and get read those rows. design search\n" +
+			"queries the design index and does not join tk search.\n" +
 			"Statuses are draft, accepted, decomposed, and superseded. The file stays in design/.\n" +
 			"status is set with mark. produces (full ticket ids, design to tickets only) is set\n" +
 			"with meta add and meta remove. A short id held by two design files is refused by\n" +
@@ -37,6 +39,7 @@ func newDesignCmd(app *App) *cobra.Command {
 		newDesignCreateCmd(app),
 		newDesignListCmd(app),
 		newDesignGetCmd(app),
+		newDesignSearchCmd(app),
 		newDesignMarkCmd(app),
 		newDesignMetaCmd(app),
 	)
@@ -68,11 +71,13 @@ func newDesignListCmd(app *App) *cobra.Command {
 		Use:     "list [status...] [--scope S] [--all]",
 		Aliases: []string{"ls"},
 		Short:   "List design documents",
-		Long: "Print headerless TSV: id, status, title, path. Default rows are draft and\n" +
-			"accepted, sorted by created then id. --all includes every parsed design,\n" +
-			"including decomposed, superseded, and a status outside those four names.\n" +
-			"Status positionals replace that filter. A positional outside the four names\n" +
-			"exits 2. A missing design/ directory prints nothing and exits 0.",
+		Long: "Print headerless TSV: id, status, title, path. Reads the design index after\n" +
+			"reconcile. Default rows are draft and accepted, sorted by created as an\n" +
+			"RFC3339 instant, then id. A created value that is not RFC3339 sorts first.\n" +
+			"--all includes every parsed design, including decomposed, superseded, and a\n" +
+			"status outside those four names. Status positionals replace that filter. A\n" +
+			"positional outside the four names exits 2. A missing design/ directory prints\n" +
+			"nothing and exits 0.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDesignList(app, c, scope, all, args)
@@ -89,10 +94,10 @@ func newDesignGetCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id> [--content] [--scope S]",
 		Short: "Resolve a design id to its path or contents",
-		Long: "Print the cleaned absolute path. --content prints the file. A short id\n" +
-			"resolves in the ambient scope; a full id resolves in any registered scope.\n" +
-			"An unparseable fence still prints the path and exits 0. Two design files\n" +
-			"sharing the short id refuse and print no path.",
+		Long: "Print the cleaned absolute path. Reads the design index after reconcile.\n" +
+			"--content prints the file. A short id resolves in the ambient scope; a full\n" +
+			"id resolves in any registered scope. An unparseable fence still prints the\n" +
+			"path and exits 0. Two design files sharing the short id refuse and print no path.",
 		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDesignGet(app, c, args[0], scope, content)
@@ -100,6 +105,26 @@ func newDesignGetCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "ambient scope for a short id")
 	cmd.Flags().BoolVar(&content, "content", false, "print the file instead of the path")
+	return cmd
+}
+
+func newDesignSearchCmd(app *App) *cobra.Command {
+	var scope string
+	cmd := &cobra.Command{
+		Use:   "search <terms> [--scope S]",
+		Short: "Full-text search over design titles and bodies",
+		Long: "Search design titles and bodies, machine-wide by default or bounded by\n" +
+			"--scope. Results are ranked bm25 (best first), tie-broken by full id.\n" +
+			"One TSV line per hit:\n" +
+			"  <full-id>\\t<status>\\t<title>\\t<absolute-path>\n" +
+			"A parse_error hit has an empty status but a filled path. No lens, no status\n" +
+			"filter. Empty result exits 0. Does not join tk search. Pure read.",
+		Args: anyArgs(),
+		RunE: func(c *cobra.Command, args []string) error {
+			return runDesignSearch(app, c, args, scope)
+		},
+	}
+	cmd.Flags().StringVar(&scope, "scope", "", "bound the search to one scope")
 	return cmd
 }
 
@@ -210,6 +235,46 @@ func runDesignList(app *App, c *cobra.Command, scopeFlag string, all bool, statu
 	writeDesignParseCount(c, res.Unparseable)
 	for _, row := range res.Rows {
 		stdoutln(c, strings.Join([]string{row.ID, row.Status, row.Title, row.Path}, "\t"))
+	}
+	return nil
+}
+
+func runDesignSearch(app *App, c *cobra.Command, args []string, scope string) error {
+	terms := strings.TrimSpace(strings.Join(args, " "))
+	if terms == "" {
+		return usageErrorf("design search needs at least one term")
+	}
+	e, err := app.openEngine(c)
+	if err != nil {
+		return err
+	}
+	defer e.close()
+
+	targets := e.allTargets()
+	if scope != "" {
+		entry, ok := e.reg.Scopes[scope]
+		if !ok {
+			return fmt.Errorf("unknown scope %q", scope)
+		}
+		targets = map[string]string{scope: entry.Dir}
+	}
+	if _, err := e.reconcile(c, targets); err != nil {
+		return err
+	}
+	hits, err := e.db.SearchDesigns(scope, terms)
+	if err != nil {
+		if errors.Is(err, index.ErrSearchQuery) {
+			return fmt.Errorf("invalid search query %q: terms are FTS5 syntax — balance quotes and operators (e.g. \"exact phrase\", prefix*, a OR b)", terms)
+		}
+		return fmt.Errorf("design search: %w", err)
+	}
+	for _, h := range hits {
+		p := h.Design
+		abs, err := absPath(p.Path)
+		if err != nil {
+			return err
+		}
+		stdoutln(c, tsvLine(p.ID, p.Status, p.Title, abs))
 	}
 	return nil
 }

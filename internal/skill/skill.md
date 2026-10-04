@@ -51,8 +51,9 @@ tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    #
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 tk rehome <id> <dest-scope> [--scope S]                             # Prefix-rewrite ticket into dest scope; print dest path
 tk design create <title> [--scope S]                                # Scaffold design/<id>-<slug>.md; print path; no self-commit
-tk design list [status...] [--scope S] [--all]                      # TSV id, status, title, path; default draft and accepted; --all is every parsed design (ls aliases list)
-tk design get <id> [--content] [--scope S]                          # Path or file; refuses a short id held by two design files
+tk design list [status...] [--scope S] [--all]                      # Index read; TSV id, status, title, path; default draft and accepted; --all is every parsed design (ls aliases list)
+tk design get <id> [--content] [--scope S]                          # Index read; path or file; refuses a short id held by two design files
+tk design search <terms> [--scope S]                                # Design-only FTS; TSV id, status, title, path
 tk design mark <status> <id> [--scope S]                            # draft, accepted, decomposed, superseded; file stays in design/
 tk design meta add <id> produces <ticket-id> [--scope S]            # Append one full ticket id
 tk design meta remove <id> produces <ticket-id> [--scope S]         # Drop one list entry, including a non-id; last removal drops the key
@@ -64,7 +65,7 @@ tk meta set <id> <key> <value> [--scope S]                          # Set scalar
 tk meta add <id> <key> <value> [--scope S]                          # Append multi-value frontmatter entry; soft required_missing: if gaps remain
 tk meta remove <id> <key> <value> [--scope S]                       # Remove multi-value frontmatter entry; soft required_missing: if gaps remain
 tk depends [<id>] [--scope S] [--transitive] [--tree] [--no-lens]   # TSV neighbourhood; --tree forest (id optional; lens default)
-tk search <terms> [--scope S]                                       # FTS5 search titles and bodies
+tk search <terms> [--scope S]                                       # FTS5 search ticket titles and bodies
 tk query <sql>                                                      # Ad-hoc read-only SQL; schema unstable
 tk query --schema                                                   # Debug only — do not script against it
 tk lens [tags...] [--scope S]                                       # Set machine-local default tag view
@@ -91,6 +92,9 @@ tk reindex                                                          # Rebuild th
 
 - A design lives at `design/<id>-<slug>.md` in the scope directory. It is not a board item
 - A design is its own row in the index. A design does not appear in `tk list`, `tk next`, or `tk search`
+- `tk design list` and `tk design get` read that index after reconcile
+- `tk design search <terms> [--scope S]` searches design titles and bodies (bm25, tie-broken by full id). Empty scope is machine-wide. TSV is id, status, title, path. A parse-error hit has an empty status and a filled path. No lens, no status filter, empty result exits 0. `find` is not an alias. `tk search` still searches tickets only
+- `tk depends` on a ticket keeps its three sections and appends `produced by` (design id, status, and title; an empty side prints `(none)`; several design files on one id print `(ambiguous)`). When that id is also one design, a `produces` section is appended. When several designs share it, the ticket report stays and stderr gets `design_id`. `tk depends` on a design id with no ticket prints one section, `produces`, with the ticket neighbour lines, and does not print depends or related. A shared design short id with no ticket refuses and prints no path. `--transitive` does not walk produces. `--tree` does not include designs
 - Statuses: draft, accepted, decomposed, superseded. The file stays in `design/`
 - `tk design list` defaults to draft and accepted. `--all` includes every parsed design, including a status outside those four. A positional outside those four exits 2. Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)`
 - Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`
@@ -122,7 +126,7 @@ Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk ord
 
 Board: `tk list` | `tk list --open` | `tk list --all` -> `tk tags` | `tk order` | `tk lens` | `tk search` (`list done` / other terminal-only filters are reverse (order, id); mixed and --all stay forward)
 
-Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:). `tk depends --tree` pretty-prints a short-id forest (omit id for the default board, lens unless `--no-lens`); not TSV:
+Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:). A ticket id appends `produced by`. When one design shares the id, it also appends `produces`. A design id with no ticket prints `produces`. `--transitive` does not walk produces. `tk depends --tree` pretty-prints a short-id forest of tickets (omit id for the default board, lens unless `--no-lens`) and does not include designs; not TSV:
 
     j8dj ─┬─ kv6x ── r345
           └─ h2h7

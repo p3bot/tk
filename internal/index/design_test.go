@@ -1,6 +1,7 @@
 package index
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -58,6 +59,16 @@ func TestDesignSearchDoesNotTouchTicketSearch(t *testing.T) {
 	if len(hits) != 0 {
 		t.Fatalf("ticket search matched a design-only word: %+v", hits)
 	}
+	found, err := db.SearchDesigns("wc", "designonlyterm")
+	if err != nil || len(found) != 1 || found[0].Design.ID != "wc-ab2c" || found[0].Design.Status != "draft" || found[0].Design.Title != "Shape" || found[0].Design.Path != designPath {
+		t.Fatalf("design search = %+v err=%v", found, err)
+	}
+	if ticketHits, err := db.SearchDesigns("", "ticketonlyterm"); err != nil || len(ticketHits) != 0 {
+		t.Fatalf("design search matched a ticket-only word: %+v err=%v", ticketHits, err)
+	}
+	if _, err := db.SearchDesigns("", `foo"`); !errors.Is(err, ErrSearchQuery) {
+		t.Fatalf("bad design query = %v", err)
+	}
 	hits, err = db.Search("wc", "ticketonlyterm")
 	if err != nil || len(hits) != 1 || hits[0].Ticket.ID != "wc-m4np" {
 		t.Fatalf("ticket search = %+v err=%v", hits, err)
@@ -95,6 +106,9 @@ func TestDesignSearchDoesNotTouchTicketSearch(t *testing.T) {
 	hits, err = db.Search("wc", "ticketonlyterm")
 	if err != nil || len(hits) != 1 || hits[0].Ticket.ID != "wc-m4np" {
 		t.Fatalf("ticket search after design delete = %+v err=%v", hits, err)
+	}
+	if found, err := db.SearchDesigns("wc", "designonlyterm"); err != nil || len(found) != 0 {
+		t.Fatalf("design search after delete = %+v err=%v", found, err)
 	}
 }
 

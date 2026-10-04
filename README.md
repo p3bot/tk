@@ -70,12 +70,12 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
 - `import` registers an existing on-disk scope, files in place; its name and
   auto-commit mode come from the on-disk `tk.cue`.
 - `rebind` rewrites a registered scope's paths after a move or clone.
-- `forget` unregisters a scope (registry, lens, me, and note entries only); it never
+- `forget` unregisters a scope (registry, lens, and note entries only); it never
   touches the scope's files.
 - `list` prints parse-stable TSV, one line per scope: `name\tdir\troot\tmode`,
   where `mode` is `tk-driven`, `repo-driven`, `plain-files`, or `unknown`.
 - `rename` renames a scope end-to-end (registry, lens, note default, `tk.cue` name,
-  ticket ids) and drops this machine's current-ticket pointer for that scope.
+  ticket ids).
 - `auto-commit` prints the evaluated `autoCommit` bool, or rewrites it to
   `true`/`false` for every registered scope that shares the dir's git-root
   (already-that-value is ensure: exit 0, no rewrite). Mode labels stay derived;
@@ -110,7 +110,7 @@ tk note remove --name <slug>         # unlink named (one-shot)
 ```
 
 `use` is machine-local (XDG `note.cue`, keyed by scope name). Documents stay
-committed under `notes/`; the pointer is not stored in `tk.cue`, `me.cue`, or
+committed under `notes/`; the pointer is not stored in `tk.cue` or
 `lens.cue`. Unset (or `use default` / `--clear`) keeps the built-in slug
 `default`. `--name` and a positional slug stay one-shot selectors. Personal
 slugs (`grant`, `alice`) with `default` as the shared pad are a convention,

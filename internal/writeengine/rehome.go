@@ -23,7 +23,6 @@ import (
 	"github.com/p3bot/tk/internal/selfcommit"
 	"github.com/p3bot/tk/internal/status"
 	"github.com/p3bot/tk/internal/token"
-	"github.com/p3bot/tk/internal/xdg"
 )
 
 // RehomeInput is one tk rehome: source identity already classified, dest scope name.
@@ -214,10 +213,6 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 	}
 	if len(needed) == 1 {
 		out.SyncNeeded = needed[0]
-	}
-
-	if err := dropSourceMe(deps, in.SourceScope, oldID); err != nil {
-		return out, err
 	}
 	return out, nil
 }
@@ -499,31 +494,6 @@ func partitionPaths(srcDir, destDir string, paths []string) (src, dest []string)
 		}
 	}
 	return src, dest
-}
-
-func dropSourceMe(deps Deps, sourceScope, oldID string) error {
-	if deps.ConfigDir == "" || deps.Cue == nil {
-		return nil
-	}
-	lock, err := xdg.AcquireConfigLock(deps.ConfigDir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = lock.Release() }()
-
-	store := registry.NewStore(deps.Cue, deps.ConfigDir)
-	reg, err := store.Load()
-	if err != nil {
-		return err
-	}
-	if reg.Me == nil {
-		return nil
-	}
-	if reg.Me[sourceScope] != oldID {
-		return nil
-	}
-	delete(reg.Me, sourceScope)
-	return store.WriteMe(reg.Me)
 }
 
 func refuseSharedRootAutoCommitMismatch(src, dest rehomeSide) error {

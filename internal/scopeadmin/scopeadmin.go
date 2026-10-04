@@ -259,7 +259,7 @@ func (a *Admin) Rebind(p RebindParams) (dir string, changed bool, err error) {
 	return p.Dir, true, nil
 }
 
-// Forget unregisters a scope (registry, lens, me, and note only; never touches files).
+// Forget unregisters a scope (registry, lens, and note only; never touches files).
 // Unreachable dirs stay registered until forget.
 func (a *Admin) Forget(name string) error {
 	lock, err := xdg.AcquireConfigLock(a.configDir)
@@ -282,11 +282,6 @@ func (a *Admin) Forget(name string) error {
 		delete(reg.Lens, name)
 		hadLens = true
 	}
-	hadMe := false
-	if _, ok := reg.Me[name]; ok {
-		delete(reg.Me, name)
-		hadMe = true
-	}
 	hadNote := false
 	if _, ok := reg.Note[name]; ok {
 		delete(reg.Note, name)
@@ -298,11 +293,6 @@ func (a *Admin) Forget(name string) error {
 	}
 	if hadLens {
 		if err := a.store.WriteLens(reg.Lens); err != nil {
-			return err
-		}
-	}
-	if hadMe {
-		if err := a.store.WriteMe(reg.Me); err != nil {
 			return err
 		}
 	}

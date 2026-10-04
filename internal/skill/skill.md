@@ -75,7 +75,7 @@ tk tags [--scope S]                                                 # Read-only 
 tk scope init <dir> (--name <name> | --auto-name) [--code-root <path>] [--auto-commit]  # Create and register scope
 tk scope import <dir> [--code-root <path>]                          # Register existing on-disk scope
 tk scope rebind <dir> --name <name> [--code-root <path>]            # Rewrite registry paths after move/clone
-tk scope forget <name>                                              # Unregister scope (registry, lens, and me only)
+tk scope forget <name>                                              # Unregister scope (registry, lens, and note only)
 tk scope list                                                       # List registered scopes (TSV)
 tk scope rename <old> <new>                                         # Rename scope end-to-end
 tk scope auto-commit [true|false] [--scope S]                       # Read or set git-root-wide autoCommit

@@ -82,10 +82,7 @@ func runOrder(app *App, c *cobra.Command, idArg string, dest orderDest, scopeFla
 	if !registered {
 		return fmt.Errorf("unknown ticket id %q: scope %q is not registered here", idArg, scope)
 	}
-	lu, err := e.writeLookup(scope, idArg, form)
-	if err != nil {
-		return err
-	}
+	lu := e.writeLookup(idArg, form)
 
 	wd := writeengine.Dest{First: dest.first, Last: dest.last}
 	if dest.before != "" {
@@ -93,10 +90,7 @@ func runOrder(app *App, c *cobra.Command, idArg string, dest orderDest, scopeFla
 		if !ok {
 			return usageErrorf("%q is not a valid ticket id", dest.before)
 		}
-		nlu, err := e.writeLookup(scope, dest.before, nform)
-		if err != nil {
-			return err
-		}
+		nlu := e.writeLookup(dest.before, nform)
 		wd.Before = nlu
 	}
 	if dest.after != "" {
@@ -104,10 +98,7 @@ func runOrder(app *App, c *cobra.Command, idArg string, dest orderDest, scopeFla
 		if !ok {
 			return usageErrorf("%q is not a valid ticket id", dest.after)
 		}
-		nlu, err := e.writeLookup(scope, dest.after, nform)
-		if err != nil {
-			return err
-		}
+		nlu := e.writeLookup(dest.after, nform)
 		wd.After = nlu
 	}
 

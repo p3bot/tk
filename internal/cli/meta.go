@@ -263,10 +263,7 @@ func runMetaMutate(app *App, c *cobra.Command, op writeengine.MetaOp, idArg, key
 	if !registered {
 		return fmt.Errorf("unknown ticket id %q: scope %q is not registered here", idArg, scope)
 	}
-	lu, err := e.writeLookup(scope, idArg, form)
-	if err != nil {
-		return err
-	}
+	lu := e.writeLookup(idArg, form)
 	res, err := writeengine.Meta(e.writeDeps(c.Context()), writeengine.MetaInput{
 		Scope:  scope,
 		Dir:    entry.Dir,

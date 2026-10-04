@@ -33,7 +33,7 @@ func (d Dest) Count() int {
 	return n
 }
 
-// OrderInput is one tk order. Identity (ambient / --scope / me) stays at the edge.
+// OrderInput is one tk order. Identity (ambient / --scope) stays at the edge.
 type OrderInput struct {
 	Scope  string
 	Dir    string

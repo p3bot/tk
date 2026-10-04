@@ -87,10 +87,7 @@ func runMark(app *App, c *cobra.Command, newStatus string, idArgs []string, scop
 				}
 			}
 		}
-		lu, err := e.writeLookup(scope, idArg, form)
-		if err != nil {
-			return err
-		}
+		lu := e.writeLookup(idArg, form)
 		lookups = append(lookups, lu)
 	}
 

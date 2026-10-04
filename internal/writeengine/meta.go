@@ -121,7 +121,7 @@ func Meta(deps Deps, in MetaInput) (Result, error) {
 
 	value := in.Value
 	if key == frontmatter.KeyDepends || key == frontmatter.KeyRelated {
-		value, err = normaliseEdgeValue(deps, in.Scope, value)
+		value, err = normaliseEdgeValue(in.Scope, value)
 		if err != nil {
 			return out, err
 		}
@@ -182,8 +182,8 @@ func Meta(deps Deps, in MetaInput) (Result, error) {
 	return out, nil
 }
 
-func normaliseEdgeValue(deps Deps, subjectScope, value string) (string, error) {
-	lookup, byFull, err := parseEdgeID(deps, subjectScope, value)
+func normaliseEdgeValue(subjectScope, value string) (string, error) {
+	lookup, byFull, err := parseEdgeID(value)
 	if err != nil {
 		return "", err
 	}
@@ -193,26 +193,12 @@ func normaliseEdgeValue(deps Deps, subjectScope, value string) (string, error) {
 	return lookup, nil
 }
 
-func parseEdgeID(deps Deps, subjectScope, value string) (query string, byFull bool, err error) {
+func parseEdgeID(value string) (query string, byFull bool, err error) {
 	form, ok := id.ParseArg(value)
 	if !ok {
 		return "", false, &UsageError{Msg: fmt.Sprintf("%q is not a valid ticket id", value)}
 	}
-	switch form {
-	case id.FormMe:
-		stored := ""
-		if deps.Reg != nil {
-			stored = deps.Reg.Me[subjectScope]
-		}
-		if stored == "" {
-			return "", false, &UnknownTicketError{Noun: "ticket", Arg: id.ReservedMe}
-		}
-		return stored, true, nil
-	case id.FormFull:
-		return value, true, nil
-	default:
-		return value, false, nil
-	}
+	return value, form == id.FormFull, nil
 }
 
 func checkDependsAdd(deps Deps, subjectID, subjectScope, targetFull string) error {

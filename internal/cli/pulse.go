@@ -26,7 +26,6 @@ var pulseKeys = []string{
 	"resolved",
 	"mode",
 	"lens",
-	"me",
 	"note",
 	"total",
 	"todo",
@@ -78,7 +77,7 @@ func newPulseCmd(app *App) *cobra.Command {
 			"are usage exit 2. The attribute path builds the same pulse map as the full\n" +
 			"dashboard (same reconcile, next selection, counts, integrity, stderr tokens).\n" +
 			"\n" +
-			"Locked keys (order fixed): scope, dir, resolved, mode, lens, me, note, total,\n" +
+			"Locked keys (order fixed): scope, dir, resolved, mode, lens, note, total,\n" +
 			"todo, in-progress, review, blocked, draft, backlog, done, cancelled, next,\n" +
 			"claimed, blocked_ids, dangling, integrity, uncommitted.\n" +
 			"\n" +
@@ -91,9 +90,6 @@ func newPulseCmd(app *App) *cobra.Command {
 			"no git-root → plain-files. When the schema is unusable, mode is plain-files and\n" +
 			"config_unparseable: rides stderr — do not read plain-files as healthy host files\n" +
 			"without checking stderr. uncommitted is non-zero only in repo-driven mode.\n" +
-			"\n" +
-			"me is the stored full ticket id of this machine's current-ticket pointer, or\n" +
-			"empty if unset. It is never a path.\n" +
 			"\n" +
 			"note is the cleaned absolute path of this machine's default note\n" +
 			"(notes/<slug>.md from `tk note use`, or notes/default.md when unset), whether\n" +
@@ -192,7 +188,6 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 		"resolved": resolved.Source,
 		"mode":     mode,
 		"lens":     strings.Join(lens, " "),
-		"me":       e.reg.Me[scope],
 		"note":     notePath,
 	}
 

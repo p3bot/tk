@@ -112,20 +112,14 @@ func TestMetaDependsAddIntegrity(t *testing.T) {
 		t.Fatalf("related missing is soft: %v", err)
 	}
 
-	addTicket(t, e.dir, "wc-gh56", "todo")
-	e.deps.Reg.Me["wc"] = "wc-gh56"
-	res, err = Meta(e.deps, MetaInput{Scope: "wc", Dir: e.dir, Lookup: lu, Op: MetaAdd, Key: "depends", Value: "me"})
-	if err != nil {
-		t.Fatalf("depends me: %v", err)
-	}
-	if !equalStrings(parseTicket(t, res.Path).Depends, []string{"wc-de34", "wc-gh56"}) {
-		t.Errorf("depends me = %v", parseTicket(t, res.Path).Depends)
-	}
-
 	var use *UsageError
 	_, err = Meta(e.deps, MetaInput{Scope: "wc", Dir: e.dir, Lookup: lu, Op: MetaAdd, Key: "related", Value: "bad!"})
 	if !errors.As(err, &use) || !strings.Contains(use.Msg, "not a valid ticket id") {
 		t.Errorf("malformed related: %v", err)
+	}
+	_, err = Meta(e.deps, MetaInput{Scope: "wc", Dir: e.dir, Lookup: lu, Op: MetaAdd, Key: "depends", Value: "me"})
+	if !errors.As(err, &use) || !strings.Contains(use.Msg, "not a valid ticket id") {
+		t.Errorf("me is not a ticket id: %v", err)
 	}
 }
 

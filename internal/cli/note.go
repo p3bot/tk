@@ -169,7 +169,7 @@ func newNoteUseCmd(app *App) *cobra.Command {
 		Long: "A per-scope, machine-local default note slug. With a slug, it sets the pointer;\n" +
 			"with --clear (or the built-in slug `default`) it removes it; with no arguments\n" +
 			"it prints the effective slug (`default` when unset). The pointer is XDG only:\n" +
-			"it never writes tk.cue, me.cue, or lens.cue, never creates or deletes a note\n" +
+			"it never writes tk.cue or lens.cue, never creates or deletes a note\n" +
 			"file, never self-commits, and never emits sync_needed:. --name remains a\n" +
 			"one-shot override on the other note verbs and is not accepted here. Personal\n" +
 			"slugs (`grant`, `alice`) with `default` as the shared pad are a convention,\n" +

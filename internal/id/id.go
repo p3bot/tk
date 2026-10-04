@@ -1,5 +1,5 @@
 // Package id implements the ticket-id wire contract: predicates, argv-form
-// classification (full / short / reserved me), crypto/rand short-id mint, and
+// classification (full / short), crypto/rand short-id mint, and
 // deterministic collision-repair extension. No I/O; the mint takes its
 // randomness source as an argument for testability.
 //
@@ -29,9 +29,6 @@ const (
 	// ShortIDAlphabet is the fixed 31-character alphabet; order is load-bearing
 	// so two machines repairing the same collision enumerate identically.
 	ShortIDAlphabet = LetterAlphabet + DigitAlphabet
-
-	// ReservedMe is the well-formed resolver token; expansion is the caller's job.
-	ReservedMe = "me"
 )
 
 // Form is the argv shape of a ticket-id token. Malformed tokens still carry a
@@ -43,17 +40,11 @@ const (
 	FormFull Form = iota
 	// FormShort is a bare short-id.
 	FormShort
-	// FormMe is ReservedMe.
-	FormMe
 )
 
 // ParseArg classifies a ticket-id token. ok is false when the token is the
-// right shape but fails the grammar. ReservedMe is always ok; lookup of the
-// stored id happens at the call site.
+// right shape but fails the grammar.
 func ParseArg(tok string) (Form, bool) {
-	if tok == ReservedMe {
-		return FormMe, true
-	}
 	if strings.ContainsRune(tok, '-') {
 		return FormFull, IsFullTicketID(tok)
 	}

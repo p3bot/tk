@@ -312,7 +312,7 @@ func runDesignMeta(app *App, c *cobra.Command, idArg, target, scopeFlag string, 
 
 func eDesignID(app *App, c *cobra.Command, idArg, scopeFlag string) (*engine, design.IDInput, error) {
 	form, ok := id.ParseArg(idArg)
-	if !ok || form == id.FormMe {
+	if !ok {
 		return nil, design.IDInput{}, usageErrorf("%q is not a valid design id", idArg)
 	}
 	e, err := app.openEngine(c)

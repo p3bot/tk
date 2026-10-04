@@ -90,7 +90,7 @@ func TestParseArg(t *testing.T) {
 	}{
 		{"wc-ab2c", FormFull, true},
 		{"ab2c", FormShort, true},
-		{"me", FormMe, true},
+		{"me", FormShort, false},
 		{"wc-ABCD", FormFull, false},
 		{"wc-ab2c-x", FormFull, false},
 		{"2abc", FormShort, false},

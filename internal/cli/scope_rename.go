@@ -33,7 +33,6 @@ func newScopeRenameCmd(app *App) *cobra.Command {
 			"ticket id and filename, and every in-scope depends/related edge, then re-key this\n" +
 			"machine's registry, lens, and note default. Design files under design/ are renamed\n" +
 			"the same way, and produces entries that use the old scope prefix are rekeyed.\n" +
-			"The machine-local current-ticket pointer is dropped (the stored id would go stale).\n" +
 			"Cross-scope inbound edges live in other repos and are reported as edge_verify, not\n" +
 			"rewritten. A design in another scope that names a ticket here is left unchanged\n" +
 			"and reported as edge_verify.\n" +
@@ -344,7 +343,7 @@ func (e *engine) rekeyRegistry(oldName, newName string) error {
 	}
 	entry, ok := reg.Scopes[oldName]
 	if !ok {
-		// Already re-keyed (idempotent); leftover lens/me/note under oldName stay unused.
+		// Already re-keyed (idempotent); leftover lens/note under oldName stay unused.
 		return nil
 	}
 	if taken, exists := reg.Scopes[newName]; exists {
@@ -373,23 +372,6 @@ func rekeySessionMaps(store *registry.Store, reg *registry.Registry, oldName, ne
 		delete(reg.Note, oldName)
 		reg.Note[newName] = note
 		if err := store.WriteNote(reg.Note); err != nil {
-			return err
-		}
-	}
-	// me is a bookmark whose value is a full ticket id. Rename rewrites those
-	// ids, so the pointer is dropped rather than rewritten — including any
-	// leftover already stored under the new name.
-	dropped := false
-	if _, ok := reg.Me[oldName]; ok {
-		delete(reg.Me, oldName)
-		dropped = true
-	}
-	if _, ok := reg.Me[newName]; ok {
-		delete(reg.Me, newName)
-		dropped = true
-	}
-	if dropped {
-		if err := store.WriteMe(reg.Me); err != nil {
 			return err
 		}
 	}

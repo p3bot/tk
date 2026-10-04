@@ -228,8 +228,8 @@ func TestSkillDoesNotTeachMe(t *testing.T) {
 			t.Errorf("skill must not teach tk me as a verb: %q", line)
 		}
 	}
-	if !strings.Contains(text, "registry, lens, and me only") {
-		t.Error("skill forget line must name the me entry alongside registry and lens")
+	if strings.Contains(text, "registry, lens, and me only") || strings.Contains(text, "current-ticket") {
+		t.Error("skill must not teach the current-ticket pointer")
 	}
 }
 

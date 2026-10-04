@@ -250,11 +250,7 @@ func TestMarkBatchCollapsesRepeats(t *testing.T) {
 	_, b := createID(t, app, "wc", "Beta")
 	shortA := strings.SplitN(a, "-", 2)[1]
 
-	if _, _, err := run(t, app, "me", a, "--scope", "wc"); err != nil {
-		t.Fatalf("me: %v", err)
-	}
-
-	out, _, err := run(t, app, "mark", "todo", a, a, shortA, "me", b, "--scope", "wc")
+	out, _, err := run(t, app, "mark", "todo", a, a, shortA, b, "--scope", "wc")
 	if err != nil {
 		t.Fatalf("collapse: %v", err)
 	}

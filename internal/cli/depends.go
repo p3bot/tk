@@ -136,8 +136,8 @@ type dependsSubject struct {
 }
 
 // resolveDependsSubject reconciles once. One ticket keeps its report. A single
-// design on that id contributes produces, except --tree, which stays ticket-only.
-// With no ticket, the design is the subject, except --tree and me.
+// design on that id contributes produces. With no ticket, the design is the
+// subject. --tree stays ticket-only.
 func (e *engine) resolveDependsSubject(c *cobra.Command, idArg, scopeFlag string, tree bool) (*dependsSubject, error) {
 	form, ok := parseIDArg(idArg)
 	if !ok {
@@ -159,17 +159,12 @@ func (e *engine) resolveDependsSubject(c *cobra.Command, idArg, scopeFlag string
 		e.printWarnings(c, res.Warnings)
 		return nil, fmt.Errorf("cannot resolve %q: scope %q is not reachable", idArg, scope)
 	}
-	lookupArg, lookupForm, err := e.expandReservedID(scope, idArg, form)
-	if err != nil {
-		e.printWarnings(c, res.Warnings)
-		return nil, err
-	}
 	var tickets []*index.Ticket
-	switch lookupForm {
+	switch form {
 	case id.FormFull:
-		tickets, err = e.db.TicketsByID(scope, lookupArg)
+		tickets, err = e.db.TicketsByID(scope, idArg)
 	default:
-		tickets, err = e.db.TicketsByShortID(scope, lookupArg)
+		tickets, err = e.db.TicketsByShortID(scope, idArg)
 	}
 	if err != nil {
 		e.printWarnings(c, res.Warnings)
@@ -185,18 +180,18 @@ func (e *engine) resolveDependsSubject(c *cobra.Command, idArg, scopeFlag string
 		if tree || len(tickets) > 1 {
 			return sub, nil
 		}
-		designs, err := e.designsByForm(scope, lookupArg, lookupForm)
+		designs, err := e.designsByForm(scope, idArg, form)
 		if err != nil {
 			return nil, err
 		}
 		sub.designs = designs
 		return sub, nil
 	}
-	if tree || lookupForm == id.FormMe {
+	if tree {
 		e.printWarnings(c, res.Warnings)
 		return nil, fmt.Errorf("unknown ticket id %q", idArg)
 	}
-	designs, err := e.designsByForm(scope, lookupArg, lookupForm)
+	designs, err := e.designsByForm(scope, idArg, form)
 	if err != nil {
 		e.printWarnings(c, res.Warnings)
 		return nil, err

@@ -1,8 +1,8 @@
 // Package registry is the machine-local XDG config tier: which scopes are
-// registered, at which paths, plus the per-scope lens, current-ticket
-// pointer, and default note slug. Reads/writes use the CUE Go modules only;
+// registered, at which paths, plus the per-scope lens and default note slug.
+// Reads/writes use the CUE Go modules only;
 // owned files are regenerated wholesale and installed by atomic same-directory
-// rename. An unparseable XDG file is a hard error (nothing to degrade to).
+// rename. An unparseable owned file is a hard error (nothing to degrade to).
 // Callers hold the machine-global flock; this package does not lock.
 package registry
 
@@ -23,7 +23,6 @@ import (
 const (
 	registryFile = "registry.cue"
 	lensFile     = "lens.cue"
-	meFile       = "me.cue"
 	noteFile     = "note.cue"
 )
 
@@ -41,8 +40,6 @@ type Entry struct {
 type Registry struct {
 	Scopes map[string]Entry
 	Lens   map[string][]string
-	// Me is the per-scope current-ticket pointer: one full ticket id, or absent.
-	Me map[string]string
 	// Note is the per-scope default note slug, or absent (built-in default).
 	Note map[string]string
 }
@@ -58,15 +55,15 @@ func NewStore(ctx *cue.Context, configDir string) *Store {
 	return &Store{ctx: ctx, dir: configDir}
 }
 
-// Load reads registry.cue, lens.cue, me.cue, and note.cue. Missing files yield
-// empty sections; uncompilable files hard-error. Scope Dir/Root are returned
-// canonical for path matching; Load never rewrites the file (list may show
-// physical paths while registry.cue still has a pre-heal spelling).
+// Load reads registry.cue, lens.cue, and note.cue. Missing files yield empty
+// sections; uncompilable files hard-error. A leftover me.cue is ignored.
+// Scope Dir/Root are returned canonical for path matching; Load never
+// rewrites the file (list may show physical paths while registry.cue still
+// has a pre-heal spelling).
 func (s *Store) Load() (*Registry, error) {
 	reg := &Registry{
 		Scopes: map[string]Entry{},
 		Lens:   map[string][]string{},
-		Me:     map[string]string{},
 		Note:   map[string]string{},
 	}
 
@@ -100,20 +97,6 @@ func (s *Store) Load() (*Registry, error) {
 		}
 		if lc.Lens != nil {
 			reg.Lens = lc.Lens
-		}
-	}
-
-	if v, ok, err := s.compileFile(meFile); err != nil {
-		return nil, err
-	} else if ok {
-		var mc struct {
-			Me map[string]string `json:"me"`
-		}
-		if err := v.Decode(&mc); err != nil {
-			return nil, fmt.Errorf("%s is malformed: %w", filepath.Join(s.dir, meFile), err)
-		}
-		if mc.Me != nil {
-			reg.Me = mc.Me
 		}
 	}
 
@@ -217,14 +200,6 @@ func CompactTags(tags []string) []string {
 		return nil
 	}
 	return out
-}
-
-// WriteMe regenerates me.cue from me and installs it atomically.
-func (s *Store) WriteMe(me map[string]string) error {
-	if me == nil {
-		me = map[string]string{}
-	}
-	return s.writeOwned(meFile, map[string]any{"me": me})
 }
 
 // WriteNote regenerates note.cue from note and installs it atomically.

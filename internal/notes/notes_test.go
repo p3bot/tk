@@ -49,7 +49,6 @@ func openEnv(t *testing.T, name, dir, root string) *env {
 	reg := &registry.Registry{
 		Scopes: map[string]registry.Entry{name: {Dir: dir, Root: root}},
 		Lens:   map[string][]string{},
-		Me:     map[string]string{},
 		Note:   map[string]string{},
 	}
 	return &env{

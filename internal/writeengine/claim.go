@@ -24,7 +24,7 @@ const (
 	ClaimID
 )
 
-// ClaimInput is one claim. Identity resolution (ambient, --scope, me) stays at the edge.
+// ClaimInput is one claim. Identity resolution (ambient, --scope) stays at the edge.
 type ClaimInput struct {
 	Kind   ClaimKind
 	Scope  string

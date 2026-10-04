@@ -53,7 +53,7 @@ func reporterOrNop(r Reporter) Reporter {
 }
 
 // Lookup is a post-CLI ticket identity: Arg is the original token (error wording),
-// Query is the index key after reserved-me expansion, ByFull selects id vs short-id.
+// Query is the index key, ByFull selects id vs short-id.
 type Lookup struct {
 	Arg    string
 	Query  string

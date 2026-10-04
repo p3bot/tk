@@ -67,7 +67,6 @@ func openDual(t *testing.T, srcName, srcDir, destName, destDir string) *dualEnv 
 					destName: {Dir: destDir, Root: destDir},
 				},
 				Lens: map[string][]string{},
-				Me:   map[string]string{},
 				Note: map[string]string{},
 			},
 			DB:  db,
@@ -512,69 +511,6 @@ func TestRehomeParseErrorSourceRefuses(t *testing.T) {
 	var q *ParseQuarantineError
 	if !errors.As(err, &q) {
 		t.Fatalf("want parse quarantine, got %v", err)
-	}
-}
-
-func TestRehomeMeDropFailureStillReturnsDest(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
-	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
-	cfg := filepath.Join(t.TempDir(), "not-a-dir")
-	if err := os.WriteFile(cfg, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	d.deps.ConfigDir = cfg
-
-	res, err := rehomeFoo(d, "foo-ab2c")
-	if err == nil {
-		t.Fatal("want config-lock failure after the files moved")
-	}
-	if res.ID != "bar-ab2c" {
-		t.Errorf("id = %q want bar-ab2c", res.ID)
-	}
-	if !strings.HasSuffix(res.Path, "bar-ab2c-work.md") {
-		t.Errorf("path = %q", res.Path)
-	}
-	if _, err := os.Stat(src); !os.IsNotExist(err) {
-		t.Errorf("source must be gone")
-	}
-	if _, err := os.Stat(res.Path); err != nil {
-		t.Errorf("dest must exist: %v", err)
-	}
-	srcRows, err := d.deps.DB.TicketsByID("foo", "foo-ab2c")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(srcRows) != 0 {
-		t.Errorf("index must drop source after files moved, got %d rows", len(srcRows))
-	}
-	destRows, err := d.deps.DB.TicketsByID("bar", "bar-ab2c")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(destRows) != 1 {
-		t.Errorf("index must have dest after files moved, got %d rows", len(destRows))
-	}
-}
-
-func TestRehomeDropsSourceMe(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
-	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
-	store := registry.NewStore(d.deps.Cue, d.deps.ConfigDir)
-	if err := store.WriteMe(map[string]string{"foo": "foo-ab2c", "bar": "bar-mm22"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := rehomeFoo(d, "foo-ab2c"); err != nil {
-		t.Fatalf("rehome: %v", err)
-	}
-	reg, err := store.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := reg.Me["foo"]; got != "" {
-		t.Errorf("source me must be dropped, got %q", got)
-	}
-	if got := reg.Me["bar"]; got != "bar-mm22" {
-		t.Errorf("dest me must be left alone, got %q", got)
 	}
 }
 

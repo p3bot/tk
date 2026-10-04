@@ -93,12 +93,8 @@ func (e *engine) notesDeps(ctx context.Context) notes.Deps {
 	}
 }
 
-func (e *engine) writeLookup(scope, idArg string, form id.Form) (writeengine.Lookup, error) {
-	q, f, err := e.expandReservedID(scope, idArg, form)
-	if err != nil {
-		return writeengine.Lookup{}, err
-	}
-	return writeengine.Lookup{Arg: idArg, Query: q, ByFull: f == id.FormFull}, nil
+func (e *engine) writeLookup(idArg string, form id.Form) writeengine.Lookup {
+	return writeengine.Lookup{Arg: idArg, Query: idArg, ByFull: form == id.FormFull}
 }
 
 func (e *engine) gateDeps() depgate.Deps {

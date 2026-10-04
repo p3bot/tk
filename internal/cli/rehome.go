@@ -20,10 +20,8 @@ func newRehomeCmd(app *App) *cobra.Command {
 			"other scopes ride edge_verify on stderr and are not rewritten. Stdout is the dest\n" +
 			"path only. Dest order is a new append key unless a leftover dest file from an\n" +
 			"interrupted rehome is reused. Auto-commit git-roots that contain a touched path\n" +
-			"self-commit; rehome does not push. If this machine's current-ticket pointer (me)\n" +
-			"names the source id, it is dropped rather than rewritten. Same-scope dest is a\n" +
-			"usage error; an unknown dest scope is a generic failure. Dest must know the\n" +
-			"ticket's status.",
+			"self-commit; rehome does not push. Same-scope dest is a usage error; an unknown\n" +
+			"dest scope is a generic failure. Dest must know the ticket's status.",
 		Args: exactArgs("<id>", "<dest-scope>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runRehome(app, c, args[0], args[1], scope)
@@ -52,10 +50,7 @@ func runRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) e
 	if !registered {
 		return fmt.Errorf("unknown ticket id %q: scope %q is not registered here", idArg, srcScope)
 	}
-	lookup, err := e.writeLookup(srcScope, idArg, form)
-	if err != nil {
-		return err
-	}
+	lookup := e.writeLookup(idArg, form)
 
 	in := writeengine.RehomeInput{
 		SourceScope: srcScope,

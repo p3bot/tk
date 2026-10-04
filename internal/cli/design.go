@@ -17,7 +17,8 @@ func newDesignCmd(app *App) *cobra.Command {
 		Use:   "design",
 		Short: "Create and update scope design documents",
 		Long: "Scope design documents live at <scope-dir>/design/<id>-<slug>.md.\n" +
-			"They are not board items: tk list, next, search, and the ticket index ignore them.\n" +
+			"They are not board items: tk list, next, and search ignore them. The index\n" +
+			"stores each design as its own row.\n" +
 			"Statuses are draft, accepted, decomposed, and superseded. The file stays in design/.\n" +
 			"status is set with mark. produces (full ticket ids, design to tickets only) is set\n" +
 			"with meta add and meta remove. A short id held by two design files is refused by\n" +

@@ -14,6 +14,7 @@ import (
 	"github.com/p3bot/tk/internal/design"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/id"
+	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/repair"
 	"github.com/p3bot/tk/internal/rewrite"
@@ -144,6 +145,9 @@ func runScopeRename(app *App, c *cobra.Command, oldName, newName string) error {
 	for _, ed := range inbound {
 		if ed.FromScope == oldName {
 			continue // in-scope edges were rewritten in place, not reported
+		}
+		if ed.Kind == index.EdgeProduces {
+			continue // file scan below prints the one produces line
 		}
 		stdoutln(c, token.Line(token.EdgeVerify, fmt.Sprintf("%s %s %s — target scope renamed to %s, update this reference", ed.FromID, ed.Kind, ed.ToID, newName)))
 	}

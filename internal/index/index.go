@@ -131,9 +131,13 @@ func (d *DB) readSchemaVersion() (int, bool, error) {
 // rebuildSchema drops known objects and recreates the current schema.
 func (d *DB) rebuildSchema() error {
 	drop := `
+DROP TRIGGER IF EXISTS tickets_delete_edges;
+DROP TRIGGER IF EXISTS designs_delete_edges;
+DROP TABLE IF EXISTS design_fts;
 DROP TABLE IF EXISTS fts;
 DROP TABLE IF EXISTS edges;
 DROP TABLE IF EXISTS ticket_tags;
+DROP TABLE IF EXISTS designs;
 DROP TABLE IF EXISTS tickets;
 DROP TABLE IF EXISTS scope_meta;
 DROP TABLE IF EXISTS config_cache;

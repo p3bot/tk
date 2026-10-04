@@ -147,6 +147,11 @@ type pending struct {
 	edges  []index.Edge
 }
 
+type designPending struct {
+	design *index.Design
+	edges  []index.Edge
+}
+
 func diskStat(path string) error {
 	_, err := os.Stat(path)
 	return err
@@ -185,6 +190,39 @@ func applyScopeWrite(w *index.WriteTx, name string, now int64, listed map[string
 	return w.SetLastIndex(name, now)
 }
 
+// applyDesignWrite replaces one scope's design rows, search entries, and
+// produces edges after the writer lock is held. It does not move last_index.
+func applyDesignWrite(w *index.WriteTx, listed map[string]statEntry, existing map[string]index.RowStat, upserts map[string]designPending, stat func(string) error) error {
+	for _, path := range sortedMapKeys(upserts) {
+		err := stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				if err := w.DeleteDesignByPath(path); err != nil {
+					return err
+				}
+				continue
+			}
+			continue
+		}
+		item := upserts[path]
+		if err := w.UpsertDesignWithEdges(item.design, item.edges); err != nil {
+			return err
+		}
+	}
+	for path := range existing {
+		if _, ok := listed[path]; ok {
+			continue
+		}
+		err := stat(path)
+		if err != nil && os.IsNotExist(err) {
+			if err := w.DeleteDesignByPath(path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // reconcileScope stats dir+archive, reparses changed/new/racy files, deletes vanished rows.
 // reachable false leaves rows untouched. Directory listing, LastIndex, ScopeRows, and
 // parse run before the scope write transaction; disk existence is re-checked after
@@ -194,12 +232,20 @@ func (r *Reconciler) reconcileScope(name, dir string, now int64) (reachable bool
 	if !ok {
 		return false, nil
 	}
+	designFiles, err := statDesigns(name, dir)
+	if err != nil {
+		return false, err
+	}
 
 	lastIndex, err := r.db.LastIndex(name)
 	if err != nil {
 		return false, err
 	}
 	existing, err := r.db.ScopeRows(name)
+	if err != nil {
+		return false, err
+	}
+	existingDesigns, err := r.db.ScopeDesignRows(name)
 	if err != nil {
 		return false, err
 	}
@@ -218,8 +264,23 @@ func (r *Reconciler) reconcileScope(name, dir string, now int64) (reachable bool
 		}
 		upserts[path] = pending{ticket: p, edges: edges}
 	}
+	designUpserts := map[string]designPending{}
+	for path, st := range designFiles {
+		prev, seen := existingDesigns[path]
+		if seen && prev.MtimeNS == st.MtimeNS && prev.Size == st.Size && st.MtimeNS < lastIndex {
+			continue
+		}
+		p, edges, err := parseDesign(path, name, st.FullID, st.MtimeNS, st.Size)
+		if err != nil {
+			continue
+		}
+		designUpserts[path] = designPending{design: p, edges: edges}
+	}
 
 	if err := r.db.RunScopeWrite(func(w *index.WriteTx) error {
+		if err := applyDesignWrite(w, designFiles, existingDesigns, designUpserts, diskStat); err != nil {
+			return err
+		}
 		return applyScopeWrite(w, name, now, files, existing, upserts, diskStat)
 	}); err != nil {
 		return false, err

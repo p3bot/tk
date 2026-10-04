@@ -593,6 +593,9 @@ func completeRehome(deps Deps, src, dest rehomeSide, srcPaths, destPaths []strin
 func edgeVerifyOthers(inbound []index.Edge, srcScope, destScope, newID string) []string {
 	var out []string
 	for _, ed := range inbound {
+		if ed.Kind == index.EdgeProduces {
+			continue
+		}
 		if ed.FromScope == srcScope || ed.FromScope == destScope {
 			continue
 		}

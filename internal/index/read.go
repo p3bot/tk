@@ -59,6 +59,40 @@ func (d *DB) ScopeTickets(scope string) ([]*Ticket, error) {
 	return d.queryTickets(`SELECT `+ticketColumns+` FROM tickets WHERE scope = ?`, scope)
 }
 
+const designColumns = `path, scope, id, short_id, status, title, summary, created, changed,
+    parse_error, parse_msg, mtime_ns, size`
+
+// ScopeDesigns returns every design row in one scope, ordered by id then path.
+func (d *DB) ScopeDesigns(scope string) ([]*Design, error) {
+	rows, err := d.sql.Query(`SELECT `+designColumns+` FROM designs WHERE scope = ? ORDER BY id, path`, scope)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []*Design
+	for rows.Next() {
+		p, err := scanDesign(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func scanDesign(sc interface{ Scan(...any) error }) (*Design, error) {
+	var (
+		p    Design
+		perr int
+	)
+	if err := sc.Scan(&p.Path, &p.Scope, &p.ID, &p.ShortID, &p.Status, &p.Title, &p.Summary,
+		&p.Created, &p.Changed, &perr, &p.ParseMsg, &p.MtimeNS, &p.Size); err != nil {
+		return nil, err
+	}
+	p.ParseError = perr != 0
+	return &p, nil
+}
+
 // TicketsByID returns rows in a scope with the given full id (may be >1 under collision).
 func (d *DB) TicketsByID(scope, id string) ([]*Ticket, error) {
 	return d.queryTickets(`SELECT `+ticketColumns+` FROM tickets WHERE scope = ? AND id = ?`, scope, id)

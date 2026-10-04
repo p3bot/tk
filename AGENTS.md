@@ -11,7 +11,7 @@ live authority and must not override the tree.
 P1 through P7 have landed, plus `tkv` (reads plus mark/claim/create/meta/order/lens/sync, notes, doctor diagnose/reindex). `tk` runs as a Cobra CLI with the machine-local CUE
 registry, scope `tk.cue` evaluation, ambient resolution, and the full `tk scope`
 verb set (`init`, `import`, `rebind`, `forget`, `list`, `rename`, `auto-commit`, `field`); the machine-wide
-SQLite index with reconcile, FTS5 search, and the read/board verbs (`list`,
+SQLite index (tickets, designs, and edges) with reconcile, FTS5 search, and the read/board verbs (`list`,
 `pulse`, `get`, `meta`, `next`, `depends`, `search`, `query`, `lens`); the authoring
 hot path (`create`, `mark`, `order`, `edit`, `next --claim`, `rehome`) with local git
 self-commit, and claim-time refresh/push on a tk-driven root with an upstream;
@@ -86,7 +86,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `registry` — the XDG registry/lens/me model, CUE read + atomic regenerate
   - `resolve` — ambient scope resolution and name-drift fail-closed
   - `scopeadmin` — scope verbs and the shared registration checks
-  - `index` — the machine-wide SQLite read model (WAL, FTS5, tickets + edges)
+  - `index` — the machine-wide SQLite read model (WAL, FTS5, tickets, designs, and edges)
   - `depgate` — in-memory depends waiting-on and next selection; shared by CLI and tkv
   - `reconcile` — git-free read-through that brings the index up to date from the files
   - `git` — the external-git wrapper; full read/integrate/push surface (fetch, rebase,

@@ -14,9 +14,18 @@ type RowStat struct {
 	Size    int64
 }
 
-// ScopeRows returns (mtime, size, id) of every indexed file in a scope, keyed by path.
+// ScopeRows returns (mtime, size, id) of every indexed ticket in a scope, keyed by path.
 func (d *DB) ScopeRows(scope string) (map[string]RowStat, error) {
-	rows, err := d.sql.Query(`SELECT path, id, mtime_ns, size FROM tickets WHERE scope = ?`, scope)
+	return scopeStats(d.sql, `SELECT path, id, mtime_ns, size FROM tickets WHERE scope = ?`, scope)
+}
+
+// ScopeDesignRows returns (mtime, size, id) of every indexed design in a scope, keyed by path.
+func (d *DB) ScopeDesignRows(scope string) (map[string]RowStat, error) {
+	return scopeStats(d.sql, `SELECT path, id, mtime_ns, size FROM designs WHERE scope = ?`, scope)
+}
+
+func scopeStats(db *sql.DB, query, scope string) (map[string]RowStat, error) {
+	rows, err := db.Query(query, scope)
 	if err != nil {
 		return nil, fmt.Errorf("read scope rows for %q: %w", scope, err)
 	}
@@ -130,7 +139,9 @@ ON CONFLICT(path) DO UPDATE SET
 		}
 	}
 
-	if _, err := tx.Exec(`DELETE FROM edges WHERE from_path = ?`, p.Path); err != nil {
+	// produces edges share this table and name a design path. A ticket rewrite
+	// clears only the kinds this file owns.
+	if _, err := tx.Exec(`DELETE FROM edges WHERE from_path = ? AND kind IN (?, ?)`, p.Path, EdgeDepends, EdgeRelated); err != nil {
 		return fmt.Errorf("clear edges for %s: %w", p.Path, err)
 	}
 	return nil
@@ -144,7 +155,7 @@ func (d *DB) UpsertTicketWithEdges(p *Ticket, edges []Edge) error {
 }
 
 func upsertTicketWithEdgesTx(tx *sql.Tx, p *Ticket, edges []Edge) error {
-	stale, err := storedMtimeNewer(tx, p.Path, p.MtimeNS)
+	stale, err := storedMtimeNewer(tx, "tickets", p.Path, p.MtimeNS)
 	if err != nil {
 		return err
 	}
@@ -164,10 +175,20 @@ func upsertTicketWithEdgesTx(tx *sql.Tx, p *Ticket, edges []Edge) error {
 }
 
 // storedMtimeNewer is the clobber guard: a stored row newer than incoming means
-// a write-through won; skip tickets, FTS, tags, and edges. Equal mtime writes.
-func storedMtimeNewer(tx *sql.Tx, path string, incoming int64) (bool, error) {
+// a write-through won; skip the row, its search entry, and its edges. Equal mtime writes.
+// table is "tickets" or "designs".
+func storedMtimeNewer(tx *sql.Tx, table, path string, incoming int64) (bool, error) {
+	var q string
+	switch table {
+	case "tickets":
+		q = `SELECT mtime_ns FROM tickets WHERE path = ?`
+	case "designs":
+		q = `SELECT mtime_ns FROM designs WHERE path = ?`
+	default:
+		return false, fmt.Errorf("mtime guard: unknown table %s", table)
+	}
 	var stored int64
-	err := tx.QueryRow(`SELECT mtime_ns FROM tickets WHERE path = ?`, path).Scan(&stored)
+	err := tx.QueryRow(q, path).Scan(&stored)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -238,19 +259,129 @@ func deleteByPathTx(tx *sql.Tx, path string) error {
 	if _, err := tx.Exec(`DELETE FROM fts WHERE rowid = ?`, rowid); err != nil {
 		return err
 	}
+	// tickets_delete_edges removes this file's depends and related edges.
 	if _, err := tx.Exec(`DELETE FROM tickets WHERE path = ?`, path); err != nil {
 		return err
 	}
 	return nil
 }
 
-// DeleteScope drops every trace of a scope (rows, FTS, edges, timestamps, config cache).
+// UpsertDesignWithEdges writes one design row, its search entry, and its produces edges.
+func (d *DB) UpsertDesignWithEdges(p *Design, edges []Edge) error {
+	return d.runWrite(func(tx *sql.Tx) error {
+		return upsertDesignWithEdgesTx(tx, p, edges)
+	})
+}
+
+// UpsertDesignWithEdges writes p and its produces edges unless a stored row is newer.
+func (w *WriteTx) UpsertDesignWithEdges(p *Design, edges []Edge) error {
+	return upsertDesignWithEdgesTx(w.tx, p, edges)
+}
+
+func upsertDesignWithEdgesTx(tx *sql.Tx, p *Design, edges []Edge) error {
+	stale, err := storedMtimeNewer(tx, "designs", p.Path, p.MtimeNS)
+	if err != nil {
+		return err
+	}
+	if stale {
+		return nil
+	}
+	if err := upsertDesignTx(tx, p); err != nil {
+		return err
+	}
+	for _, e := range uniqueEdges(edges) {
+		if _, err := tx.Exec(`INSERT INTO edges(from_path, from_id, from_scope, to_id, to_scope, kind) VALUES (?, ?, ?, ?, ?, ?)`,
+			e.FromPath, e.FromID, e.FromScope, e.ToID, e.ToScope, e.Kind); err != nil {
+			return fmt.Errorf("insert edge %s->%s: %w", e.FromID, e.ToID, err)
+		}
+	}
+	return nil
+}
+
+func upsertDesignTx(tx *sql.Tx, p *Design) error {
+	_, err := tx.Exec(`
+INSERT INTO designs (path, scope, id, short_id, status, title, summary, created, changed,
+                      parse_error, parse_msg, mtime_ns, size)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(path) DO UPDATE SET
+    scope=excluded.scope, id=excluded.id, short_id=excluded.short_id, status=excluded.status,
+    title=excluded.title, summary=excluded.summary, created=excluded.created,
+    changed=excluded.changed, parse_error=excluded.parse_error, parse_msg=excluded.parse_msg,
+    mtime_ns=excluded.mtime_ns, size=excluded.size`,
+		p.Path, p.Scope, p.ID, p.ShortID, p.Status, p.Title, p.Summary, p.Created, p.Changed,
+		boolToInt(p.ParseError), p.ParseMsg, p.MtimeNS, p.Size)
+	if err != nil {
+		return fmt.Errorf("upsert design %s: %w", p.Path, err)
+	}
+
+	var rowid int64
+	if err := tx.QueryRow(`SELECT rowid FROM designs WHERE path = ?`, p.Path).Scan(&rowid); err != nil {
+		return fmt.Errorf("resolve design rowid for %s: %w", p.Path, err)
+	}
+	// Contentless-delete stores no document. ON CONFLICT UPDATE keeps designs.rowid,
+	// which is a different sequence from tickets.rowid.
+	if _, err := tx.Exec(`DELETE FROM design_fts WHERE rowid = ?`, rowid); err != nil {
+		return fmt.Errorf("clear design search for %s: %w", p.Path, err)
+	}
+	if _, err := tx.Exec(`INSERT INTO design_fts(rowid, title, body) VALUES (?, ?, ?)`, rowid, p.Title, string(p.Body)); err != nil {
+		return fmt.Errorf("index design search for %s: %w", p.Path, err)
+	}
+	if _, err := tx.Exec(`DELETE FROM edges WHERE from_path = ? AND kind = ?`, p.Path, EdgeProduces); err != nil {
+		return fmt.Errorf("clear produces edges for %s: %w", p.Path, err)
+	}
+	return nil
+}
+
+// DeleteDesignByPath removes the design row, its search entry, and its produces edges.
+func (d *DB) DeleteDesignByPath(path string) error {
+	return d.runWrite(func(tx *sql.Tx) error {
+		return deleteDesignByPathTx(tx, path)
+	})
+}
+
+// DeleteDesignByPath removes the design row for path, or no-ops when none exists.
+func (w *WriteTx) DeleteDesignByPath(path string) error {
+	return deleteDesignByPathTx(w.tx, path)
+}
+
+func deleteDesignByPathTx(tx *sql.Tx, path string) error {
+	var rowid int64
+	err := tx.QueryRow(`SELECT rowid FROM designs WHERE path = ?`, path).Scan(&rowid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM design_fts WHERE rowid = ?`, rowid); err != nil {
+		return err
+	}
+	// designs_delete_edges removes this file's produces edges.
+	if _, err := tx.Exec(`DELETE FROM designs WHERE path = ?`, path); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteScope drops every trace of a scope (ticket and design rows, both search
+// indexes, the edges those rows own, timestamps, config cache).
 func (d *DB) DeleteScope(scope string) error {
 	return d.runWrite(func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM fts WHERE rowid IN (SELECT rowid FROM tickets WHERE scope = ?)`, scope); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(`DELETE FROM design_fts WHERE rowid IN (SELECT rowid FROM designs WHERE scope = ?)`, scope); err != nil {
+			return err
+		}
+		// Ticket and design row deletes fire the edge triggers. This statement
+		// also drops a produces edge whose design row is already gone.
+		if _, err := tx.Exec(`DELETE FROM edges WHERE from_scope = ? AND kind = ?`, scope, EdgeProduces); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(`DELETE FROM tickets WHERE scope = ?`, scope); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM designs WHERE scope = ?`, scope); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`DELETE FROM scope_meta WHERE scope = ?`, scope); err != nil {
@@ -266,6 +397,7 @@ func (d *DB) DeleteScope(scope string) error {
 // IndexedScopes returns scopes that currently have index rows, meta, or cache entries.
 func (d *DB) IndexedScopes() (map[string]bool, error) {
 	rows, err := d.sql.Query(`SELECT DISTINCT scope FROM tickets
+                              UNION SELECT scope FROM designs
                               UNION SELECT scope FROM scope_meta
                               UNION SELECT scope FROM config_cache`)
 	if err != nil {

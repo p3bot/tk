@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	"github.com/p3bot/tk/internal/id"
+	"github.com/p3bot/tk/internal/scopefile"
 )
 
-// archiveDir is the only subdirectory reconcile scans (immediate children only).
-// design/ and notes/ are scope-owned and stay out of the ticket index.
+// archiveDir is the only ticket subdirectory reconcile scans (immediate children only).
+// design/ is indexed into the designs table, not tickets. notes/ stays out of the index.
 const archiveDir = "archive"
 
 type statEntry struct {
@@ -58,6 +59,45 @@ func collectDir(scope, root string, archived bool, files map[string]statEntry) b
 		}
 	}
 	return true
+}
+
+// statDesigns lists design files one level under design/. A missing design/
+// directory, and a non-directory parked at that name, are an empty set.
+// A directory that exists but cannot be read is an error so reconcile does
+// not drop rows it failed to see.
+func statDesigns(scope, dir string) (map[string]statEntry, error) {
+	root := filepath.Join(dir, scopefile.DesignDir)
+	if scopefile.OptionalDirMiss(root) {
+		return map[string]statEntry{}, nil
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if scopefile.OptionalDirMiss(root) {
+			return map[string]statEntry{}, nil
+		}
+		return nil, err
+	}
+	files := map[string]statEntry{}
+	for _, e := range entries {
+		if e.IsDir() || !scopefile.LooksLikeTicket(e.Name()) {
+			continue
+		}
+		fullID, ok := ticketID(scope, e.Name())
+		if !ok {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		path := filepath.Join(root, e.Name())
+		files[path] = statEntry{
+			FullID:  fullID,
+			MtimeNS: fi.ModTime().UnixNano(),
+			Size:    fi.Size(),
+		}
+	}
+	return files, nil
 }
 
 // ticketID extracts <scope>-<short-id> from <scope>-<short-id>[-slug].md so

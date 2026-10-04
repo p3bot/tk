@@ -275,6 +275,7 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		`schema_error: <id> has unknown status "<status>" (<path>)`,
 		"design/<id>-<slug>.md",
 		"not a board item",
+		"A design is its own row in the index. A design does not appear in `tk list`, `tk next`, or `tk search`",
 		"refuse a short id held by two design files",
 		"parse_error: N unparseable",
 		"rekeys `produces` entries that use the old scope prefix",

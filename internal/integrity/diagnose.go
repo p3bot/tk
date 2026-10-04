@@ -394,6 +394,9 @@ func (d *diagnoser) edgeClasses(scope string) {
 		if ed.FromScope != scope || ed.FromID == ed.ToID {
 			continue // self-edges: frontmatter model owns depends_self
 		}
+		if ed.Kind == index.EdgeProduces {
+			continue
+		}
 		if ed.Kind == index.EdgeRelated {
 			if !d.hasRow[ed.ToID] {
 				d.add(token.Line(token.RelatedUnresolvable, fmt.Sprintf("%s related target %s is not resolvable here", ed.FromID, ed.ToID)))

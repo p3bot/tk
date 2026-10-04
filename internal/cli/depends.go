@@ -262,6 +262,9 @@ func newDependsGraph() *dependsGraph {
 }
 
 func (g *dependsGraph) addEdge(ed index.Edge) {
+	if ed.Kind == index.EdgeProduces {
+		return
+	}
 	if ed.Kind == index.EdgeDepends {
 		g.outDep[ed.FromID] = appendUnique(g.outDep[ed.FromID], ed.ToID)
 		g.inDep[ed.ToID] = appendUnique(g.inDep[ed.ToID], ed.FromID)

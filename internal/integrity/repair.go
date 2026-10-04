@@ -232,6 +232,9 @@ func ReportEdgeVerify(deps Deps, rep Reporter, collidedIDs []string) error {
 			return err
 		}
 		for _, ed := range inbound {
+			if ed.Kind == index.EdgeProduces {
+				continue
+			}
 			rep.Out(token.Line(token.EdgeVerify, fmt.Sprintf("%s %s %s — target was collision-repaired, verify this reference", ed.FromID, ed.Kind, collidedID)))
 		}
 	}
@@ -592,6 +595,9 @@ func reportPrefixEdges(deps Deps, rep Reporter, renames []repair.PrefixRename, p
 		}
 		newID := mapped[old]
 		for _, ed := range inbound {
+			if ed.Kind == index.EdgeProduces {
+				continue // prefixProducesLines owns the file-based produces line
+			}
 			lines = append(lines, token.Line(token.EdgeVerify, fmt.Sprintf("%s %s %s — id prefix repaired to %s, verify this reference", ed.FromID, ed.Kind, old, newID)))
 		}
 	}

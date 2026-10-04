@@ -3,6 +3,7 @@ package index
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -63,12 +64,10 @@ func TestOpenStampsVersionAndRebuildsOnMismatch(t *testing.T) {
 	}
 }
 
-func TestOpenRebuildsSchemaVersion6(t *testing.T) {
-	if SchemaVersion != 7 {
-		t.Fatalf("SchemaVersion = %d, want 7", SchemaVersion)
-	}
-	if !strings.Contains(SchemaText, "version 7") || !strings.Contains(SchemaText, "changed") {
-		t.Fatalf("SchemaText must name version 7 and changed:\n%s", SchemaText)
+func TestStaleSchemaRebuildKeepsChangedColumn(t *testing.T) {
+	verText := fmt.Sprintf("version %d", SchemaVersion)
+	if !strings.Contains(SchemaText, verText) || !strings.Contains(SchemaText, "changed") {
+		t.Fatalf("SchemaText must name %s and changed:\n%s", verText, SchemaText)
 	}
 	dir := t.TempDir()
 	db, err := Open(dir)
@@ -93,8 +92,8 @@ func TestOpenRebuildsSchemaVersion6(t *testing.T) {
 	}
 	defer func() { _ = db2.Close() }()
 	ver, ok, err := db2.readSchemaVersion()
-	if err != nil || !ok || ver != 7 {
-		t.Fatalf("reopened version = %d ok=%v err=%v, want 7", ver, ok, err)
+	if err != nil || !ok || ver != SchemaVersion {
+		t.Fatalf("reopened version = %d ok=%v err=%v, want %d", ver, ok, err, SchemaVersion)
 	}
 	rows, err := db2.ScopeTickets("wc")
 	if err != nil {
@@ -482,15 +481,14 @@ func TestSchemaEdgesRelation(t *testing.T) {
 	}
 	for _, want := range []string{
 		"PRIMARY KEY (from_path, kind, to_id)",
-		"CHECK (kind IN ('depends', 'related'))",
-		"FOREIGN KEY (from_path) REFERENCES tickets(path) ON DELETE CASCADE",
+		"CHECK (kind IN ('depends', 'related', 'produces'))",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("edges DDL missing %q:\n%s", want, sql)
 		}
 	}
-	if strings.Contains(sql, "FOREIGN KEY (to_id)") || strings.Contains(sql, "REFERENCES tickets(id)") {
-		t.Errorf("to_id must not be a foreign key:\n%s", sql)
+	if strings.Contains(sql, "FOREIGN KEY") || strings.Contains(sql, "REFERENCES tickets") {
+		t.Errorf("edges.from_path must not reference tickets:\n%s", sql)
 	}
 
 	rows, err := db.sql.Query(`PRAGMA table_info(edges)`)
@@ -531,8 +529,28 @@ func TestSchemaEdgesRelation(t *testing.T) {
 			t.Fatalf("edges FK = table=%s from=%s to=%s on_delete=%s", table, from, to, onDelete)
 		}
 	}
-	if nFK != 1 {
-		t.Fatalf("edges foreign keys = %d, want 1", nFK)
+	if nFK != 0 {
+		t.Fatalf("edges foreign keys = %d, want 0", nFK)
+	}
+
+	triggers := map[string]string{}
+	trigRows, err := db.sql.Query(`SELECT name, sql FROM sqlite_master WHERE type = 'trigger'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = trigRows.Close() }()
+	for trigRows.Next() {
+		var name, body string
+		if err := trigRows.Scan(&name, &body); err != nil {
+			t.Fatal(err)
+		}
+		triggers[name] = body
+	}
+	if !strings.Contains(triggers["tickets_delete_edges"], "kind IN ('depends', 'related')") {
+		t.Fatalf("ticket delete trigger = %q", triggers["tickets_delete_edges"])
+	}
+	if !strings.Contains(triggers["designs_delete_edges"], "kind = 'produces'") {
+		t.Fatalf("design delete trigger = %q", triggers["designs_delete_edges"])
 	}
 
 	idxRows, err := db.sql.Query(`SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='edges'`)
@@ -561,7 +579,7 @@ func TestSchemaEdgesRelation(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"PRIMARY KEY", "CHECK kind IN", "ON DELETE CASCADE", "may dangle",
+		"PRIMARY KEY", "CHECK kind IN", "produces", "may dangle", "design search index", "not a foreign key",
 	} {
 		if !strings.Contains(SchemaText, want) {
 			t.Errorf("SchemaText missing %q:\n%s", want, SchemaText)

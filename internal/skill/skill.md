@@ -90,7 +90,7 @@ tk reindex                                                          # Rebuild th
 ## Designs
 
 - A design lives at `design/<id>-<slug>.md` in the scope directory. It is not a board item
-- It does not appear in `tk list`, `tk next`, `tk search`, or the ticket index
+- A design is its own row in the index. A design does not appear in `tk list`, `tk next`, or `tk search`
 - Statuses: draft, accepted, decomposed, superseded. The file stays in `design/`
 - `tk design list` defaults to draft and accepted. `--all` includes every parsed design, including a status outside those four. A positional outside those four exits 2. Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)`
 - Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`

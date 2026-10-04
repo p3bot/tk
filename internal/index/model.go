@@ -30,18 +30,41 @@ type Ticket struct {
 	Size    int64
 }
 
-// Edge is one depends/related relationship. FromPath ties it to the owning file for replace-on-reconcile.
+// Design is one materialized design row. Path is the physical key. Body populates
+// the design search index on write only and is not stored as a column.
+type Design struct {
+	Path    string
+	Scope   string
+	ID      string
+	ShortID string
+	Status  string
+	Title   string
+	Summary string
+	Created string
+	// Changed is the fence string, or empty when the key is absent.
+	Changed string
+	// ParseError marks a quarantine row (id from filename; raw file still indexed).
+	ParseError bool
+	ParseMsg   string
+	Body       []byte
+	MtimeNS    int64
+	Size       int64
+}
+
+// Edge is one depends, related, or produces relationship. FromPath ties it to the owning file for replace-on-reconcile.
 type Edge struct {
 	FromPath  string
 	FromID    string
 	FromScope string
 	ToID      string
 	ToScope   string
-	Kind      string // EdgeDepends or EdgeRelated
+	Kind      string // EdgeDepends, EdgeRelated, or EdgeProduces
 }
 
 // Edge kind values stored on edges.kind.
+// EdgeProduces is also the design fence key those edges are read from.
 const (
-	EdgeDepends = "depends"
-	EdgeRelated = "related"
+	EdgeDepends  = "depends"
+	EdgeRelated  = "related"
+	EdgeProduces = "produces"
 )

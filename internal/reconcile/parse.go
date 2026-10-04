@@ -99,6 +99,70 @@ func edgesFrom(base *index.Ticket, m *frontmatter.Model) ([]index.Edge, bool) {
 	return edges, schemaErr
 }
 
+// parseDesign materializes one design file. Bad content yields a parse_error
+// row (id from the filename, raw file indexed), not an error. An unknown
+// status is a normal row. Real I/O faults still error.
+func parseDesign(path, scope, fullID string, mtimeNS, size int64) (*index.Design, []index.Edge, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	base := &index.Design{
+		Path: path, Scope: scope, ID: fullID, ShortID: shortOf(fullID),
+		MtimeNS: mtimeNS, Size: size,
+	}
+	interior, body, present := frontmatter.Split(data)
+	if !present || containsConflictMarker(interior) {
+		base.ParseError = true
+		base.ParseMsg = "frontmatter fence missing, broken, or carries conflict markers"
+		base.Body = data
+		return base, nil, nil
+	}
+	model, err := frontmatter.Parse(interior)
+	if err != nil {
+		base.ParseError = true
+		base.ParseMsg = err.Error()
+		base.Body = data
+		return base, nil, nil
+	}
+	base.Status = model.Status
+	base.Summary = model.Summary
+	base.Created = model.Created
+	base.Changed = model.Changed
+	base.Body = body
+	base.Title = title.Extract(body)
+	if id.IsFullTicketID(model.ID) && scopeOf(model.ID) == base.Scope {
+		base.ID = model.ID
+		base.ShortID = shortOf(model.ID)
+	}
+	return base, producesEdges(base, model), nil
+}
+
+// producesEdges keeps produces entries that are full ticket ids. A value that
+// is not a list, and an entry that is not a full ticket id, are not edges.
+func producesEdges(base *index.Design, m *frontmatter.Model) []index.Edge {
+	var edges []index.Edge
+	for _, f := range m.Custom {
+		if f.Key != index.EdgeProduces {
+			continue
+		}
+		ids, err := frontmatter.StringList(f.Value)
+		if err != nil {
+			continue
+		}
+		for _, target := range ids {
+			if !id.IsFullTicketID(target) {
+				continue
+			}
+			edges = append(edges, index.Edge{
+				FromPath: base.Path, FromID: base.ID, FromScope: base.Scope,
+				ToID: target, ToScope: scopeOf(target), Kind: index.EdgeProduces,
+			})
+		}
+	}
+	return edges
+}
+
 func containsConflictMarker(interior []byte) bool {
 	for len(interior) > 0 {
 		var line []byte

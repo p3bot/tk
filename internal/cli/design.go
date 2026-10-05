@@ -24,9 +24,10 @@ func newDesignCmd(app *App) *cobra.Command {
 			"Statuses are draft, accepted, decomposed, and superseded. The file stays in design/.\n" +
 			"status is set with mark. produces (full ticket ids, design to tickets only) is set\n" +
 			"with meta add and meta remove. A short id held by two design files is refused by\n" +
-			"get, mark, and meta, with no path printed.\n" +
-			"create does not self-commit. mark and meta add|remove self-commit on a tk-driven\n" +
-			"scope and do not take the claim push path. Body text under the H1 is a direct file edit.",
+			"get, edit, mark, and meta, with no path printed.\n" +
+			"create and edit do not self-commit. mark and meta add|remove self-commit on a\n" +
+			"tk-driven scope and do not take the claim push path. Body text under the H1 is a\n" +
+			"direct file edit. edit and create --edit open $EDITOR; they do not rewrite the fence.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -39,6 +40,7 @@ func newDesignCmd(app *App) *cobra.Command {
 		newDesignCreateCmd(app),
 		newDesignListCmd(app),
 		newDesignGetCmd(app),
+		newDesignEditCmd(app),
 		newDesignSearchCmd(app),
 		newDesignMarkCmd(app),
 		newDesignMetaCmd(app),
@@ -48,20 +50,46 @@ func newDesignCmd(app *App) *cobra.Command {
 
 func newDesignCreateCmd(app *App) *cobra.Command {
 	var scope string
+	var edit bool
 	cmd := &cobra.Command{
-		Use:   "create <title> [--scope S]",
+		Use:   "create <title> [--scope S] [--edit]",
 		Short: "Scaffold a design document and print its path",
 		Long: "Mint an id that no ticket or design in the scope already holds, write\n" +
 			"design/<id>-<slug>.md with id, status draft, changed, and created, and\n" +
 			"print the cleaned absolute path. changed and created are the same RFC3339\n" +
 			"instant. The slug is frozen from the title. There is no order key. create\n" +
-			"does not self-commit; a tk-driven scope rides sync_needed:.",
+			"does not self-commit; a tk-driven scope rides sync_needed:. --edit is human\n" +
+			"$EDITOR convenience: after a successful write it opens that path with the\n" +
+			"same editor contract as tk design edit. An unset $EDITOR or a non-zero editor\n" +
+			"exit is non-zero and leaves the scaffold. A create that fails before the file\n" +
+			"exists does not launch the editor.",
 		Args: exactArgs("<title>"),
 		RunE: func(c *cobra.Command, args []string) error {
-			return runDesignCreate(app, c, args[0], scope)
+			return runDesignCreate(app, c, args[0], scope, edit)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient)")
+	cmd.Flags().BoolVar(&edit, "edit", false, "open the new design in $EDITOR after a successful write")
+	return cmd
+}
+
+func newDesignEditCmd(app *App) *cobra.Command {
+	var scope string
+	cmd := &cobra.Command{
+		Use:   "edit <id> [--scope S]",
+		Short: "Open a design document in $EDITOR",
+		Long: "Resolve a design id the same way as get, then open that path in $EDITOR.\n" +
+			"It prints nothing on success, does not rewrite the fence, and does not\n" +
+			"self-commit. An unparseable fence is opened so it can be repaired in place.\n" +
+			"A short id held by two design files refuses, prints no path, and does not\n" +
+			"launch the editor. $EDITOR may include flags. An unset $EDITOR or a non-zero\n" +
+			"editor exit is a non-zero command.",
+		Args: exactArgs("<id>"),
+		RunE: func(c *cobra.Command, args []string) error {
+			return runDesignEdit(app, c, args[0], scope)
+		},
+	}
+	cmd.Flags().StringVar(&scope, "scope", "", "ambient scope for a short id")
 	return cmd
 }
 
@@ -201,7 +229,7 @@ func newDesignMetaMutCmd(app *App, add bool) *cobra.Command {
 	return cmd
 }
 
-func runDesignCreate(app *App, c *cobra.Command, title, scopeFlag string) error {
+func runDesignCreate(app *App, c *cobra.Command, title, scopeFlag string, edit bool) error {
 	e, err := app.openEngine(c)
 	if err != nil {
 		return err
@@ -216,7 +244,40 @@ func runDesignCreate(app *App, c *cobra.Command, title, scopeFlag string) error 
 		Dir:   resolved.Entry.Dir,
 		Title: title,
 	})
-	return emitDesign(c, res, err)
+	if emitErr := emitDesign(c, res, err); emitErr != nil {
+		return emitErr
+	}
+	if !edit {
+		return nil
+	}
+	path := res.Path
+	e.close()
+	fields, err := editorArgv("tk design create --edit")
+	if err != nil {
+		return err
+	}
+	return runEditor(fields, path)
+}
+
+func runDesignEdit(app *App, c *cobra.Command, idArg, scopeFlag string) error {
+	e, in, err := eDesignID(app, c, idArg, scopeFlag)
+	if err != nil {
+		return err
+	}
+	defer e.close()
+	res, err := design.Get(e.designDeps(c), in)
+	if err != nil {
+		return emitDesign(c, res, err)
+	}
+	writeDesignParseCount(c, res.Unparseable)
+	if res.Parse != nil {
+		stderrln(c, res.Parse.ReadLine())
+	}
+	fields, err := editorArgv("tk design edit")
+	if err != nil {
+		return err
+	}
+	return runEditor(fields, res.Path)
 }
 
 func runDesignList(app *App, c *cobra.Command, scopeFlag string, all bool, statuses []string) error {

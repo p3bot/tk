@@ -262,7 +262,9 @@ func TestSkillListsRepair(t *testing.T) {
 func TestSkillDocumentsDesigns(t *testing.T) {
 	text := skill.Text()
 	for _, n := range []string{
-		"tk design create <title> [--scope S]",
+		"tk design create <title> [--scope S] [--edit]",
+		"tk design edit <id> [--scope S]",
+		"Agents use the printed path rather than `--edit`",
 		"tk design list [status...] [--scope S] [--all]",
 		"tk design get <id> [--content] [--scope S]",
 		"tk design mark <status> <id> [--scope S]",

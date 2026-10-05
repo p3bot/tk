@@ -50,9 +50,10 @@ tk mark <status> <id> [id...] [--scope S]                           # Set status
 tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    # Move board order key
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 tk rehome <id> <dest-scope> [--scope S]                             # Prefix-rewrite ticket into dest scope; print dest path
-tk design create <title> [--scope S]                                # Scaffold design/<id>-<slug>.md; print path; no self-commit
+tk design create <title> [--scope S] [--edit]                       # Scaffold design/<id>-<slug>.md; print path; no self-commit; --edit opens $EDITOR
 tk design list [status...] [--scope S] [--all]                      # Index read; TSV id, status, title, path; default draft and accepted; --all is every parsed design (ls aliases list)
 tk design get <id> [--content] [--scope S]                          # Index read; path or file; refuses a short id held by two design files
+tk design edit <id> [--scope S]                                     # Open that path in $EDITOR; no stdout; no self-commit
 tk design search <terms> [--scope S]                                # Design-only FTS; TSV id, status, title, path
 tk design mark <status> <id> [--scope S]                            # draft, accepted, decomposed, superseded; file stays in design/
 tk design meta add <id> produces <ticket-id> [--scope S]            # Append one full ticket id
@@ -102,8 +103,10 @@ tk reindex                                                          # Rebuild th
 - `changed` is the time the design entered its current status. `tk design create` sets `changed` to the same RFC3339 instant as `created`. `tk design mark` updates it only on a status change. A same-status mark does not add the key. `tk design meta` and `tk scope rename` leave it alone. Ticket stale clocks do not apply to a design. A design written before the field has no key
 - `produces` stores full ticket ids, design to tickets only. There is no back-link on the ticket. `tk design meta remove` drops a list entry even when it is not a full ticket id
 - The slug is frozen at create. Editing the H1 does not rename the file. Body text under the H1 is a direct file edit
-- `tk design get`, `tk design mark`, and `tk design meta` refuse a short id held by two design files and print no path
-- A broken fence stays off `tk design list`. List and get print `parse_error: N unparseable`. Get of that file also prints `parse_error: <id>: <message>` and exits 0. Doctor prints `parse_error: <id>: <message> (<path>)`. Mark and meta refuse and do not write
+- `tk design edit <id>` resolves like `tk design get`, then opens `$EDITOR` on that path. Success prints nothing. It does not rewrite the fence and does not self-commit. `$EDITOR` may include flags. An unset `$EDITOR` or a non-zero editor exit is non-zero and names `tk design edit`
+- `tk design create --edit` prints the absolute path, then opens `$EDITOR` on it. It does not self-commit. An unset `$EDITOR` or a non-zero editor exit is non-zero and leaves the scaffold. Without `--edit`, create does not launch an editor. Agents use the printed path rather than `--edit`
+- `tk design get`, `tk design edit`, `tk design mark`, and `tk design meta` refuse a short id held by two design files and print no path. Edit does not launch the editor
+- A broken fence stays off `tk design list`. List and get print `parse_error: N unparseable`. Get of that file also prints `parse_error: <id>: <message>` and exits 0. `tk design edit` opens that path. Doctor prints `parse_error: <id>: <message> (<path>)`. Mark and meta refuse and do not write
 - `tk scope rename` rewrites design filenames and fence ids, and rekeys `produces` entries that use the old scope prefix. Entries that name another scope stay and are reported as `edge_verify`
 - tk repair resolves a short id shared with a design. A broken design fence, an unknown design status, a filename that disagrees with the fence id, and a produces entry that does not name that id stay doctor warnings
 - `tk design create` does not self-commit. `tk design mark` and `tk design meta add|remove` self-commit on a tk-driven scope and do not push

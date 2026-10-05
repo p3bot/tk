@@ -163,7 +163,15 @@ func (d *diagnoser) collisions(scope string) error {
 	if err != nil {
 		return err
 	}
+	// A design holder makes the short a design_id repair, not a second duplicate_id.
+	held, err := d.designHeldShorts(scope)
+	if err != nil {
+		return err
+	}
 	for _, col := range dups {
+		if held[shortOfFull(col.Key)] {
+			continue
+		}
 		d.add(token.Line(token.DuplicateID, fmt.Sprintf("%s claimed by %s — run tk repair", col.Key, strings.Join(col.Members, ", "))))
 	}
 	eq, err := d.deps.DB.EqualOrders([]string{scope})
@@ -691,6 +699,20 @@ func openDesignRows(designs []*index.Design) ([]openedDesign, error) {
 			continue
 		}
 		out = append(out, openedDesign{row: p, model: m})
+	}
+	return out, nil
+}
+
+func (d *diagnoser) designHeldShorts(scope string) (map[string]bool, error) {
+	designs, err := d.deps.DB.ScopeDesigns(scope)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, p := range designs {
+		if id.IsShortID(p.ShortID) {
+			out[p.ShortID] = true
+		}
 	}
 	return out, nil
 }

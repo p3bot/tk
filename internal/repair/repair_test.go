@@ -336,3 +336,130 @@ func TestBasename(t *testing.T) {
 		}
 	}
 }
+
+func writeDesignProj(t *testing.T, dir, fullID, slug, created, extra, body string) string {
+	t.Helper()
+	target := filepath.Join(dir, "design")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fm := "---\nid: " + fullID + "\nstatus: draft\ncreated: " + created + "\n" + extra + "---\n" + body
+	path := filepath.Join(target, fullID+"-"+slug+".md")
+	if err := os.WriteFile(path, []byte(fm), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func sharedRow(path, fullID string, design bool) SharedRow {
+	short := fullID[strings.IndexByte(fullID, '-')+1:]
+	return SharedRow{Row: Row{Path: path, FullID: fullID, ShortID: short}, Design: design}
+}
+
+// A design keeps the id, one ticket is extended, and an older design is also
+// extended. The ticket takes the first free suffix so the design loser's links
+// can name that id. Re-entry while the new files still sit beside the old ones
+// reuses those ids.
+func TestSharedIDRetargetOrdersTicketFirstAndResumes(t *testing.T) {
+	dir := t.TempDir()
+	keeper := writeDesignProj(t, dir, "wc-ab2c", "shape", "2019-01-01T00:00:00Z", "produces: [wc-ab2c]\n", "# Shape\n")
+	designLoser := writeDesignProj(t, dir, "wc-ab2c", "other", "2020-01-01T00:00:00Z", "produces: [wc-ab2c]\n", "# Other\n")
+	ticket := writeProj(t, dir, "wc-ab2c", "ticket", "2026-06-01T00:00:00Z", "a0", "# Ticket\n", false)
+	ref := writeProj(t, dir, "wc-de34", "ref", "2026-01-01T00:00:00Z", "a1", "# Ref\n", false)
+	refRaw, err := os.ReadFile(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refRaw = bytes.Replace(refRaw, []byte("created:"), []byte("depends: [wc-ab2c]\ncreated:"), 1)
+	if err := os.WriteFile(ref, refRaw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := []SharedRow{
+		sharedRow(ticket, "wc-ab2c", false),
+		sharedRow(designLoser, "wc-ab2c", true),
+		sharedRow(keeper, "wc-ab2c", true),
+	}
+	ops, renames, retarget, err := SharedID("wc", dir, rows, map[string]string{"ab2c": keeper, "de34": ref})
+	if err != nil {
+		t.Fatalf("SharedID: %v", err)
+	}
+	byOld := map[string]Rename{}
+	for _, rn := range renames {
+		byOld[rn.OldPath] = rn
+	}
+	if byOld[ticket].NewID != "wc-ab2ca" {
+		t.Fatalf("ticket extension = %s, want wc-ab2ca", byOld[ticket].NewID)
+	}
+	if byOld[designLoser].NewID != "wc-ab2cb" {
+		t.Fatalf("design extension = %s, want wc-ab2cb", byOld[designLoser].NewID)
+	}
+	if filepath.Dir(byOld[designLoser].NewPath) != filepath.Join(dir, "design") {
+		t.Fatalf("design loser left design/: %s", byOld[designLoser].NewPath)
+	}
+	if retarget != "wc-ab2ca" {
+		t.Fatalf("retarget = %s", retarget)
+	}
+	content := opContent(t, ops)
+	loserRaw := content[byOld[designLoser].NewPath]
+	if bytes.Contains(loserRaw, []byte("order:")) || !bytes.Contains(loserRaw, []byte("id: wc-ab2cb")) || !bytes.Contains(loserRaw, []byte("produces: [wc-ab2ca]")) {
+		t.Fatalf("design loser = %q", loserRaw)
+	}
+	keptRaw := content[keeper]
+	if !bytes.Contains(keptRaw, []byte("id: wc-ab2c")) || !bytes.Contains(keptRaw, []byte("produces: [wc-ab2ca]")) || bytes.Contains(keptRaw, []byte("order:")) {
+		t.Fatalf("keeper = %q", keptRaw)
+	}
+	refAfter := content[ref]
+	if !bytes.Contains(refAfter, []byte("depends: [wc-ab2ca]")) {
+		t.Fatalf("depends = %q", refAfter)
+	}
+
+	// Crash window: new-id files written, old-id files not yet removed.
+	for _, op := range ops {
+		if op.OldPath != "" && op.OldPath != op.NewPath {
+			if err := os.MkdirAll(filepath.Dir(op.NewPath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(op.NewPath, op.Content, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	occ := map[string]string{"ab2c": keeper, "de34": ref}
+	for _, rn := range renames {
+		occ[strings.TrimPrefix(rn.NewID, "wc-")] = rn.NewPath
+	}
+	reOps, reRenames, reTarget, err := SharedID("wc", dir, rows, occ)
+	if err != nil {
+		t.Fatalf("re-entry: %v", err)
+	}
+	if reTarget != retarget {
+		t.Fatalf("re-entry retarget = %s, want %s", reTarget, retarget)
+	}
+	if len(reRenames) != len(renames) {
+		t.Fatalf("re-entry renames = %d, want %d", len(reRenames), len(renames))
+	}
+	reByOld := map[string]Rename{}
+	for _, rn := range reRenames {
+		reByOld[rn.OldPath] = rn
+	}
+	reContent := opContent(t, reOps)
+	for _, rn := range renames {
+		got := reByOld[rn.OldPath]
+		if got.NewID != rn.NewID || got.NewPath != rn.NewPath {
+			t.Fatalf("re-entry rename = %+v, want %+v", got, rn)
+		}
+		if !bytes.Equal(reContent[rn.NewPath], content[rn.NewPath]) {
+			t.Fatalf("re-entry bytes for %s differ", rn.NewPath)
+		}
+	}
+}
+
+func opContent(t *testing.T, ops []rewrite.Op) map[string][]byte {
+	t.Helper()
+	out := map[string][]byte{}
+	for _, op := range ops {
+		out[op.NewPath] = op.Content
+	}
+	return out
+}

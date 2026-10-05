@@ -564,7 +564,7 @@ func TestDesignFilenameIDMismatchAndRepairLeavesIt(t *testing.T) {
 	}
 }
 
-func TestDesignDoctorTokensAndRepairLeavesDesign(t *testing.T) {
+func TestDesignDoctorTokensAndRepairSharedShort(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	t.Setenv("TK_SCOPE", "wc")
@@ -595,20 +595,52 @@ func TestDesignDoctorTokensAndRepairLeavesDesign(t *testing.T) {
 		}
 	}
 
-	designPath := filepath.Join(dir, "design", "wc-ab2c-shape.md")
-	before, _ := os.ReadFile(designPath)
-	if _, _, err := run(t, app, "repair"); err != nil {
-		t.Fatalf("repair: %v", err)
-	}
-	after, err := os.ReadFile(designPath)
+	pairBefore, err := os.ReadFile(filepath.Join(dir, "design", "wc-de34-pair.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(before) != string(after) {
-		t.Fatal("repair must not rewrite the design file")
+	danglingBefore, err := os.ReadFile(filepath.Join(dir, "design", "wc-gh56-dangling.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, app, "repair"); err != nil {
+		t.Fatalf("repair: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "design", "wc-ab2c-shape.md")); !os.IsNotExist(err) {
+		t.Fatal("shared design loser must be renamed")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "design", "wc-ab2ca-shape.md")); err != nil {
+		t.Fatal("shared design loser must stay under design/")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "design", "wc-de34-pair.md")); err != nil {
-		t.Fatal("repair must not rename a design pair")
+		t.Fatal("older design of a pair must keep its id")
+	}
+	pairAfter, err := os.ReadFile(filepath.Join(dir, "design", "wc-de34-pair.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(pairBefore) != string(pairAfter) {
+		t.Fatal("keeper design must be left byte-for-byte")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "design", "wc-de34a-other.md")); err != nil {
+		t.Fatal("newer design of a pair must be extended under design/")
+	}
+	danglingAfter, err := os.ReadFile(filepath.Join(dir, "design", "wc-gh56-dangling.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(danglingBefore) != string(danglingAfter) {
+		t.Fatal("dangling produces must stay")
+	}
+	doc, _, err = run(t, app, "doctor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc, token.DesignID) {
+		t.Fatalf("repaired design ids must be gone, got %q", doc)
+	}
+	if strings.Count(doc, token.ProducesDangling) != 2 {
+		t.Fatalf("dangling produces must survive repair, got %q", doc)
 	}
 }
 

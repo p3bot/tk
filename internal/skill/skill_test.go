@@ -293,6 +293,8 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		"parse_error: N unparseable",
 		"rekeys `produces` entries that use the old scope prefix",
 		"reported as `edge_verify`",
+		"repair resolves a short id shared with a design",
+		"stay doctor warnings",
 		"design mark, design meta add|remove",
 		"design create, and file edits never commit",
 	} {

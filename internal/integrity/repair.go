@@ -164,16 +164,22 @@ func registeredSet(reg *registry.Registry) map[string]bool {
 	return out
 }
 
-// repairCollisions: edge_verify is read after all collisions so referrer ids are post-repair.
+// sharedRepair is one design_id group this run extended.
+// retarget is the new ticket id when links moved, or empty when they stayed.
+type sharedRepair struct {
+	oldID    string
+	retarget string
+}
+
+// repairCollisions resolves design_id groups first, then ticket-only duplicate ids.
+// A short id with a design holder is not also repaired as duplicate_id.
+// edge_verify is read after every rename so referrer ids are post-repair.
 func repairCollisions(deps Deps, rep Reporter, t *Target) error {
-	dups, err := deps.DB.DuplicateIDs([]string{t.Scope})
+	rows, err := deps.DB.ScopeTickets(t.Scope)
 	if err != nil {
 		return err
 	}
-	if len(dups) == 0 {
-		return nil
-	}
-	rows, err := deps.DB.ScopeTickets(t.Scope)
+	designs, err := deps.DB.ScopeDesigns(t.Scope)
 	if err != nil {
 		return err
 	}
@@ -187,13 +193,41 @@ func repairCollisions(deps Deps, rep Reporter, t *Target) error {
 			occupied[short] = path
 		}
 	}
+
+	groups := sharedGroups(t.Scope, rows, designs)
+	held := map[string]bool{}
+	var shared []sharedRepair
+	for _, g := range groups {
+		held[g.short] = true
+		done, err := repairSharedGroup(deps, rep, t, g, occupied)
+		if err != nil {
+			return err
+		}
+		if done != nil {
+			shared = append(shared, *done)
+		}
+	}
+
+	dups, err := deps.DB.DuplicateIDs([]string{t.Scope})
+	if err != nil {
+		return err
+	}
 	byPath := map[string]*index.Ticket{}
-	for _, p := range rows {
-		byPath[p.Path] = p
+	if len(dups) > 0 {
+		rows, err = deps.DB.ScopeTickets(t.Scope)
+		if err != nil {
+			return err
+		}
+		for _, p := range rows {
+			byPath[p.Path] = p
+		}
 	}
 
 	var repaired []string
 	for _, col := range dups {
+		if held[shortOfFull(col.Key)] {
+			continue
+		}
 		members := rowsForPaths(byPath, col.Members)
 		mid, err := repair.InterruptedMove(t.Dir, toRepairRows(members))
 		if err != nil {
@@ -219,7 +253,155 @@ func repairCollisions(deps Deps, rep Reporter, t *Target) error {
 		}
 		repaired = append(repaired, col.Key)
 	}
-	return ReportEdgeVerify(deps, rep, repaired)
+	if err := ReportEdgeVerify(deps, rep, repaired); err != nil {
+		return err
+	}
+	return reportSharedEdges(deps, rep, t.Scope, shared)
+}
+
+type sharedGroup struct {
+	short string
+	full  string
+	rows  []repair.SharedRow
+}
+
+func sharedGroups(scope string, tickets []*index.Ticket, designs []*index.Design) []sharedGroup {
+	byShort := map[string][]repair.SharedRow{}
+	for _, p := range tickets {
+		if !id.IsShortID(p.ShortID) {
+			continue
+		}
+		byShort[p.ShortID] = append(byShort[p.ShortID], repair.SharedRow{Row: toRepairRow(p)})
+	}
+	for _, p := range designs {
+		if !id.IsShortID(p.ShortID) {
+			continue
+		}
+		byShort[p.ShortID] = append(byShort[p.ShortID], repair.SharedRow{
+			Row:    repair.Row{Path: p.Path, FullID: p.ID, ShortID: p.ShortID, ParseError: p.ParseError},
+			Design: true,
+		})
+	}
+	var shorts []string
+	for short, rows := range byShort {
+		if len(rows) < 2 || !sharedHasDesign(rows) {
+			continue
+		}
+		shorts = append(shorts, short)
+	}
+	sort.Strings(shorts)
+	out := make([]sharedGroup, 0, len(shorts))
+	for _, short := range shorts {
+		rows := byShort[short]
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Path < rows[j].Path })
+		out = append(out, sharedGroup{short: short, full: scope + "-" + short, rows: rows})
+	}
+	return out
+}
+
+func sharedHasDesign(rows []repair.SharedRow) bool {
+	for _, r := range rows {
+		if r.Design {
+			return true
+		}
+	}
+	return false
+}
+
+// repairSharedGroup extends one design_id group. A quarantined holder or an
+// interrupted archive move skips the group and leaves the short out of duplicate_id repair.
+// A nil result means the group was skipped.
+func repairSharedGroup(deps Deps, rep Reporter, t *Target, g sharedGroup, occupied map[string]string) (*sharedRepair, error) {
+	if sharedQuarantined(g.rows) {
+		rep.Err(token.Line(token.ParseError, fmt.Sprintf("%s: collision includes a quarantined file — fix its frontmatter before repair", g.full)))
+		return nil, nil
+	}
+	var tickets []repair.Row
+	for _, r := range g.rows {
+		if !r.Design {
+			tickets = append(tickets, r.Row)
+		}
+	}
+	mid, err := repair.InterruptedMove(t.Dir, tickets)
+	if err != nil {
+		return nil, err
+	}
+	if mid {
+		rep.Err(fmt.Sprintf("skipping %s: unfinished archive-layout move, not a collision — re-run tk repair to complete it", g.full))
+		return nil, nil
+	}
+	ops, renames, retarget, err := repair.SharedID(t.Scope, t.Dir, g.rows, occupied)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyRepairBatch(deps, rep, t, ops, designIDMessage(renames)); err != nil {
+		return nil, err
+	}
+	for _, r := range renames {
+		rep.Out(fmt.Sprintf("repaired design id: %s -> %s (%s)", r.OldID, r.NewID, r.NewPath))
+	}
+	return &sharedRepair{oldID: g.full, retarget: retarget}, nil
+}
+
+func sharedQuarantined(rows []repair.SharedRow) bool {
+	for _, r := range rows {
+		if r.ParseError {
+			return true
+		}
+	}
+	return false
+}
+
+func designIDMessage(renames []repair.Rename) string {
+	newIDs := make([]string, len(renames))
+	for i, r := range renames {
+		newIDs[i] = r.NewID
+	}
+	return fmt.Sprintf("tk: repair design id %s -> %s", renames[0].OldID, strings.Join(newIDs, ", "))
+}
+
+// reportSharedEdges prints edge_verify for references that stayed on a repaired
+// design_id. Same-scope entries that moved to the extended ticket are omitted.
+// Produces is included. An entry in another scope is never rewritten.
+func reportSharedEdges(deps Deps, rep Reporter, scope string, shared []sharedRepair) error {
+	if len(shared) == 0 {
+		return nil
+	}
+	if err := reconcileOtherScopes(deps, scope); err != nil {
+		return err
+	}
+	for _, g := range shared {
+		inbound, err := deps.DB.EdgesByTarget(g.oldID)
+		if err != nil {
+			return err
+		}
+		for _, ed := range inbound {
+			if ed.FromScope == scope && g.retarget != "" {
+				continue
+			}
+			rep.Out(token.Line(token.EdgeVerify, fmt.Sprintf("%s %s %s — target was collision-repaired, verify this reference", ed.FromID, ed.Kind, g.oldID)))
+		}
+	}
+	return nil
+}
+
+func reconcileOtherScopes(deps Deps, scope string) error {
+	targets := map[string]string{}
+	for name, entry := range deps.Reg.Scopes {
+		if name == scope {
+			continue
+		}
+		targets[name] = entry.Dir
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+	_, err := deps.Rec.Reconcile(targets, registeredSet(deps.Reg), time.Now().UnixNano())
+	return err
+}
+
+func shortOfFull(full string) string {
+	return strings.TrimPrefix(full, id.ScopeOfFullID(full)+"-")
 }
 
 // ReportEdgeVerify emits edge_verify lines for actually-repaired collision ids.
@@ -331,11 +513,9 @@ func applyRepairBatch(deps Deps, rep Reporter, t *Target, ops []rewrite.Op, mess
 	return finishRepairBatch(deps, rep, t, touched, message)
 }
 
-// finishRepairBatch indexes ticket paths and self-commits the touched set.
-// The ticket index stores files at the scope root and under archive/ only.
-// A design path in the same batch is committed with the rest and not upserted.
+// finishRepairBatch indexes ticket and design paths and self-commits the touched set.
 func finishRepairBatch(deps Deps, rep Reporter, t *Target, touched []string, message string) error {
-	if err := deps.Rec.SyncPaths(t.Scope, ticketIndexPaths(t.Dir, touched)); err != nil {
+	if err := deps.Rec.SyncPaths(t.Scope, repairIndexPaths(t.Dir, touched)); err != nil {
 		return err
 	}
 	if !t.AutoCommit {
@@ -654,9 +834,11 @@ func producesIDs(m *frontmatter.Model) []string {
 	return nil
 }
 
-// ticketIndexPaths keeps paths the ticket index can store: the scope root and archive/.
-func ticketIndexPaths(dir string, paths []string) []string {
+// repairIndexPaths keeps paths the ticket or design index can store:
+// the scope root, archive/, and design/.
+func repairIndexPaths(dir string, paths []string) []string {
 	arch := filepath.Join(dir, "archive")
+	designs := filepath.Join(dir, scopefile.DesignDir)
 	seen := map[string]bool{}
 	var out []string
 	for _, p := range paths {
@@ -664,7 +846,7 @@ func ticketIndexPaths(dir string, paths []string) []string {
 			continue
 		}
 		parent := filepath.Dir(p)
-		if parent != dir && parent != arch {
+		if parent != dir && parent != arch && parent != designs {
 			continue
 		}
 		seen[p] = true

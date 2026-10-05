@@ -104,6 +104,7 @@ tk reindex                                                          # Rebuild th
 - `tk design get`, `tk design mark`, and `tk design meta` refuse a short id held by two design files and print no path
 - A broken fence stays off `tk design list`. List and get print `parse_error: N unparseable`. Get of that file also prints `parse_error: <id>: <message>` and exits 0. Doctor prints `parse_error: <id>: <message> (<path>)`. Mark and meta refuse and do not write
 - `tk scope rename` rewrites design filenames and fence ids, and rekeys `produces` entries that use the old scope prefix. Entries that name another scope stay and are reported as `edge_verify`
+- tk repair resolves a short id shared with a design. A broken design fence, an unknown design status, a filename that disagrees with the fence id, and a produces entry that does not name that id stay doctor warnings
 - `tk design create` does not self-commit. `tk design mark` and `tk design meta add|remove` self-commit on a tk-driven scope and do not push
 
 ## Identifiers

@@ -62,10 +62,12 @@ type ListInput struct {
 	All      bool
 }
 
-// MarkInput sets one design status.
+// MarkInput sets one design status. Now is the status-entry instant.
+// The zero time means the command clock.
 type MarkInput struct {
 	IDInput
 	Status string
+	Now    time.Time
 }
 
 // MetaInput adds or removes one produces entry.
@@ -106,10 +108,13 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 		return Result{}, err
 	}
 	fullID := in.Scope + "-" + shortID
+	// One read, so changed and created are the same instant.
+	stamp := rfc3339(in.Now)
 	model := &frontmatter.Model{
 		ID:      fullID,
 		Status:  StatusDraft,
-		Created: rfc3339(in.Now),
+		Changed: stamp,
+		Created: stamp,
 	}
 	interior, err := Serialize(model)
 	if err != nil {
@@ -289,10 +294,13 @@ func Mark(deps Deps, in MarkInput) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	// Same status is not a new entry. Leave changed alone, including when the
+	// key is absent, and do not commit.
 	if f.Model.Status == in.Status {
 		return Result{ID: f.ID, Path: abs, Unchanged: true}, nil
 	}
 	before := append([]byte(nil), f.Raw...)
+	f.Model.Changed = rfc3339(in.Now)
 	f.Model.Status = in.Status
 	if err := writeModel(f.Path, f.Model, f.Body); err != nil {
 		return Result{}, err

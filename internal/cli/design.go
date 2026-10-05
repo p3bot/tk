@@ -52,9 +52,10 @@ func newDesignCreateCmd(app *App) *cobra.Command {
 		Use:   "create <title> [--scope S]",
 		Short: "Scaffold a design document and print its path",
 		Long: "Mint an id that no ticket or design in the scope already holds, write\n" +
-			"design/<id>-<slug>.md with id, created, and status draft, and print the\n" +
-			"cleaned absolute path. The slug is frozen from the title. There is no order\n" +
-			"key. create does not self-commit; a tk-driven scope rides sync_needed:.",
+			"design/<id>-<slug>.md with id, status draft, changed, and created, and\n" +
+			"print the cleaned absolute path. changed and created are the same RFC3339\n" +
+			"instant. The slug is frozen from the title. There is no order key. create\n" +
+			"does not self-commit; a tk-driven scope rides sync_needed:.",
 		Args: exactArgs("<title>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDesignCreate(app, c, args[0], scope)
@@ -134,9 +135,11 @@ func newDesignMarkCmd(app *App) *cobra.Command {
 		Use:   "mark <status> <id> [--scope S]",
 		Short: "Set a design's status",
 		Long: "Set status to draft, accepted, decomposed, or superseded. Any of the four\n" +
-			"may be marked from any of the four. The file stays in design/. A ticket status\n" +
-			"is a usage error. On a tk-driven scope, mark self-commits and does not push.\n" +
-			"A short id shared by two design files refuses and does not write.",
+			"may be marked from any of the four. The file stays in design/. changed is\n" +
+			"rewritten only when the status changes. A same-status mark leaves the key\n" +
+			"alone and does not add it. A ticket status is a usage error. On a tk-driven\n" +
+			"scope, mark self-commits and does not push. A short id shared by two design\n" +
+			"files refuses and does not write.",
 		Args: exactArgs("<status>", "<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDesignMark(app, c, args[0], args[1], scope)

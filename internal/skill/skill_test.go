@@ -297,6 +297,9 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		"stay doctor warnings",
 		"design mark, design meta add|remove",
 		"design create, and file edits never commit",
+		"tk design create` sets `changed`",
+		"tk design mark` updates it only on a status change",
+		"Ticket stale clocks do not apply to a design",
 	} {
 		if !strings.Contains(text, n) {
 			t.Errorf("skill missing design contract %q", n)

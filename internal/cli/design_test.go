@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/p3bot/tk/internal/token"
 )
@@ -924,6 +925,151 @@ func TestScopeRenameRefusesDesignWithoutFence(t *testing.T) {
 	}
 	if fileExists(dir, "new-m4np-target.md") {
 		t.Fatal("ticket must not be renamed")
+	}
+}
+
+func TestDesignChangedOnCreateMarkAndMeta(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	t.Setenv("TK_SCOPE", "wc")
+	addTicket(t, dir, "wc-m4np", "target", "todo", "a0", "# Target\n", false, "")
+
+	out, _, err := run(t, app, "design", "create", "Stamp the status")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	path := strings.TrimSpace(out)
+	created := fmValue(t, path, "created")
+	changed := fmValue(t, path, "changed")
+	if _, err := time.Parse(time.RFC3339, created); err != nil || created == "" || created != changed {
+		t.Fatalf("created=%q changed=%q", created, changed)
+	}
+	fullID := designIDFromPath(t, path)
+	if _, _, err := run(t, app, "design", "list"); err != nil {
+		t.Fatal(err)
+	}
+	q, _, err := run(t, app, "query", "SELECT changed FROM designs WHERE id = '"+fullID+"'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(q, created) {
+		t.Fatalf("index changed = %q, want %q", q, created)
+	}
+
+	if _, _, err := run(t, app, "design", "mark", "accepted", fullID); err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+	if got := fmValue(t, path, "created"); got != created {
+		t.Fatalf("created moved to %q", got)
+	}
+	if got := fmValue(t, path, "status"); got != "accepted" {
+		t.Fatalf("status = %q", got)
+	}
+	marked := fmValue(t, path, "changed")
+	if _, err := time.Parse(time.RFC3339, marked); err != nil || marked == "" {
+		t.Fatalf("mark changed=%q", marked)
+	}
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, app, "design", "mark", "accepted", fullID); err != nil {
+		t.Fatalf("same-status mark: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("same-status mark wrote the file:\n%s", after)
+	}
+
+	if _, _, err := run(t, app, "design", "meta", "add", fullID, "produces", "wc-m4np"); err != nil {
+		t.Fatalf("meta add: %v", err)
+	}
+	if got := fmValue(t, path, "changed"); got != marked {
+		t.Fatalf("meta moved changed to %q", got)
+	}
+
+	bare := filepath.Join(dir, "design", "wc-cd3e-bare.md")
+	writeDesign(t, dir, "wc-cd3e", "bare", "draft", "2026-01-01T00:00:00Z", "Bare")
+	bareBefore, err := os.ReadFile(bare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, app, "design", "mark", "draft", "wc-cd3e"); err != nil {
+		t.Fatalf("same-status bare mark: %v", err)
+	}
+	bareAfter, err := os.ReadFile(bare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(bareAfter) != string(bareBefore) || strings.Contains(string(bareAfter), "changed:") {
+		t.Fatalf("same-status mark invented changed:\n%s", bareAfter)
+	}
+}
+
+func TestDesignRenameLeavesChanged(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "old")
+	addTicket(t, dir, "old-m4np", "target", "todo", "a0", "# Target\n", false, "")
+	with := "---\nid: old-ab2c\nstatus: draft\nchanged: 2026-02-02T03:04:05Z\ncreated: 2026-01-01T00:00:00Z\n---\n# Shape\n"
+	if err := os.MkdirAll(filepath.Join(dir, "design"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "design", "old-ab2c-shape.md"), []byte(with), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeDesign(t, dir, "old-cd3e", "bare", "draft", "2026-01-01T00:00:00Z", "Bare")
+
+	if _, _, err := run(t, app, "scope", "rename", "old", "core"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	kept := filepath.Join(dir, "design", "core-ab2c-shape.md")
+	if got := fmValue(t, kept, "changed"); got != "2026-02-02T03:04:05Z" {
+		t.Fatalf("rename moved changed to %q", got)
+	}
+	bare, err := os.ReadFile(filepath.Join(dir, "design", "core-cd3e-bare.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(bare), "changed:") {
+		t.Fatalf("rename invented changed:\n%s", bare)
+	}
+}
+
+func TestDoctorStaleIgnoresDesign(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	t.Setenv("TK_SCOPE", "wc")
+	ago := time.Now().Add(-73 * time.Hour)
+	stamp := ago.Format(time.RFC3339)
+	writeDesign(t, dir, "wc-ab2c", "old", "draft", "2020-01-01T00:00:00Z", "Old")
+	raw := "---\nid: wc-ab2c\nstatus: draft\nchanged: " + stamp + "\ncreated: 2020-01-01T00:00:00Z\n---\n# Old\n"
+	path := filepath.Join(dir, "design", "wc-ab2c-old.md")
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, ago, ago); err != nil {
+		t.Fatal(err)
+	}
+	review := "---\nid: wc-cd3e\nstatus: review\nchanged: " + stamp + "\ncreated: 2020-01-01T00:00:00Z\n---\n# Review\n"
+	if err := os.WriteFile(filepath.Join(dir, "design", "wc-cd3e-review.md"), []byte(review), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v\n%s", err, out)
+	}
+	for _, tok := range []string{token.StaleInProgress, token.StaleReview, token.StaleBlocked} {
+		if strings.Contains(out, tok) {
+			t.Fatalf("design must not emit %s\n%s", tok, out)
+		}
+	}
+	if !strings.Contains(out, `schema_error: wc-cd3e has unknown status "review"`) {
+		t.Fatalf("review design must stay an unknown status, got %q", out)
 	}
 }
 

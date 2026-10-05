@@ -222,6 +222,7 @@ func (d *diagnoser) perRow(dir string, rows []*index.Ticket, schema *scopeconfig
 // stale warns on two clocks. An in-progress file that has sat unwritten is an
 // abandoned claim. Review and blocked are supposed to sit, so only an old
 // status stamp counts, and a missing or unusable stamp is unknown rather than old.
+// Callers pass ticket rows only. A design status has no dwell warning.
 func (d *diagnoser) stale(p *index.Ticket) {
 	if p.Status == status.InProgress && p.MtimeNS > 0 {
 		quiet := d.now.Sub(time.Unix(0, p.MtimeNS))

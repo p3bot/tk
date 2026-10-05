@@ -99,6 +99,7 @@ tk reindex                                                          # Rebuild th
 - Statuses: draft, accepted, decomposed, superseded. The file stays in `design/`
 - `tk design list` defaults to draft and accepted. `--all` includes every parsed design, including a status outside those four. A positional outside those four exits 2. Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)`
 - Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`
+- `changed` is the time the design entered its current status. `tk design create` sets `changed` to the same RFC3339 instant as `created`. `tk design mark` updates it only on a status change. A same-status mark does not add the key. `tk design meta` and `tk scope rename` leave it alone. Ticket stale clocks do not apply to a design. A design written before the field has no key
 - `produces` stores full ticket ids, design to tickets only. There is no back-link on the ticket. `tk design meta remove` drops a list entry even when it is not a full ticket id
 - The slug is frozen at create. Editing the H1 does not rename the file. Body text under the H1 is a direct file edit
 - `tk design get`, `tk design mark`, and `tk design meta` refuse a short id held by two design files and print no path

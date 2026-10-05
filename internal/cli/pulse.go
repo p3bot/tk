@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/depgate"
+	"github.com/p3bot/tk/internal/design"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/notes"
 	"github.com/p3bot/tk/internal/scopeadmin"
@@ -42,6 +43,11 @@ var pulseKeys = []string{
 	"dangling",
 	"integrity",
 	"uncommitted",
+	"designs",
+	"design_draft",
+	"design_accepted",
+	"design_decomposed",
+	"design_superseded",
 }
 
 // pulseKeyWidth is the longest locked key (shared with tests).
@@ -79,7 +85,8 @@ func newPulseCmd(app *App) *cobra.Command {
 			"\n" +
 			"Locked keys (order fixed): scope, dir, resolved, mode, lens, note, total,\n" +
 			"todo, in-progress, review, blocked, draft, backlog, done, cancelled, next,\n" +
-			"claimed, blocked_ids, dangling, integrity, uncommitted.\n" +
+			"claimed, blocked_ids, dangling, integrity, uncommitted, designs,\n" +
+			"design_draft, design_accepted, design_decomposed, design_superseded.\n" +
 			"\n" +
 			"resolved is how the scope was chosen: flag (--scope), env (TK_SCOPE), or cwd\n" +
 			"(longest-prefix code-root).\n" +
@@ -102,7 +109,7 @@ func newPulseCmd(app *App) *cobra.Command {
 			"backlog and terminals) and ignores the lens. Working-board built-in counts\n" +
 			"include backlog (unlike bare list). Terminal tallies (done, cancelled) are full-scope\n" +
 			"including archive/ and ignore the lens. Identity and health keys (dangling,\n" +
-			"integrity, uncommitted) ignore the lens.\n" +
+			"integrity, uncommitted) and the design counts ignore the lens.\n" +
 			"\n" +
 			"next reuses tk next selection (reconcileClosure + depends gate + lens) but never\n" +
 			"surfaces next's empty-queue diagnostic: empty next still exits 0 with the full\n" +
@@ -111,6 +118,11 @@ func newPulseCmd(app *App) *cobra.Command {
 			"integrity is ok or issues for the ambient scope only (parse_error rows,\n" +
 			"duplicate_id, equal_order, archive layout drift) — not soft doctor classes or\n" +
 			"depended-on scopes from the next closure.\n" +
+			"\n" +
+			"designs counts parseable design rows in the scope and ignores the lens.\n" +
+			"design_draft, design_accepted, design_decomposed, and design_superseded count\n" +
+			"those statuses. An unknown design status increments designs only. A design\n" +
+			"parse-error row increments none of them. draft stays the ticket draft count.\n" +
 			"\n" +
 			"To change a ticket's status, use `tk mark <status> <id> [id...]`.",
 		Args: maxArgs(1),
@@ -195,6 +207,11 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 	if err != nil {
 		return err
 	}
+	designRows, err := e.db.ScopeDesigns(scope)
+	if err != nil {
+		return err
+	}
+	designCounts := designPulseCounts(designRows)
 
 	candidates, err := e.db.NextCandidates(scope)
 	if err != nil {
@@ -235,6 +252,11 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 	pulse["dangling"] = strconv.Itoa(dangling)
 	pulse["integrity"] = integrity
 	pulse["uncommitted"] = strconv.Itoa(uncommitted)
+	pulse["designs"] = strconv.Itoa(designCounts.total)
+	pulse["design_draft"] = strconv.Itoa(designCounts.draft)
+	pulse["design_accepted"] = strconv.Itoa(designCounts.accepted)
+	pulse["design_decomposed"] = strconv.Itoa(designCounts.decomposed)
+	pulse["design_superseded"] = strconv.Itoa(designCounts.superseded)
 
 	writeNextDiagnostics(c, sel)
 	if key != "" {
@@ -247,6 +269,32 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 		stdoutln(c, fmt.Sprintf("%-*s\t%s", pulseKeyWidth, k, pulse[k]))
 	}
 	return nil
+}
+
+type designPulseTally struct {
+	total, draft, accepted, decomposed, superseded int
+}
+
+// designPulseCounts skips parse-error rows. An unknown status counts in total only.
+func designPulseCounts(rows []*index.Design) designPulseTally {
+	var c designPulseTally
+	for _, row := range rows {
+		if row == nil || row.ParseError {
+			continue
+		}
+		c.total++
+		switch row.Status {
+		case design.StatusDraft:
+			c.draft++
+		case design.StatusAccepted:
+			c.accepted++
+		case design.StatusDecomposed:
+			c.decomposed++
+		case design.StatusSuperseded:
+			c.superseded++
+		}
+	}
+	return c
 }
 
 // pulseMode: unusable schema → plain-files (never guess repo-driven).

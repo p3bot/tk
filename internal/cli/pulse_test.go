@@ -111,6 +111,14 @@ func TestPulseDashboardKeyOrderAndCounts(t *testing.T) {
 	if p["uncommitted"] != "0" {
 		t.Errorf("uncommitted = %q want 0", p["uncommitted"])
 	}
+	if p["designs"] != "0" || p["design_draft"] != "0" || p["design_accepted"] != "0" ||
+		p["design_decomposed"] != "0" || p["design_superseded"] != "0" {
+		t.Errorf("design counts with no designs = designs:%s draft:%s accepted:%s decomposed:%s superseded:%s",
+			p["designs"], p["design_draft"], p["design_accepted"], p["design_decomposed"], p["design_superseded"])
+	}
+	if p["draft"] != "1" {
+		t.Errorf("ticket draft = %q want 1", p["draft"])
+	}
 
 	listOut, _, err := run(t, app, "list", "--all", "--no-lens", "--scope", "wc")
 	if err != nil {
@@ -715,5 +723,122 @@ func TestPulseResolvedSources(t *testing.T) {
 	}
 	if parsePulse(out)["resolved"] != "cwd" {
 		t.Errorf("want cwd, got %q", parsePulse(out)["resolved"])
+	}
+}
+
+func TestPulseDesignCounts(t *testing.T) {
+	app := newApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ae26", "draft", "draft", "a5", "# Ticket draft\n", false, "tags: [backend]\n")
+	writeDesign(t, dir, "wc-d2e3", "shape", "draft", "2026-01-01T00:00:00Z", "Draft design")
+	writeDesign(t, dir, "wc-d3e4", "split", "decomposed", "2026-01-02T00:00:00Z", "Split design")
+
+	out, _, err := run(t, app, "pulse", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("pulse: %v", err)
+	}
+	keys := parsePulseKeys(out)
+	if !slicesEqual(keys, pulseKeys) {
+		t.Fatalf("key order = %v, want %v", keys, pulseKeys)
+	}
+	suffix := []string{"uncommitted", "designs", "design_draft", "design_accepted", "design_decomposed", "design_superseded"}
+	if !slicesEqual(keys[len(keys)-len(suffix):], suffix) {
+		t.Fatalf("design keys must follow uncommitted, got %v", keys)
+	}
+	p := parsePulse(out)
+	if p["draft"] != "1" {
+		t.Errorf("ticket draft = %q want 1 (design draft must not count)", p["draft"])
+	}
+	if p["designs"] != "2" || p["design_draft"] != "1" || p["design_decomposed"] != "1" ||
+		p["design_accepted"] != "0" || p["design_superseded"] != "0" {
+		t.Fatalf("draft+decomposed counts = %+v", map[string]string{
+			"designs": p["designs"], "design_draft": p["design_draft"],
+			"design_accepted": p["design_accepted"], "design_decomposed": p["design_decomposed"],
+			"design_superseded": p["design_superseded"],
+		})
+	}
+
+	writeDesign(t, dir, "wc-d4f5", "keep", "accepted", "2026-01-03T00:00:00Z", "Accepted design")
+	writeDesign(t, dir, "wc-d6f7", "old", "superseded", "2026-01-04T00:00:00Z", "Superseded design")
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("pulse after accepted and superseded: %v", err)
+	}
+	p = parsePulse(out)
+	if p["designs"] != "4" || p["design_draft"] != "1" || p["design_accepted"] != "1" ||
+		p["design_decomposed"] != "1" || p["design_superseded"] != "1" || p["draft"] != "1" {
+		t.Fatalf("each closed status must count once, got draft=%s designs=%s status=%s/%s/%s/%s",
+			p["draft"], p["designs"], p["design_draft"], p["design_accepted"], p["design_decomposed"], p["design_superseded"])
+	}
+
+	writeDesign(t, dir, "wc-d5e6", "ghost", "published", "2026-01-05T00:00:00Z", "Ghost")
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("pulse after published: %v", err)
+	}
+	p = parsePulse(out)
+	if p["designs"] != "5" || p["design_draft"] != "1" || p["design_decomposed"] != "1" ||
+		p["design_accepted"] != "1" || p["design_superseded"] != "1" || p["draft"] != "1" {
+		t.Fatalf("published must increment designs only, got draft=%s designs=%s status=%s/%s/%s/%s",
+			p["draft"], p["designs"], p["design_draft"], p["design_accepted"], p["design_decomposed"], p["design_superseded"])
+	}
+
+	broken := filepath.Join(dir, "design", "wc-d7e8-broken.md")
+	if err := os.WriteFile(broken, []byte("# no fence\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("pulse after broken fence: %v", err)
+	}
+	p = parsePulse(out)
+	if p["designs"] != "5" || p["design_draft"] != "1" || p["design_decomposed"] != "1" ||
+		p["design_accepted"] != "1" || p["design_superseded"] != "1" {
+		t.Fatalf("broken fence must increment none of the design keys, got %+v", p)
+	}
+	if p["integrity"] != "ok" {
+		t.Errorf("design parse_error must not flip ticket integrity, got %q", p["integrity"])
+	}
+
+	bare, _, err := run(t, app, "pulse", "designs", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("pulse designs: %v", err)
+	}
+	if bare != "5\n" {
+		t.Errorf("pulse designs = %q want 5\\n", bare)
+	}
+
+	refused, _, err := run(t, app, "pulse", "design", "--scope", "wc")
+	if ExitCodeFromError(err) != exitUsage {
+		t.Fatalf("pulse design exit = %v want 2", err)
+	}
+	if refused != "" {
+		t.Errorf("unknown key must leave stdout empty, got %q", refused)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `unknown pulse key "design"`) {
+		t.Errorf("message should name bad key, got %q", msg)
+	}
+	for _, k := range []string{"designs", "design_draft", "design_accepted", "design_decomposed", "design_superseded"} {
+		if !strings.Contains(msg, k) {
+			t.Errorf("catalogue missing %q in %q", k, msg)
+		}
+	}
+
+	if _, _, err := run(t, app, "lens", "frontend", "--scope", "wc"); err != nil {
+		t.Fatalf("lens: %v", err)
+	}
+	out, _, err = run(t, app, "pulse", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("pulse under lens: %v", err)
+	}
+	p = parsePulse(out)
+	if p["draft"] != "0" {
+		t.Errorf("frontend lens should hide the backend ticket draft, got %q", p["draft"])
+	}
+	if p["designs"] != "5" || p["design_draft"] != "1" || p["design_decomposed"] != "1" ||
+		p["design_accepted"] != "1" || p["design_superseded"] != "1" {
+		t.Fatalf("lens must not change design counts, got designs=%s draft=%s accepted=%s decomposed=%s superseded=%s",
+			p["designs"], p["design_draft"], p["design_accepted"], p["design_decomposed"], p["design_superseded"])
 	}
 }

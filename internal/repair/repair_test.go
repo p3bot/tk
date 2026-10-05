@@ -453,6 +453,12 @@ func TestSharedIDRetargetOrdersTicketFirstAndResumes(t *testing.T) {
 			t.Fatalf("re-entry bytes for %s differ", rn.NewPath)
 		}
 	}
+	if !bytes.Contains(reContent[keeper], []byte("produces: [wc-ab2ca]")) {
+		t.Fatalf("re-entry keeper = %q", reContent[keeper])
+	}
+	if !bytes.Contains(reContent[ref], []byte("depends: [wc-ab2ca]")) {
+		t.Fatalf("re-entry depends = %q", reContent[ref])
+	}
 }
 
 func opContent(t *testing.T, ops []rewrite.Op) map[string][]byte {

@@ -121,12 +121,38 @@ type Result struct {
 	Rows         []Row
 	SyncDisabled string
 	SyncNeeded   string
-	Parse        *ParseError
+	// SyncDisabledAll and SyncNeededAll are per-git-root lines when one command
+	// touches two roots. Single-root commands leave them empty and use the strings above.
+	SyncDisabledAll []string
+	SyncNeededAll   []string
+	Parse           *ParseError
 	// Unparseable is how many design fences in the scope failed to parse.
 	// List and get print it as parse_error: N unparseable. Writes leave it zero.
 	Unparseable int
 	// Unchanged means the file was already in the requested state. No commit.
 	Unchanged bool
+}
+
+// DisabledLines is the sync_disabled detail for this result, one line per root.
+func (r Result) DisabledLines() []string {
+	if len(r.SyncDisabledAll) > 0 {
+		return r.SyncDisabledAll
+	}
+	if r.SyncDisabled != "" {
+		return []string{r.SyncDisabled}
+	}
+	return nil
+}
+
+// NeededLines is the sync_needed detail for this result, one line per root.
+func (r Result) NeededLines() []string {
+	if len(r.SyncNeededAll) > 0 {
+		return r.SyncNeededAll
+	}
+	if r.SyncNeeded != "" {
+		return []string{r.SyncNeeded}
+	}
+	return nil
 }
 
 // File is one design document read from disk.
@@ -221,15 +247,19 @@ func Compose(interior, body []byte) []byte {
 	return frontmatter.Compose(interior, body)
 }
 
-func producesIDs(m *frontmatter.Model) ([]string, bool, error) {
+// Produces returns the produces list. A missing key is an empty list.
+// A value that is not a string list is an error.
+func Produces(m *frontmatter.Model) ([]string, error) {
+	if m == nil {
+		return nil, nil
+	}
 	for _, f := range m.Custom {
 		if f.Key != KeyProduces {
 			continue
 		}
-		ids, err := frontmatter.StringList(f.Value)
-		return ids, true, err
+		return frontmatter.StringList(f.Value)
 	}
-	return nil, false, nil
+	return nil, nil
 }
 
 func setProduces(m *frontmatter.Model, ids []string) {

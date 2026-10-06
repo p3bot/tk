@@ -808,7 +808,11 @@ func prefixProducesLines(deps Deps, scope string, mapped map[string]string) ([]s
 			if f.Model == nil {
 				continue
 			}
-			for _, entry := range producesIDs(f.Model) {
+			ids, err := design.Produces(f.Model)
+			if err != nil {
+				continue
+			}
+			for _, entry := range ids {
 				newID, ok := mapped[entry]
 				if !ok {
 					continue
@@ -818,20 +822,6 @@ func prefixProducesLines(deps Deps, scope string, mapped map[string]string) ([]s
 		}
 	}
 	return lines, nil
-}
-
-func producesIDs(m *frontmatter.Model) []string {
-	for _, f := range m.Custom {
-		if f.Key != design.KeyProduces {
-			continue
-		}
-		ids, err := frontmatter.StringList(f.Value)
-		if err != nil {
-			return nil
-		}
-		return ids
-	}
-	return nil
 }
 
 // repairIndexPaths keeps paths the ticket or design index can store:

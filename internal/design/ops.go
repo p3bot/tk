@@ -34,6 +34,8 @@ type Deps struct {
 	Reg      *registry.Registry
 	DB       *index.DB
 	Rec      *reconcile.Reconciler
+	// syncPaths replaces Rec.SyncPaths when set. Production leaves it nil.
+	syncPaths func(scope string, paths []string) error
 }
 
 // CreateInput is one design create. Identity stays at the edge.
@@ -171,10 +173,10 @@ func List(deps Deps, in ListInput) (Result, error) {
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool {
-		if createdBefore(rows[i].Created, rows[j].Created) {
+		if CreatedBefore(rows[i].Created, rows[j].Created) {
 			return true
 		}
-		if createdBefore(rows[j].Created, rows[i].Created) {
+		if CreatedBefore(rows[j].Created, rows[i].Created) {
 			return false
 		}
 		return rows[i].ID < rows[j].ID
@@ -182,9 +184,9 @@ func List(deps Deps, in ListInput) (Result, error) {
 	return Result{Rows: rows, Unparseable: n}, nil
 }
 
-// createdBefore reports whether a is older than b. A value that is not RFC3339
+// CreatedBefore reports whether a is older than b. A value that is not RFC3339
 // sorts first: not-newer-than-any, the same rule as collision keeper order.
-func createdBefore(a, b string) bool {
+func CreatedBefore(a, b string) bool {
 	ta, aok := parseCreated(a)
 	tb, bok := parseCreated(b)
 	if aok != bok {
@@ -339,7 +341,7 @@ func MetaAddRemove(deps Deps, in MetaInput) (Result, error) {
 	}
 	// Same refusal as ticket meta on a custom multi-value field: a non-list
 	// is usage, and the argument is not consulted.
-	ids, _, err := producesIDs(f.Model)
+	ids, err := Produces(f.Model)
 	if err != nil {
 		return Result{}, &UsageError{Msg: fmt.Sprintf("custom field %q is not a string list", KeyProduces)}
 	}

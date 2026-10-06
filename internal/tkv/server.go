@@ -169,7 +169,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /graphs/depends", s.wrap(s.dependsGraph))
 	mux.HandleFunc("GET /doctor", s.wrap(s.doctor))
 	mux.HandleFunc("GET /notes", s.wrap(s.notesPick))
+	mux.HandleFunc("GET /designs", s.wrap(s.designsPick))
 	mux.HandleFunc("GET /scope/{name}", s.wrap(s.kanban))
+	mux.HandleFunc("GET /scope/{name}/designs", s.wrap(s.designsList))
+	mux.HandleFunc("GET /scope/{name}/designs/{id}", s.wrap(s.designInspect))
+	mux.HandleFunc("GET /scope/{name}/designs/{id}/edit", s.wrap(s.designEdit))
 	mux.HandleFunc("GET /scope/{name}/notes", s.wrap(s.notesList))
 	mux.HandleFunc("GET /scope/{name}/notes/{slug}", s.wrap(s.noteInspect))
 	mux.HandleFunc("GET /scope/{name}/notes/{slug}/edit", s.wrap(s.noteEdit))
@@ -177,6 +181,9 @@ func (s *Server) Handler() http.Handler {
 	// as overlapping on /scope/{name}/notes/edit.
 	mux.HandleFunc("GET /scope/{name}/edit/{id}", s.wrap(s.inspectEdit))
 	mux.HandleFunc("GET /scope/{name}/{id}", s.wrap(s.inspect))
+	mux.HandleFunc("POST /scope/{name}/designs/mark", s.wrapEngine(s.postDesignMark))
+	mux.HandleFunc("POST /scope/{name}/designs/produces", s.wrapEngine(s.postDesignProduces))
+	mux.HandleFunc("POST /scope/{name}/designs/body", s.wrapEngine(s.postDesignBody))
 	mux.HandleFunc("POST /scope/{name}/notes", s.wrapEngine(s.postNoteCreate))
 	mux.HandleFunc("POST /scope/{name}/notes/use", s.wrapEngine(s.postNoteUse))
 	mux.HandleFunc("POST /scope/{name}/notes/{slug}", s.wrapEngine(s.postNoteSet))
@@ -255,11 +262,12 @@ func errBadRequest(msg string) error {
 }
 
 const (
-	navBoard  = "board"
-	navNotes  = "notes"
-	navSearch = "search"
-	navGraphs = "graphs"
-	navDoctor = "doctor"
+	navBoard   = "board"
+	navDesigns = "designs"
+	navNotes   = "notes"
+	navSearch  = "search"
+	navGraphs  = "graphs"
+	navDoctor  = "doctor"
 )
 
 type chrome struct {
@@ -323,6 +331,13 @@ func requestPath(r *http.Request) string {
 // BoardHref is always the scope summary. A selected scope is reached from the switcher.
 func (c chrome) BoardHref() string { return "/" }
 
+func (c chrome) DesignsHref() string {
+	if c.Selected == "" {
+		return designsPickHref()
+	}
+	return designsListHref(c.Selected)
+}
+
 func (c chrome) NotesHref() string {
 	if c.Selected == "" {
 		return notesPickHref()
@@ -341,6 +356,8 @@ func (c chrome) ScopeHref(name string) string {
 		return ""
 	}
 	switch c.Section {
+	case navDesigns:
+		return designsListHref(name)
 	case navNotes:
 		return notesListHref(name)
 	case navGraphs:
@@ -594,11 +611,28 @@ func sectionFromPath(p string) string {
 		return navNotes
 	case notesPath(p):
 		return navNotes
+	case designsPath(p):
+		return navDesigns
 	case strings.HasPrefix(p, "/scope/"):
 		return navBoard
 	default:
 		return ""
 	}
+}
+
+func designsPath(p string) bool {
+	if p == "/designs" || strings.HasPrefix(p, "/designs/") {
+		return true
+	}
+	rest, ok := strings.CutPrefix(p, "/scope/")
+	if !ok {
+		return false
+	}
+	_, after, found := strings.Cut(rest, "/")
+	if !found {
+		return false
+	}
+	return after == "designs" || strings.HasPrefix(after, "designs/")
 }
 
 func notesPath(p string) bool {

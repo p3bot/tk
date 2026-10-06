@@ -1715,6 +1715,37 @@ func TestInspectEditFormMatchesDisk(t *testing.T) {
 	}
 }
 
+func TestTicketEditKeepsTextBeforeTitle(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-cd3e", "plain", "todo", "a0", "# Plain\n\nbody\n", false, "")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a1", "See the notes below.\n\n# Work\n\nhello\n", false, "")
+	s := mustServer(t, app)
+
+	plain := do(s, "/scope/wc/edit/wc-cd3e")
+	if plain.Code != http.StatusOK || strings.Contains(plain.Body.String(), `name="lead"`) {
+		t.Fatalf("heading-first edit = %d %s", plain.Code, plain.Body.String())
+	}
+	edit := do(s, "/scope/wc/edit/wc-ab2c")
+	if edit.Code != http.StatusOK {
+		t.Fatalf("edit = %d %s", edit.Code, edit.Body.String())
+	}
+	page := edit.Body.String()
+	if !strings.Contains(page, `name="lead"`) || !strings.Contains(page, "See the notes below.") {
+		t.Fatalf("edit hid the text above the heading: %s", page)
+	}
+	base := inspectBase(t, page)
+	saved := mustFollow(t, s, doPost(s, "/scope/wc/body", url.Values{
+		"id": {"wc-ab2c"}, "title": {"Work"}, "lead": {"See the notes below.\n\n"}, "body": {"\nhello\n"}, "base": {base},
+	}))
+	if !strings.Contains(saved.Body.String(), "See the notes below.") || !strings.Contains(saved.Body.String(), "hello") {
+		t.Fatalf("saved page dropped the lead: %s", saved.Body.String())
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "See the notes below.\n\n# Work\n\nhello\n") {
+		t.Fatalf("file = %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+}
+
 func TestPOSTBodySavesAndReloadsGoldmark(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
@@ -2440,18 +2471,47 @@ func TestValidLensReturn(t *testing.T) {
 		{"/graphs/depends?scope=wc", "wc", true},
 		{"/doctor?scope=wc", "wc", true},
 		{"/scope/wc/ab2c", "wc", true},
+		{"/scope/wc/designs", "wc", true},
+		{"/scope/wc/designs/wc-ab2c", "wc", true},
+		{"/scope/wc/designs/wc-ab2c/edit", "wc", true},
+		{"/scope/wc/notes/pad", "wc", true},
+		{"/scope/wc/edit/wc-ab2c", "wc", true},
 		{"/scope/wc/../bb", "wc", false},
 		{"/scope/wc/%2e%2e/bb", "wc", false},
+		{"/scope/wc/foo/../../bb", "wc", false},
 		{"/scope/bb", "wc", false},
+		{"/scope/bb/designs/bb-ab2c", "wc", false},
 		{"//evil.example", "wc", false},
 		{"https://evil.example/search", "wc", false},
-		{"/scope/wc/foo/bar", "wc", false},
 		{"", "wc", false},
 	}
 	for _, tc := range tests {
 		if got := validLensReturn(tc.loc, tc.name); got != tc.ok {
 			t.Errorf("validLensReturn(%q, %q) = %v, want %v", tc.loc, tc.name, got, tc.ok)
 		}
+	}
+}
+
+func TestPOSTLensReturnsToNestedScopePage(t *testing.T) {
+	app := newTestApp(t)
+	initScope(t, app, "wc")
+	s := mustServer(t, app)
+
+	ret := "/scope/wc/designs/wc-ab2c/edit"
+	w := doPost(s, "/scope/wc/lens/clear", url.Values{"return": {ret}})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("design: want 303, got %d %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Location"); got != ret {
+		t.Fatalf("design location = %s", got)
+	}
+
+	w = doPost(s, "/scope/wc/lens/clear", url.Values{"return": {"/scope/bb/designs/bb-ab2c"}})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("other scope: want 303, got %d %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Location"); got != "/scope/wc" {
+		t.Fatalf("other scope location = %s", got)
 	}
 }
 

@@ -1,36 +1,31 @@
 package writeengine
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-	"io"
-	"os"
-	"strconv"
 	"strings"
 
+	"github.com/p3bot/tk/internal/bodyedit"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/gitstate"
-	"github.com/p3bot/tk/internal/title"
 )
 
-// SpliceInput is one H1+body splice. Base is ClobberKey from GET.
+// SpliceInput is one H1+body splice. Base is the clobber key from GET.
 type SpliceInput struct {
 	Scope  string
 	Dir    string
 	Lookup Lookup
 	Title  string
-	Body   string
-	Base   string
+	// Lead is the text above the heading. Empty means the heading stays first.
+	Lead string
+	Body string
+	Base string
 }
 
 // Splice replaces the post-fence H1 and body, leaving fence bytes unchanged.
 // It never self-commits; durability matches create.
 func Splice(deps Deps, in SpliceInput) (Result, error) {
-	title, err := spliceTitle(in.Title)
+	title, err := bodyedit.NormalizeTitle(in.Title)
 	if err != nil {
-		return Result{}, err
+		return Result{}, &UsageError{Msg: err.Error()}
 	}
 	if strings.TrimSpace(in.Base) == "" {
 		return Result{}, &UsageError{Msg: "splice needs a clobber predicate"}
@@ -53,7 +48,7 @@ func Splice(deps Deps, in SpliceInput) (Result, error) {
 		return out, err
 	}
 
-	data, key, err := FileSnapshot(p.Path)
+	data, key, err := bodyedit.Snapshot(p.Path)
 	if err != nil {
 		return out, err
 	}
@@ -66,7 +61,7 @@ func Splice(deps Deps, in SpliceInput) (Result, error) {
 		return out, &ParseQuarantineError{ID: p.ID, Msg: "no frontmatter fence"}
 	}
 	fence := data[:len(data)-len(body)]
-	file := spliceBytes(fence, title, in.Body)
+	file := bodyedit.Replace(fence, title, in.Lead, in.Body)
 	if err := AtomicWrite(p.Path, file); err != nil {
 		return out, err
 	}
@@ -86,69 +81,4 @@ func Splice(deps Deps, in SpliceInput) (Result, error) {
 	}
 	out.Path = abs
 	return out, nil
-}
-
-// FileSnapshot reads path and returns its bytes plus ClobberKey.
-func FileSnapshot(path string) (data []byte, key string, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, "", fmt.Errorf("read %s: %w", path, err)
-	}
-	fi, err := f.Stat()
-	if err != nil {
-		_ = f.Close()
-		return nil, "", fmt.Errorf("stat %s: %w", path, err)
-	}
-	data, err = io.ReadAll(f)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return nil, "", fmt.Errorf("read %s: %w", path, err)
-	}
-	return data, ClobberKey(fi.ModTime().UnixNano(), data), nil
-}
-
-// ClobberKey is mtime nanoseconds and a SHA-256 of the file bytes.
-func ClobberKey(mtimeNS int64, data []byte) string {
-	sum := sha256.Sum256(data)
-	return strconv.FormatInt(mtimeNS, 10) + ":" + hex.EncodeToString(sum[:])
-}
-
-func spliceTitle(raw string) (string, error) {
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return "", &UsageError{Msg: "splice needs a non-empty title"}
-	}
-	if strings.ContainsAny(s, "\r\n") {
-		return "", &UsageError{Msg: "splice title must be a single line"}
-	}
-	if h, rest := title.SplitH1([]byte(s)); h != "" && len(rest) == 0 {
-		s = h
-	}
-	return s, nil
-}
-
-func spliceBytes(fence []byte, title, body string) []byte {
-	body = posixLF(body)
-	var b bytes.Buffer
-	b.Grow(len(fence) + 2 + len(title) + 1 + len(body) + 2)
-	b.Write(fence)
-	if !bytes.HasSuffix(fence, []byte("\n")) {
-		b.WriteByte('\n')
-	}
-	b.WriteString("# ")
-	b.WriteString(title)
-	b.WriteByte('\n')
-	b.WriteString(body)
-	if body != "" && !strings.HasSuffix(body, "\n") {
-		b.WriteByte('\n')
-	}
-	return b.Bytes()
-}
-
-// HTML textareas submit CRLF; some editors use bare CR. Ticket bodies are POSIX LF.
-func posixLF(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	return strings.ReplaceAll(s, "\r", "\n")
 }

@@ -139,15 +139,10 @@ func validLensReturn(loc, name string) bool {
 	}
 	p := path.Clean(u.Path)
 	switch p {
-	case "/search", "/graphs", "/graphs/depends", "/doctor":
-		return true
-	case "/scope/" + name:
+	case "/search", "/graphs", "/graphs/depends", "/doctor", "/scope/" + name:
 		return true
 	}
-	prefix := "/scope/" + name + "/"
-	if strings.HasPrefix(p, prefix) {
-		rest := strings.TrimPrefix(p, prefix)
-		return rest != "" && !strings.Contains(rest, "/")
-	}
-	return false
+	// Nested scope pages (designs, notes, ticket edit) stay on that page.
+	// Clean rejects a path that walks out of the scope.
+	return strings.HasPrefix(p, "/scope/"+name+"/")
 }

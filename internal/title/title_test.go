@@ -61,3 +61,22 @@ func TestSplitH1(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitH1Parts(t *testing.T) {
+	prefix, heading, rest := SplitH1Parts([]byte("Intro line\n\n# Real title\nrest\n"))
+	if string(prefix) != "Intro line\n\n" || heading != "Real title" || string(rest) != "rest\n" {
+		t.Fatalf("prose = %q %q %q", prefix, heading, rest)
+	}
+	prefix, heading, rest = SplitH1Parts([]byte("# Work\nbody\n"))
+	if len(prefix) != 0 || heading != "Work" || string(rest) != "body\n" {
+		t.Fatalf("heading first = %q %q %q", prefix, heading, rest)
+	}
+	prefix, heading, rest = SplitH1Parts([]byte("#   \n# Real title\n"))
+	if string(prefix) != "#   \n" || heading != "Real title" || len(rest) != 0 {
+		t.Fatalf("empty heading = %q %q %q", prefix, heading, rest)
+	}
+	prefix, heading, rest = SplitH1Parts([]byte("just prose\n"))
+	if len(prefix) != 0 || heading != "" || string(rest) != "just prose\n" {
+		t.Fatalf("no heading = %q %q %q", prefix, heading, rest)
+	}
+}

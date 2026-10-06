@@ -2,19 +2,17 @@ package notes
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 
 	"github.com/p3bot/tk/internal/atomicfile"
+	"github.com/p3bot/tk/internal/bodyedit"
 	"github.com/p3bot/tk/internal/scopefile"
 )
 
@@ -200,9 +198,7 @@ func FileSnapshot(path string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("read %s: %w", path, err)
 	}
-	sum := sha256.Sum256(data)
-	key := strconv.FormatInt(st.ModTime().UnixNano(), 10) + ":" + hex.EncodeToString(sum[:])
-	return data, key, nil
+	return data, bodyedit.ClobberKey(st.ModTime().UnixNano(), data), nil
 }
 
 // FileClobberKey is mtime nanoseconds and a SHA-256 of the file bytes, or

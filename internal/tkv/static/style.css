@@ -441,12 +441,13 @@ a.button:hover {
   padding: 0.35rem 0.5rem;
 }
 .body .splice textarea {
-  min-height: 16rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.875rem;
   line-height: 1.45;
   resize: vertical;
 }
+.body .splice .field-body textarea { min-height: 16rem; }
+.body .splice .field-lead textarea { min-height: 3rem; }
 body.edit {
   height: 100vh;
   height: 100dvh;
@@ -463,6 +464,7 @@ body.edit main.inspect {
   flex: 1 1 auto;
   min-height: 0;
   align-items: stretch;
+  grid-template-rows: minmax(0, 1fr);
   padding: 0.75rem 1.5rem;
 }
 body.edit .inspect > .body {
@@ -470,7 +472,7 @@ body.edit .inspect > .body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
 }
 body.edit .inspect > .body h1,
 body.edit .inspect > .body .empty {
@@ -493,13 +495,22 @@ body.edit .edit-head {
   gap: 0.45rem 0.75rem;
   flex: 0 0 auto;
 }
+body.edit .body .splice > label:not(.field-body) { flex: 0 0 auto; }
 body.edit .body .splice .field-body {
   flex: 1 1 auto;
   min-height: 0;
 }
-body.edit .body .splice textarea {
+body.edit .body .splice .field-lead textarea {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 3rem;
+  max-height: 9rem;
+  resize: vertical;
+  overflow: auto;
+}
+body.edit .body .splice .field-body textarea {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 8rem;
   height: 0;
   resize: none;
   overflow: auto;
@@ -607,6 +618,15 @@ aside h2 + p { margin: 0 0 0.6rem; }
 .dep-node .dep-title { font-size: 14px; font-weight: 650; }
 a.dep-node { text-decoration: none; }
 a.dep-node:hover rect { stroke-width: 2.5; }
+.designs-wrap { overflow-x: auto; margin: 0 0 1.5rem; }
+.designs { width: 100%; border-collapse: collapse; margin: 0; }
+.designs th, .designs td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: baseline;
+}
+.designs .dwell { margin-left: 0.35rem; color: var(--muted); }
 .note-files { list-style: none; padding: 0; margin: 0 0 0.7rem; }
 .note-files li {
   display: flex;

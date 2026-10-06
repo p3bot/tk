@@ -339,6 +339,7 @@ func (s *Server) postBody(w http.ResponseWriter, r *http.Request) error {
 		Dir:    sess.dir,
 		Lookup: lu,
 		Title:  r.FormValue("title"),
+		Lead:   r.FormValue("lead"),
 		Body:   r.FormValue("body"),
 		Base:   strings.TrimSpace(r.FormValue("base")),
 	})
@@ -659,7 +660,9 @@ func knownStatusNames(schema *scopeconfig.Schema) []string {
 	return append(out, extra...)
 }
 
-func ticketWritable(schema *scopeconfig.Schema, parseError bool) bool {
+// rowWritable reports whether an indexed file can be written from the page.
+// The scope config must parse, and the file must not be quarantined.
+func rowWritable(schema *scopeconfig.Schema, parseError bool) bool {
 	return schema != nil && !parseError
 }
 
@@ -667,7 +670,7 @@ func ticketWritable(schema *scopeconfig.Schema, parseError bool) bool {
 // (nil schema) and parse-quarantined rows are already known to the page;
 // the engine will refuse those POSTs, so the forms stay off.
 func ticketWriteControls(schema *scopeconfig.Schema, statusName string, parseError bool) (canClaim bool, mark []string) {
-	if !ticketWritable(schema, parseError) {
+	if !rowWritable(schema, parseError) {
 		return false, nil
 	}
 	return statusName == status.Todo, markStatuses(knownStatusNames(schema), statusName)

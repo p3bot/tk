@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/p3bot/tk/internal/flock"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/gitroot"
 	"github.com/p3bot/tk/internal/registry"
@@ -100,11 +99,11 @@ func runScopeAutoCommitSet(app *App, c *cobra.Command, want bool, scopeFlag stri
 		return err
 	}
 
-	locks, err := acquireAutoCommitLocks(peers)
+	release, err := acquireAutoCommitLocks(peers)
 	if err != nil {
 		return err
 	}
-	defer releaseLocks(locks)
+	defer release()
 
 	already := true
 	for _, p := range peers {
@@ -225,23 +224,12 @@ func collectAutoCommitPeers(reg *registry.Registry, target, dir string) ([]scope
 	return peers, gitRoot, true, nil
 }
 
-func acquireAutoCommitLocks(peers []scopeadmin.GitRootScope) ([]*flock.Lock, error) {
-	var locks []*flock.Lock
+func acquireAutoCommitLocks(peers []scopeadmin.GitRootScope) (func(), error) {
+	dirs := make(map[string]string, len(peers))
 	for _, p := range peers {
-		l, err := scopefile.AcquireLock(p.Dir)
-		if err != nil {
-			releaseLocks(locks)
-			return nil, err
-		}
-		locks = append(locks, l)
+		dirs[p.Name] = p.Dir
 	}
-	return locks, nil
-}
-
-func releaseLocks(locks []*flock.Lock) {
-	for i := len(locks) - 1; i >= 0; i-- {
-		_ = locks[i].Release()
-	}
+	return scopefile.LockScopes(dirs)
 }
 
 func restoreCueFiles(prevs map[string][]byte, err error) error {

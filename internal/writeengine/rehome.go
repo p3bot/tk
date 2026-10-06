@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/p3bot/tk/internal/flock"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/id"
@@ -61,14 +60,14 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 		return Result{}, err
 	}
 
-	locks, err := lockScopes(map[string]string{
+	release, err := scopefile.LockScopes(map[string]string{
 		in.SourceScope: srcDir,
 		in.DestScope:   destDir,
 	})
 	if err != nil {
 		return Result{}, err
 	}
-	defer releaseLocks(locks)
+	defer release()
 
 	res, err := deps.Rec.Reconcile(allScopeDirs(deps.Reg), registeredSet(deps.Reg), nowNS())
 	if err != nil {
@@ -260,32 +259,6 @@ func sideFrom(name, dir string, schema *scopeconfig.Schema) rehomeSide {
 		autoCommit: scopeconfig.SchemaAutoCommit(schema),
 		root:       root,
 		hasRoot:    hasRoot,
-	}
-}
-
-func lockScopes(dirs map[string]string) (map[string]*flock.Lock, error) {
-	names := make([]string, 0, len(dirs))
-	for name := range dirs {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	locks := make(map[string]*flock.Lock, len(names))
-	for _, name := range names {
-		lock, err := scopefile.AcquireLock(dirs[name])
-		if err != nil {
-			releaseLocks(locks)
-			return nil, err
-		}
-		locks[name] = lock
-	}
-	return locks, nil
-}
-
-func releaseLocks(locks map[string]*flock.Lock) {
-	for _, lock := range locks {
-		if lock != nil {
-			_ = lock.Release()
-		}
 	}
 }
 

@@ -1,4 +1,4 @@
-{{define "inspect-edit"}}
+{{define "design-edit"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,7 +8,7 @@
 {{template "chrome" .}}
 <main class="inspect">
 <article class="body">
-  <form class="write splice" method="post" action="/scope/{{.Chrome.Selected}}/body" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+  <form class="write splice" method="post" action="/scope/{{.Chrome.Selected}}/designs/body" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
     <input type="hidden" name="id" value="{{.ID}}">
     <input type="hidden" name="base" value="{{.Base}}">
     <div class="edit-head">
@@ -37,12 +37,12 @@
   </form>
 </article>
 <aside>
-  <h2>ticket</h2>
+  <h2>design</h2>
   <dl>
     <div><dt>id</dt><dd>{{.ID}}</dd></div>
     <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
   </dl>
-  <p><a href="{{.ViewHref}}">View ticket</a></p>
+  <p><a href="{{.ViewHref}}">View design</a></p>
 </aside>
 </main>
 </body>

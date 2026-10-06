@@ -4,7 +4,57 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestLockScopesNameOrderDedupesOneDirectory(t *testing.T) {
+	base := t.TempDir()
+	a := filepath.Join(base, "a")
+	b := filepath.Join(base, "b")
+	if err := os.MkdirAll(a, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(b, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	release, err := LockScopes(map[string]string{"b": b, "a": a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(a, LockName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(b, LockName)); err != nil {
+		t.Fatal(err)
+	}
+	release()
+
+	same, err := LockScopes(map[string]string{"z": a, "m": a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		second, err := LockScopes(map[string]string{"q": a})
+		if err != nil {
+			t.Errorf("second lock: %v", err)
+			return
+		}
+		second()
+		close(done)
+	}()
+	select {
+	case <-done:
+		t.Fatal("second lock acquired while the directory is still held")
+	case <-time.After(50 * time.Millisecond):
+	}
+	same()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second lock did not proceed after release")
+	}
+}
 
 func TestOccupiedShortIDsIgnoresNonIDFiles(t *testing.T) {
 	dir := t.TempDir()

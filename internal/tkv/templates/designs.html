@@ -1,0 +1,50 @@
+{{define "designs"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body>
+{{template "chrome" .}}
+<main>
+<h1>designs</h1>
+<div class="board-controls">
+  <a class="switch{{if .All}} on{{end}}" href="{{.AllHref}}" role="switch" aria-checked="{{if .All}}true{{else}}false{{end}}">
+    <span class="switch-ui" aria-hidden="true"></span>
+    All statuses
+  </a>
+</div>
+{{if .Rows}}
+<div class="designs-wrap">
+<table class="designs">
+  <thead>
+    <tr><th>id</th><th>status</th><th>title</th></tr>
+  </thead>
+  <tbody>
+    {{range .Rows}}
+    <tr>
+      <td><a href="{{.Href}}">{{.ID}}</a>{{if .Dwell}} <span class="dwell" title="{{.DwellStamp}}">{{.Dwell}}</span>{{end}}</td>
+      <td>{{.Status}}</td>
+      <td><a href="{{.Href}}">{{.Title}}</a></td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+</div>
+{{else if .EmptyNote}}
+<p class="empty">{{.EmptyNote}}</p>
+{{end}}
+{{if .Broken}}
+<section class="broken">
+  <h2>broken</h2>
+  <ul>
+    {{range .Broken}}
+    <li><a href="{{.Href}}">{{.ID}}</a> <span class="empty">unparseable</span></li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+</main>
+</body>
+</html>
+{{end}}

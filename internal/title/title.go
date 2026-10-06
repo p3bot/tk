@@ -22,20 +22,33 @@ func Extract(body []byte) string {
 // SplitH1 returns the first ATX H1 text and the bytes after that heading line.
 // No matching H1 yields heading "" and rest equal to body.
 func SplitH1(body []byte) (heading string, rest []byte) {
+	_, heading, rest = SplitH1Parts(body)
+	return heading, rest
+}
+
+// SplitH1Parts returns the bytes before the first ATX H1, the heading text,
+// and the bytes after that heading line. No matching H1 yields a nil prefix,
+// heading "", and rest equal to body. An empty '#   ' line is not a heading,
+// so it stays in the prefix when a later line is.
+func SplitH1Parts(body []byte) (prefix []byte, heading string, rest []byte) {
 	remaining := body
+	offset := 0
 	for len(remaining) > 0 {
 		var line []byte
+		consumed := len(remaining)
 		if i := bytes.IndexByte(remaining, '\n'); i >= 0 {
 			line, remaining = remaining[:i], remaining[i+1:]
+			consumed = i + 1
 		} else {
 			line, remaining = remaining, nil
 		}
 		line = bytes.TrimSuffix(line, []byte("\r"))
 		if atxH1.Match(line) {
 			if text := strings.TrimSpace(strings.TrimPrefix(string(line), "#")); text != "" {
-				return text, remaining
+				return body[:offset], text, remaining
 			}
 		}
+		offset += consumed
 	}
-	return "", body
+	return nil, "", body
 }

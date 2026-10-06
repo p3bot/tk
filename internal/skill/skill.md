@@ -58,6 +58,7 @@ tk design search <terms> [--scope S]                                # Design-onl
 tk design mark <status> <id> [--scope S]                            # draft, accepted, decomposed, superseded; file stays in design/
 tk design meta add <id> produces <ticket-id> [--scope S]            # Append one full ticket id
 tk design meta remove <id> produces <ticket-id> [--scope S]         # Drop one list entry, including a non-id; last removal drops the key
+tk design rehome <id> <dest-scope> [--scope S]                      # Move one design into dest design/; self-commit; no push
 
 tk list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens). Sorted (order, id); terminal-only status filters reverse that order
 tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
@@ -99,17 +100,18 @@ tk reindex                                                          # Rebuild th
 - `tk depends` on a ticket keeps its three sections and appends `produced by` (design id, status, and title; an empty side prints `(none)`; several design files on one id print `(ambiguous)`). When that id is also one design, a `produces` section is appended. When several designs share it, the ticket report stays and stderr gets `design_id`. `tk depends` on a design id with no ticket prints one section, `produces`, with the ticket neighbour lines, and does not print depends or related. A shared design short id with no ticket refuses and prints no path. `--transitive` does not walk produces. `--tree` does not include designs
 - Statuses: draft, accepted, decomposed, superseded. The file stays in `design/`
 - `tk design list` defaults to draft and accepted. `--all` includes every parsed design, including a status outside those four. A positional outside those four exits 2. Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)`
-- Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`
-- `changed` is the time the design entered its current status. `tk design create` sets `changed` to the same RFC3339 instant as `created`. `tk design mark` updates it only on a status change. A same-status mark does not add the key. `tk design meta` and `tk scope rename` leave it alone. Ticket stale clocks do not apply to a design. A design written before the field has no key
+- Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`. `tk design rehome` rewrites the id prefix and leaves status, created, produces, and changed
+- `changed` is the time the design entered its current status. `tk design create` sets `changed` to the same RFC3339 instant as `created`. `tk design mark` updates it only on a status change. A same-status mark does not add the key. `tk design meta`, `tk design rehome`, and `tk scope rename` leave it alone. Ticket stale clocks do not apply to a design. A design written before the field has no key
 - `produces` stores full ticket ids, design to tickets only. There is no back-link on the ticket. `tk design meta remove` drops a list entry even when it is not a full ticket id
 - The slug is frozen at create. Editing the H1 does not rename the file. Body text under the H1 is a direct file edit
 - `tk design edit <id>` resolves like `tk design get`, then opens `$EDITOR` on that path. Success prints nothing. It does not rewrite the fence and does not self-commit. `$EDITOR` may include flags. An unset `$EDITOR` or a non-zero editor exit is non-zero and names `tk design edit`
 - `tk design create --edit` prints the absolute path, then opens `$EDITOR` on it. It does not self-commit. An unset `$EDITOR` or a non-zero editor exit is non-zero and leaves the scaffold. Without `--edit`, create does not launch an editor. Agents use the printed path rather than `--edit`
-- `tk design get`, `tk design edit`, `tk design mark`, and `tk design meta` refuse a short id held by two design files and print no path. Edit does not launch the editor
+- `tk design get`, `tk design edit`, `tk design mark`, `tk design meta`, and `tk design rehome` refuse a short id held by two design files and print no path. Edit does not launch the editor. Rehome does not write
 - A broken fence stays off `tk design list`. List and get print `parse_error: N unparseable`. Get of that file also prints `parse_error: <id>: <message>` and exits 0. `tk design edit` opens that path. Doctor prints `parse_error: <id>: <message> (<path>)`. Mark and meta refuse and do not write
 - `tk scope rename` rewrites design filenames and fence ids, and rekeys `produces` entries that use the old scope prefix. Entries that name another scope stay and are reported as `edge_verify`
 - tk repair resolves a short id shared with a design. A broken design fence, an unknown design status, a filename that disagrees with the fence id, and a produces entry that does not name that id stay doctor warnings
-- `tk design create` does not self-commit. `tk design mark` and `tk design meta add|remove` self-commit on a tk-driven scope and do not push
+- `tk design create` does not self-commit. `tk design mark`, `tk design meta add|remove`, and `tk design rehome` self-commit on a tk-driven scope and do not push
+- `tk design rehome <id> <dest-scope>` moves that file to `<dest>/design/<new-id>-<slug>.md`. The file stays in `design/`. The slug is unchanged. The short id is kept when the destination does not hold it; tickets and designs both count. A real occupant extends it and is left untouched. A destination design with the same slug and `created`, whose short id is the source short id or an extension of it, is reused instead of minting another id. `produces` is not rekeyed. Same-scope destination exits 2. An unknown destination does not write. A missing or unparseable source fence does not write. A root that contained a written or removed path self-commits when that root is tk-driven. The command does not push. Scopes that share a git root and disagree on autoCommit refuse with `auto_commit_mismatch` and do not write
 
 ## Identifiers
 
@@ -141,7 +143,7 @@ Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `ren
 
 Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
-  - Commands that self commit: mark, order, next --claim, rehome, meta set/add/remove, design mark, design meta add|remove, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
+  - Commands that self commit: mark, order, next --claim, rehome, meta set/add/remove, design mark, design meta add|remove, design rehome, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
   - Create, design create, and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
 - repo-driven: host git commit/push (no `tk sync`)

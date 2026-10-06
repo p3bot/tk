@@ -1,0 +1,79 @@
+{{define "design"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body>
+{{template "chrome" .}}
+<main class="inspect">
+<article class="body">
+  {{if .ParseMsg}}<p class="banner">{{.ParseMsg}}</p>{{end}}
+  {{if .CanEdit}}
+  <p class="content-edit"><a class="button" href="{{.EditHref}}">Edit</a></p>
+  {{end}}
+  {{if .RawText}}<pre class="raw">{{.RawText}}</pre>{{else}}{{if .TOC}}{{template "toc" .TOC}}{{end}}{{.Body}}{{end}}
+</article>
+<aside>
+  <h2>design</h2>
+  <dl>
+    <div><dt>id</dt><dd>{{.ID}}</dd></div>
+    <div><dt>status</dt><dd>{{.Status}}</dd></div>
+    <div><dt>created</dt><dd>{{if .Created}}{{.Created}}{{else}}<span class="empty">none</span>{{end}}</dd></div>
+    <div><dt>changed</dt><dd>{{if .Changed}}{{.Changed}}{{else}}<span class="empty">none</span>{{end}}</dd></div>
+    <div><dt>path</dt><dd class="path">{{.Path}}</dd></div>
+  </dl>
+  {{if .MarkStatuses}}
+  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/designs/mark">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <label>
+      Mark
+      <select name="status" required>
+        <option value="" disabled selected>status</option>
+        {{range .MarkStatuses}}<option value="{{.}}">{{.}}</option>{{end}}
+      </select>
+    </label>
+    <button type="submit">Mark</button>
+  </form>
+  {{end}}
+  <h2>produces</h2>
+  {{if .ProducesMsg}}<p class="banner">{{.ProducesMsg}}</p>{{end}}
+  {{if .Produces}}
+  <ul class="meta-list">
+    {{range .Produces}}
+    <li>
+      {{if .Href}}
+        <a href="{{.Href}}">{{.ID}}</a> {{.Status}} {{.Title}}
+      {{else}}
+        <span class="unresolved">{{.ID}}</span>
+      {{end}}
+      {{if $.CanProduces}}
+      <form class="write" method="post" action="/scope/{{$.Chrome.Selected}}/designs/produces">
+        <input type="hidden" name="id" value="{{$.ID}}">
+        <input type="hidden" name="op" value="remove">
+        <input type="hidden" name="target" value="{{.ID}}">
+        <button type="submit" aria-label="Remove produces {{.ID}}">Remove</button>
+      </form>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{else if not .ProducesMsg}}
+  <p class="empty">none</p>
+  {{end}}
+  {{if .CanProduces}}
+  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/designs/produces">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <input type="hidden" name="op" value="add">
+    <label>
+      <span class="sr-only">Add produces</span>
+      <input type="text" name="target" required placeholder="full ticket id" aria-label="produces ticket id">
+    </label>
+    <button type="submit">Add</button>
+  </form>
+  {{end}}
+</aside>
+</main>
+</body>
+</html>
+{{end}}

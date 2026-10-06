@@ -1121,7 +1121,7 @@ func TestStaticCSS(t *testing.T) {
 	}
 	if !strings.Contains(css, "body.edit {\n  height: 100vh;\n  height: 100dvh;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;") ||
 		!strings.Contains(css, "body.edit .chrome-lens { display: none; }") ||
-		!strings.Contains(css, "body.edit .body .splice textarea {\n  flex: 1 1 auto;\n  min-height: 0;\n  height: 0;\n  resize: none;\n  overflow: auto;") {
+		!strings.Contains(css, "body.edit .body .splice .field-body textarea {\n  flex: 1 1 auto;\n  min-height: 8rem;\n  height: 0;\n  resize: none;\n  overflow: auto;") {
 		t.Fatalf("edit pages must fill the viewport with the body textarea: %s", css)
 	}
 	js := do(s, "/static/board.js")
@@ -1225,7 +1225,7 @@ func TestPrimaryNav(t *testing.T) {
 		if strings.Contains(body, ">Overview</a>") || strings.Contains(body, ">Search</a>") {
 			t.Errorf("%s still has Overview or Search in primary nav", c.path)
 		}
-		for _, label := range []string{"Board", "Notes", "Graphs", "Doctor"} {
+		for _, label := range []string{"Board", "Designs", "Notes", "Graphs", "Doctor"} {
 			if !strings.Contains(body, ">"+label+"</a>") {
 				t.Errorf("%s missing primary nav %s", c.path, label)
 			}
@@ -1249,6 +1249,9 @@ func TestPrimaryNav(t *testing.T) {
 	if !strings.Contains(home, `href="/notes">Notes</a>`) {
 		t.Errorf("summary should offer Notes picker: %s", home)
 	}
+	if !strings.Contains(home, `href="/designs">Designs</a>`) {
+		t.Errorf("summary should offer Designs picker: %s", home)
+	}
 	if !strings.Contains(home, `rel="icon" href="/static/tk-logo.svg"`) {
 		t.Errorf("missing favicon: %s", home)
 	}
@@ -1271,6 +1274,9 @@ func TestPrimaryNav(t *testing.T) {
 	if !strings.Contains(kanban, `href="/scope/wc/notes">Notes</a>`) {
 		t.Errorf("selected scope should offer Notes: %s", kanban)
 	}
+	if !strings.Contains(kanban, `href="/scope/wc/designs">Designs</a>`) {
+		t.Errorf("selected scope should offer Designs: %s", kanban)
+	}
 	if strings.Contains(kanban, `name="scope"`) {
 		t.Errorf("kanban chrome search must not send scope")
 	}
@@ -1281,6 +1287,9 @@ func TestPrimaryNav(t *testing.T) {
 	}
 	if !strings.Contains(graphs, `href="/notes">Notes</a>`) {
 		t.Errorf("graphs without a scope should offer Notes picker: %s", graphs)
+	}
+	if !strings.Contains(graphs, `href="/designs">Designs</a>`) {
+		t.Errorf("graphs without a scope should offer Designs picker: %s", graphs)
 	}
 	doc := do(s, "/doctor").Body.String()
 	if !strings.Contains(doc, "integrity") || !strings.Contains(doc, "wc") {
@@ -1310,6 +1319,9 @@ func TestPrimaryNav(t *testing.T) {
 	}
 	if !strings.Contains(kb, `href="/scope/wc/notes">Notes</a>`) {
 		t.Errorf("graphs with a scope should offer that scope's notes: %s", kb)
+	}
+	if !strings.Contains(kb, `href="/scope/wc/designs">Designs</a>`) {
+		t.Errorf("graphs with a scope should offer that scope's designs: %s", kb)
 	}
 }
 
@@ -1431,6 +1443,33 @@ func TestChromeScopeTabs(t *testing.T) {
 		t.Errorf("doctor must switch aa onto doctor: %s", doctor)
 	}
 
+	w = do(s, "/designs")
+	if w.Code != 200 {
+		t.Fatalf("/designs = %d %s", w.Code, w.Body.String())
+	}
+	dpick := w.Body.String()
+	if !strings.Contains(dpick, `class="current">Designs</a>`) {
+		t.Errorf("picker must mark Designs current: %s", dpick)
+	}
+	if !strings.Contains(dpick, `href="/scope/wc/designs">wc</a>`) || !strings.Contains(dpick, `href="/scope/aa/designs">aa</a>`) {
+		t.Errorf("picker must send scopes onto designs: %s", dpick)
+	}
+
+	w = do(s, "/scope/wc/designs")
+	if w.Code != 200 {
+		t.Fatalf("/scope/wc/designs = %d %s", w.Code, w.Body.String())
+	}
+	designs := scopesNav(t, w.Body.String())
+	if !strings.Contains(designs, `href="/scope/wc/designs" class="selected" aria-current="page">wc</a>`) {
+		t.Errorf("designs list must keep designs and mark wc as the page: %s", designs)
+	}
+	if !strings.Contains(designs, `href="/scope/aa/designs">aa</a>`) {
+		t.Errorf("designs list must switch aa onto designs, not the board: %s", designs)
+	}
+	if strings.Contains(designs, `href="/scope/aa">aa</a>`) {
+		t.Errorf("designs list must not drop to the board: %s", designs)
+	}
+
 	w = do(s, "/scope/wc/notes")
 	if w.Code != 200 {
 		t.Fatalf("/scope/wc/notes = %d %s", w.Code, w.Body.String())
@@ -1502,6 +1541,18 @@ func TestScopeHref(t *testing.T) {
 		t.Errorf("notes picker = %q", got)
 	}
 	c.Selected = "wc"
+	c.Section = navDesigns
+	if got := c.ScopeHref("aa"); got != "/scope/aa/designs" {
+		t.Errorf("designs = %q", got)
+	}
+	if got := c.DesignsHref(); got != "/scope/wc/designs" {
+		t.Errorf("designs selected = %q", got)
+	}
+	c.Selected = ""
+	if got := c.DesignsHref(); got != "/designs" {
+		t.Errorf("designs picker = %q", got)
+	}
+	c.Selected = "wc"
 	c.Section = navNotes
 	if got := c.ScopeHref("aa"); got != "/scope/aa/notes" {
 		t.Errorf("notes = %q", got)
@@ -1541,6 +1592,15 @@ func TestScopeAriaCurrent(t *testing.T) {
 	c.Section = navGraphs
 	if got := c.ScopeAriaCurrent("wc"); got != "page" {
 		t.Errorf("graphs hub = %q, want page", got)
+	}
+	c.Section = navDesigns
+	c.Return = "/scope/wc/designs"
+	if got := c.ScopeAriaCurrent("wc"); got != "page" {
+		t.Errorf("designs list = %q, want page", got)
+	}
+	c.Return = "/scope/wc/designs/wc-ab2c"
+	if got := c.ScopeAriaCurrent("wc"); got != "true" {
+		t.Errorf("design inspect = %q, want true", got)
 	}
 	c.Section = navNotes
 	c.Return = "/scope/wc/notes"

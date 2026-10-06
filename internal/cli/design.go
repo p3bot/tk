@@ -24,10 +24,10 @@ func newDesignCmd(app *App) *cobra.Command {
 			"Statuses are draft, accepted, decomposed, and superseded. The file stays in design/.\n" +
 			"status is set with mark. produces (full ticket ids, design to tickets only) is set\n" +
 			"with meta add and meta remove. A short id held by two design files is refused by\n" +
-			"get, edit, mark, and meta, with no path printed.\n" +
-			"create and edit do not self-commit. mark and meta add|remove self-commit on a\n" +
-			"tk-driven scope and do not take the claim push path. Body text under the H1 is a\n" +
-			"direct file edit. edit and create --edit open $EDITOR; they do not rewrite the fence.",
+			"get, edit, mark, meta, and rehome, with no path printed.\n" +
+			"create and edit do not self-commit. mark, meta add|remove, and rehome self-commit\n" +
+			"on a tk-driven scope and do not push. Body text under the H1 is a direct file edit.\n" +
+			"edit and create --edit open $EDITOR; they do not rewrite the fence.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -44,6 +44,7 @@ func newDesignCmd(app *App) *cobra.Command {
 		newDesignSearchCmd(app),
 		newDesignMarkCmd(app),
 		newDesignMetaCmd(app),
+		newDesignRehomeCmd(app),
 	)
 	return cmd
 }
@@ -197,6 +198,32 @@ func newDesignMetaCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newDesignMetaAddCmd(app), newDesignMetaRemoveCmd(app))
+	return cmd
+}
+
+func newDesignRehomeCmd(app *App) *cobra.Command {
+	var scope string
+	cmd := &cobra.Command{
+		Use:   "rehome <id> <dest-scope> [--scope S]",
+		Short: "Move a design into another scope",
+		Long: "Move one design file into <dest>/design/<new-id>-<slug>.md. The slug is\n" +
+			"unchanged. The short id is kept when dest does not hold it; tickets and designs\n" +
+			"both count. A real occupant extends it and is left untouched. A dest design with\n" +
+			"the same slug and created, whose short id is the source short id or an extension\n" +
+			"of it, is an interrupted move: that id and path are reused and the source is\n" +
+			"deleted. Status, created, produces, and a present changed are kept. An absent\n" +
+			"changed stays absent. The file does not gain order. produces is not rekeyed.\n" +
+			"Stdout is the dest path. Same-scope dest exits 2. An unknown dest fails without\n" +
+			"writing. A short id held by two source designs refuses, prints no path, and does\n" +
+			"not write. A root that contained a path this command wrote or removed self-commits\n" +
+			"when that root is tk-driven. Rehome does not push. Scopes that share a git root\n" +
+			"and disagree on autoCommit refuse with auto_commit_mismatch and do not write.",
+		Args: exactArgs("<id>", "<dest-scope>"),
+		RunE: func(c *cobra.Command, args []string) error {
+			return runDesignRehome(app, c, args[0], args[1], scope)
+		},
+	}
+	cmd.Flags().StringVar(&scope, "scope", "", "ambient scope for a short id")
 	return cmd
 }
 
@@ -364,6 +391,20 @@ func runDesignMark(app *App, c *cobra.Command, status, idArg, scopeFlag string) 
 	return emitDesign(c, res, err)
 }
 
+func runDesignRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) error {
+	e, in, err := eDesignID(app, c, idArg, scopeFlag)
+	if err != nil {
+		return err
+	}
+	defer e.close()
+	rehome := design.RehomeInput{IDInput: in, DestScope: destScope}
+	if dest, ok := e.reg.Scopes[destScope]; ok {
+		rehome.DestDir = dest.Dir
+	}
+	res, err := design.Rehome(e.designDeps(c), rehome)
+	return emitDesign(c, res, err)
+}
+
 func runDesignMeta(app *App, c *cobra.Command, idArg, target, scopeFlag string, add bool) error {
 	e, in, err := eDesignID(app, c, idArg, scopeFlag)
 	if err != nil {
@@ -420,13 +461,16 @@ func emitDesign(c *cobra.Command, res design.Result, err error) error {
 		} else if res.Path != "" {
 			stdoutln(c, res.Path)
 		}
-		if res.SyncDisabled != "" {
-			stderrln(c, token.Line(token.SyncDisabled, res.SyncDisabled))
+		for _, line := range res.DisabledLines() {
+			stderrln(c, token.Line(token.SyncDisabled, line))
 		}
-		if res.SyncNeeded != "" {
-			stderrln(c, token.Line(token.SyncNeeded, res.SyncNeeded))
+		for _, line := range res.NeededLines() {
+			stderrln(c, token.Line(token.SyncNeeded, line))
 		}
 		return nil
+	}
+	if res.Path != "" {
+		stdoutln(c, res.Path)
 	}
 	return mapDesignErr(err)
 }

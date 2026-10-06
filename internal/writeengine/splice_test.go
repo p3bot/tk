@@ -8,16 +8,47 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/p3bot/tk/internal/bodyedit"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/token"
 )
+
+func TestSpliceKeepsTextBeforeHeading(t *testing.T) {
+	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
+	path := filepath.Join(e.dir, "wc-ab2c-work.md")
+	raw := "---\nid: wc-ab2c\nstatus: todo\norder: \"a0\"\ncreated: 2026-01-01T00:00:00Z\n---\nSee the notes below.\n\n# Work\n\nhello\n"
+	writeFile(t, path, raw)
+	_, base, err := bodyedit.Snapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Splice(e.deps, SpliceInput{
+		Scope:  "wc",
+		Dir:    e.dir,
+		Lookup: fullLookup("wc-ab2c"),
+		Title:  "Work",
+		Lead:   "See the notes below.\n\n",
+		Body:   "\nhello\n",
+		Base:   base,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != raw {
+		t.Fatalf("file = %q", got)
+	}
+}
 
 func TestSpliceFenceUnchangedH1AndBody(t *testing.T) {
 	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
 	path := filepath.Join(e.dir, "wc-ab2c-work.md")
 	raw := "---\nid: wc-ab2c\nstatus: todo\norder: \"a0\"\ncreated: 2026-01-01T00:00:00Z\nfoo: bar\n---\n# Work\nhello\n"
 	writeFile(t, path, raw)
-	_, base, err := FileSnapshot(path)
+	_, base, err := bodyedit.Snapshot(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +107,7 @@ func TestSpliceCRLFAndBareCRBecomeLF(t *testing.T) {
 	path := filepath.Join(e.dir, "wc-ab2c-work.md")
 	raw := "---\r\nid: wc-ab2c\r\nstatus: todo\r\norder: \"a0\"\r\ncreated: 2026-01-01T00:00:00Z\r\n---\r\n# Work\nhello\n"
 	writeFile(t, path, raw)
-	_, base, err := FileSnapshot(path)
+	_, base, err := bodyedit.Snapshot(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +139,7 @@ func TestSpliceCRLFAndBareCRBecomeLF(t *testing.T) {
 		t.Errorf("body = %q", rest)
 	}
 
-	_, base, err = FileSnapshot(path)
+	_, base, err = bodyedit.Snapshot(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +169,7 @@ func TestSpliceCRLFAndBareCRBecomeLF(t *testing.T) {
 func TestSplicePastedATXH1IsTitle(t *testing.T) {
 	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
 	path := addTicket(t, e.dir, "wc-ab2c", "todo")
-	_, base, err := FileSnapshot(path)
+	_, base, err := bodyedit.Snapshot(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +196,7 @@ func TestSplicePastedATXH1IsTitle(t *testing.T) {
 func TestSpliceEmptyBodyLegal(t *testing.T) {
 	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
 	path := addTicket(t, e.dir, "wc-ab2c", "todo")
-	_, base, err := FileSnapshot(path)
+	_, base, err := bodyedit.Snapshot(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +223,7 @@ func TestSpliceRefusesEmptyTitleParseClobber(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, base, err := FileSnapshot(path)
+	_, base, err := bodyedit.Snapshot(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +281,7 @@ func TestSpliceRefusesEmptyTitleParseClobber(t *testing.T) {
 func TestSpliceNeverSelfCommits(t *testing.T) {
 	e, repo := initAutoCommitRepo(t, "wc")
 	path := addTicket(t, e.dir, "wc-ab2c", "todo")
-	_, base, err := FileSnapshot(path)
+	_, base, err := bodyedit.Snapshot(path)
 	if err != nil {
 		t.Fatal(err)
 	}

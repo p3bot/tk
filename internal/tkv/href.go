@@ -18,6 +18,30 @@ func inspectEditHref(fullID string) string {
 	return "/scope/" + scope + "/edit/" + fullID
 }
 
+func designsPickHref() string {
+	return "/designs"
+}
+
+func designsListHref(scope string) string {
+	return "/scope/" + scope + "/designs"
+}
+
+func designHref(fullID string) string {
+	scope := id.ScopeOfFullID(fullID)
+	if !id.IsScopeName(scope) {
+		return ""
+	}
+	return designsListHref(scope) + "/" + fullID
+}
+
+func designEditHref(fullID string) string {
+	href := designHref(fullID)
+	if href == "" {
+		return ""
+	}
+	return href + "/edit"
+}
+
 func notesPickHref() string {
 	return "/notes"
 }

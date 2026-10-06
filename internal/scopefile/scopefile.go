@@ -15,6 +15,7 @@ import (
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/gitroot"
 	"github.com/p3bot/tk/internal/id"
+	"github.com/p3bot/tk/internal/pathutil"
 	"github.com/p3bot/tk/internal/slug"
 )
 
@@ -25,6 +26,38 @@ const LockName = ".tk.lock"
 // The scope directory must already exist.
 func AcquireLock(dir string) (*flock.Lock, error) {
 	return flock.Acquire(filepath.Join(dir, LockName))
+}
+
+// LockScopes locks each distinct directory in scope-name order.
+// Sync takes these locks before the git-root lock, so any other order deadlocks.
+// Two names for one directory take a single lock.
+func LockScopes(dirs map[string]string) (func(), error) {
+	names := make([]string, 0, len(dirs))
+	for name := range dirs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	seen := map[string]bool{}
+	var releases []func()
+	release := func() {
+		for i := len(releases) - 1; i >= 0; i-- {
+			releases[i]()
+		}
+	}
+	for _, name := range names {
+		key := pathutil.Canonical(dirs[name])
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		lock, err := AcquireLock(dirs[name])
+		if err != nil {
+			release()
+			return nil, err
+		}
+		releases = append(releases, func() { _ = lock.Release() })
+	}
+	return release, nil
 }
 
 // GitRoot resolves the enclosing git repository once so durability helpers agree.

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/p3bot/tk/internal/flock"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/integrity"
@@ -152,29 +151,26 @@ func siblingScopeNames(deps Deps, root string) []string {
 	return out
 }
 
-// acquireSyncLocks: scope locks first (name order), then git-root — reverse would deadlock write verbs.
+// acquireSyncLocks takes scope locks in name order, then the git-root lock.
+// The reverse order deadlocks a write that already holds the scope locks.
 func acquireSyncLocks(deps Deps, t Target) (func(), error) {
-	var locks []*flock.Lock
-	release := func() {
-		for i := len(locks) - 1; i >= 0; i-- {
-			_ = locks[i].Release()
-		}
-	}
+	dirs := make(map[string]string, len(t.Participants))
 	for _, p := range t.Participants {
-		l, err := scopefile.AcquireLock(p.Dir)
-		if err != nil {
-			release()
-			return nil, err
-		}
-		locks = append(locks, l)
+		dirs[p.Name] = p.Dir
+	}
+	releaseScopes, err := scopefile.LockScopes(dirs)
+	if err != nil {
+		return nil, err
 	}
 	gl, err := gitstate.AcquireCommitLock(deps.StateDir, t.Root)
 	if err != nil {
-		release()
+		releaseScopes()
 		return nil, err
 	}
-	locks = append(locks, gl)
-	return release, nil
+	return func() {
+		_ = gl.Release()
+		releaseScopes()
+	}, nil
 }
 
 // drainEdgeVerify: report-and-clear so deferred backstop and step-3 are mutually no-op.

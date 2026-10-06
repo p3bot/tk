@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/p3bot/tk/internal/bodyedit"
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/gitroot"
@@ -23,7 +24,6 @@ import (
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
 	"github.com/p3bot/tk/internal/title"
-	"github.com/p3bot/tk/internal/writeengine"
 )
 
 type overviewPage struct {
@@ -305,7 +305,7 @@ func (s *Server) kanban(w http.ResponseWriter, r *http.Request) error {
 				card.Dwell = label
 				card.DwellStamp = p.Changed
 			}
-			if ticketWritable(schema, p.ParseError) {
+			if rowWritable(schema, p.ParseError) {
 				setColumnOrderDests(&card, cards, i, reverse)
 			}
 			col.Cards = append(col.Cards, card)
@@ -488,6 +488,7 @@ type inspectPage struct {
 	CanEdit      bool
 	Base         string
 	EditTitle    string
+	EditLead     string
 	EditBody     string
 	MarkStatuses []string
 }
@@ -652,7 +653,7 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 	if entry, ok := reg.Scopes[p.Scope]; ok {
 		schema = s.rec.SchemaCached(p.Scope, entry.Dir)
 	}
-	writable := ticketWritable(schema, p.ParseError)
+	writable := rowWritable(schema, p.ParseError)
 	out := inspectPage{
 		Title:       p.ID,
 		Chrome:      ch,
@@ -674,7 +675,7 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 	out.CanMeta = writable
 	out.CanOrder = writable
 
-	raw, key, err := writeengine.FileSnapshot(p.Path)
+	raw, key, err := bodyedit.Snapshot(p.Path)
 	if err != nil {
 		if out.ParseMsg == "" {
 			out.ParseMsg = err.Error()
@@ -699,10 +700,11 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 			out.Body = html
 			out.TOC = toc
 			if writable && present {
-				heading, rest := title.SplitH1(body)
+				prefix, heading, rest := title.SplitH1Parts(body)
 				out.CanEdit = true
 				out.Base = key
 				out.EditTitle = heading
+				out.EditLead = string(prefix)
 				out.EditBody = string(rest)
 			}
 		}

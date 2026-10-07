@@ -61,6 +61,7 @@ tk design meta remove <id> produces <ticket-id> [--scope S]         # Drop one l
 tk design rehome <id> <dest-scope> [--scope S]                      # Move one design into dest design/; self-commit; no push
 
 tk list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens). Sorted (order, id); terminal-only status filters reverse that order
+tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]...  # Tickets that entered their current status on a local day. Default is done, today, every scope. changed is that instant. Create counts. Not git history
 tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
 tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key; soft required_missing: if gaps remain
@@ -93,7 +94,7 @@ tk reindex                                                          # Rebuild th
 ## Designs
 
 - A design lives at `design/<id>-<slug>.md` in the scope directory. It is not a board item
-- A design is its own row in the index. A design does not appear in `tk list`, `tk next`, or `tk search`
+- A design is its own row in the index. A design does not appear in `tk list`, `tk next`, `tk search`, or `tk log`
 - `tk pulse` appends `designs`, `design_draft`, `design_accepted`, `design_decomposed`, and `design_superseded` after `uncommitted`. `designs` counts parseable design rows and ignores the lens. Each status key counts that status. An unknown status increments `designs` only. A broken fence increments none. Ticket `draft` stays the ticket draft count
 - `tk design list` and `tk design get` read that index after reconcile
 - `tk design search <terms> [--scope S]` searches design titles and bodies (bm25, tie-broken by full id). Empty scope is machine-wide. TSV is id, status, title, path. A parse-error hit has an empty status and a filled path. No lens, no status filter, empty result exits 0. `find` is not an alias. `tk search` still searches tickets only
@@ -133,6 +134,8 @@ Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk m
 Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk order / mark -> Durability
 
 Board: `tk list` | `tk list --open` | `tk list --all` -> `tk tags` | `tk order` | `tk lens` | `tk search` (`list done` / other terminal-only filters are reverse (order, id); mixed and --all stay forward)
+
+Status entry: `tk log` lists tickets that entered their current status on a local day. The default is status `done`, today, every registered scope. `tk log cancelled --date YYYY-MM-DD` is that status on that day. `changed` is the instant the ticket entered the status it has now. Create counts. This is not git history and not an audit trail. The tag lens is not applied
 
 Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:). A ticket id appends `produced by`. When one design shares the id, it also appends `produces`. A design id with no ticket prints `produces`. `--transitive` does not walk produces. `tk depends --tree` pretty-prints a short-id forest of tickets (omit id for the default board, lens unless `--no-lens`) and does not include designs; not TSV:
 

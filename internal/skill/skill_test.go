@@ -220,6 +220,32 @@ func TestSkillChangedContract(t *testing.T) {
 	}
 }
 
+func TestSkillDocumentsLog(t *testing.T) {
+	text := skill.Text()
+	for _, want := range []string{
+		"tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]...",
+		"Default is done, today, every scope",
+		"Status entry: `tk log`",
+		"tk log cancelled --date YYYY-MM-DD",
+		"Create counts",
+		"not git history and not an audit trail",
+		"The tag lens is not applied",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("skill missing tk log contract %q", want)
+		}
+	}
+	count := 0
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			count++
+		}
+	}
+	if count != len(skill.RequiredHeadings()) {
+		t.Fatalf("tk log docs added a ## heading: want %d, got %d", len(skill.RequiredHeadings()), count)
+	}
+}
+
 func TestSkillDoesNotTeachMe(t *testing.T) {
 	text := skill.Text()
 	for _, line := range strings.Split(text, "\n") {
@@ -280,7 +306,7 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		`schema_error: <id> has unknown status "<status>" (<path>)`,
 		"design/<id>-<slug>.md",
 		"not a board item",
-		"A design is its own row in the index. A design does not appear in `tk list`, `tk next`, or `tk search`",
+		"A design is its own row in the index. A design does not appear in `tk list`, `tk next`, `tk search`, or `tk log`",
 		"`tk pulse` appends `designs`, `design_draft`, `design_accepted`, `design_decomposed`, and `design_superseded` after `uncommitted`",
 		"An unknown status increments `designs` only",
 		"A broken fence increments none",

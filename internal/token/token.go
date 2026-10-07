@@ -142,6 +142,12 @@ func FormatTagUnknown(tag string) string {
 	return Line(TagUnknown, fmt.Sprintf("%q is not used on any ticket in this scope", tag))
 }
 
+// FormatChangedNotRFC3339 is the doctor and tk log line for a present changed
+// value that is not RFC3339. Absence is not this line.
+func FormatChangedNotRFC3339(id, value, path string) string {
+	return Line(SchemaError, fmt.Sprintf("%s changed %q is not RFC3339 (%s)", id, value, path))
+}
+
 // FormatTagNew is the fixed tag_new: shape for a board-new tag value on write.
 func FormatTagNew(tag string) string {
 	return Line(TagNew, fmt.Sprintf("%q is new to this scope", tag))

@@ -298,7 +298,7 @@ func (d *diagnoser) frontmatterChecks(p *index.Ticket, schema *scopeconfig.Schem
 	// Absent changed is normal for tickets written before the field. A present
 	// value that is not RFC3339 is a schema error and does not quarantine the file.
 	if m.Changed != "" && !validRFC3339(m.Changed) {
-		d.add(token.Line(token.SchemaError, fmt.Sprintf("%s changed %q is not RFC3339 (%s)", p.ID, m.Changed, p.Path)))
+		d.add(token.FormatChangedNotRFC3339(p.ID, m.Changed, p.Path))
 	}
 
 	if contains(m.Depends, m.ID) {

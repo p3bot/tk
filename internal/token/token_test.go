@@ -33,6 +33,10 @@ func TestFormatTagUnknownAndNew(t *testing.T) {
 	if strings.HasPrefix(unknown, SchemaWarn) || strings.HasPrefix(newTag, SchemaWarn) {
 		t.Error("tag existence feedback must not reuse schema_warn:")
 	}
+	changed := FormatChangedNotRFC3339("wc-jk9m", "not-a-time", "/tmp/wc-jk9m-bad.md")
+	if changed != `schema_error: wc-jk9m changed "not-a-time" is not RFC3339 (/tmp/wc-jk9m-bad.md)` {
+		t.Errorf("FormatChangedNotRFC3339 = %q", changed)
+	}
 }
 
 func TestFormatDependsOpen(t *testing.T) {

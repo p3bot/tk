@@ -220,6 +220,33 @@ func TestSkillChangedContract(t *testing.T) {
 	}
 }
 
+func TestSkillDocumentsEveryScope(t *testing.T) {
+	text := skill.Text()
+	for _, want := range []string{
+		"tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens]",
+		"--every-scope lists every registered scope and ignores the lens",
+		"a custom status keeps rows only from scopes that declare it",
+		"grouped by scope name ascending",
+		"a terminal-only reverse stays inside the scope",
+		"Inside a scope, sorted (order, id); terminal-only status filters reverse that order",
+		"--every-scope keeps scope names ascending",
+		"`tk list --every-scope`",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("skill missing --every-scope contract %q", want)
+		}
+	}
+	count := 0
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			count++
+		}
+	}
+	if count != len(skill.RequiredHeadings()) {
+		t.Fatalf("--every-scope docs added a ## heading: want %d, got %d", len(skill.RequiredHeadings()), count)
+	}
+}
+
 func TestSkillDocumentsLog(t *testing.T) {
 	text := skill.Text()
 	for _, want := range []string{

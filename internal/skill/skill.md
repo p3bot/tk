@@ -60,7 +60,7 @@ tk design meta add <id> produces <ticket-id> [--scope S]            # Append one
 tk design meta remove <id> produces <ticket-id> [--scope S]         # Drop one list entry, including a non-id; last removal drops the key
 tk design rehome <id> <dest-scope> [--scope S]                      # Move one design into dest design/; self-commit; no push
 
-tk list [status...] [--scope S] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens). Sorted (order, id); terminal-only status filters reverse that order
+tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens]  # Board inventory (lens default; --every-scope lists every registered scope and ignores the lens, grouped by scope name ascending; a terminal-only reverse stays inside the scope; a custom status keeps rows only from scopes that declare it; --open = non-terminal; --tag hard filter, ignores lens). Inside a scope, sorted (order, id); terminal-only status filters reverse that order
 tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]...  # Tickets that entered their current status on a local day. Default is done, today, every scope. changed is that instant. Create counts. Not git history
 tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
@@ -133,7 +133,7 @@ Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk m
 
 Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk order / mark -> Durability
 
-Board: `tk list` | `tk list --open` | `tk list --all` -> `tk tags` | `tk order` | `tk lens` | `tk search` (`list done` / other terminal-only filters are reverse (order, id); mixed and --all stay forward)
+Board: `tk list` | `tk list --open` | `tk list --all` | `tk list --every-scope` -> `tk tags` | `tk order` | `tk lens` | `tk search` (`list done` / other terminal-only filters are reverse (order, id) inside the scope; --every-scope keeps scope names ascending; mixed and --all stay forward)
 
 Status entry: `tk log` lists tickets that entered their current status on a local day. The default is status `done`, today, every registered scope. `tk log cancelled --date YYYY-MM-DD` is that status on that day. `changed` is the instant the ticket entered the status it has now. Create counts. This is not git history and not an audit trail. The tag lens is not applied
 

@@ -152,6 +152,56 @@ table.overview { border-collapse: collapse; width: 100%; }
 table.overview th, table.overview td { text-align: left; padding: 0.4rem 0.55rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.overview th { color: var(--muted); font-weight: 650; }
 table.overview tr.note td { color: var(--issues); background: var(--banner); font-size: 0.875rem; }
+.scope-mix { margin-top: 1.25rem; }
+.scope-mix-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.6rem;
+  align-items: center;
+  margin: 0.3rem 0;
+}
+.scope-mix-name { color: var(--muted); font-size: 0.875rem; }
+.scope-mix-track { height: 0.85rem; }
+.scope-mix-bar {
+  display: flex;
+  gap: 1px;
+  height: 100%;
+  min-width: 0;
+}
+.scope-mix-seg {
+  position: relative;
+  min-width: 3px;
+  height: 100%;
+  border-radius: 2px;
+}
+.scope-mix-seg.status-backlog { background: var(--status-backlog); }
+.scope-mix-seg.status-draft { background: var(--status-draft); }
+.scope-mix-seg.status-todo { background: var(--status-todo); }
+.scope-mix-seg.status-blocked { background: var(--status-blocked); }
+.scope-mix-seg.status-in-progress { background: var(--status-in-progress); }
+.scope-mix-seg.status-review { background: var(--status-review); }
+.scope-mix-tip {
+  display: none;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.3rem);
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.scope-mix-seg:hover .scope-mix-tip { display: block; }
+.scope-mix-seg:last-child .scope-mix-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
 .empty { color: var(--muted); }
 .board-controls { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.8rem; }
 .board-controls .board-filter { margin-left: auto; }

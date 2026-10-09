@@ -2,6 +2,7 @@ package cli
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -20,9 +21,10 @@ func newListCmd(app *App) *cobra.Command {
 		all    bool
 		open   bool
 		noLens bool
+		count  bool
 	)
 	cmd := &cobra.Command{
-		Use:     "list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens]",
+		Use:     "list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens] [--count]",
 		Aliases: []string{"ls"},
 		Short:   "Board / inventory as parse-stable TSV",
 		Long: "Print tickets, sorted (order, id) inside the scope, one TSV line each:\n" +
@@ -53,11 +55,17 @@ func newListCmd(app *App) *cobra.Command {
 			"--no-lens changes nothing further. --scope stays one scope. --every-scope and\n" +
 			"--scope together are a usage error. The scope name all, and TK_SCOPE=all, are\n" +
 			"not every scope.\n" +
+			"--count prints how many rows this invocation would have listed and prints no\n" +
+			"ticket TSV. One scope prints a bare integer, including 0. --every-scope prints\n" +
+			"headerless TSV, one line per registered scope, scope name then count, names\n" +
+			"ascending, including zeros. A scope that contributes no rows still prints 0.\n" +
+			"An empty registry stays empty stdout. Filters, the lens, and stderr tokens\n" +
+			"are unchanged.\n" +
 			"Lens echo and integrity tokens ride stderr only, never the TSV. Pure read.",
 		Args: anyArgs(),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runList(app, c, listParams{
-				statuses: args, scope: scope, every: every, tags: tags, all: all, open: open, noLens: noLens,
+				statuses: args, scope: scope, every: every, tags: tags, all: all, open: open, noLens: noLens, count: count,
 			})
 		},
 	}
@@ -67,6 +75,7 @@ func newListCmd(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "with no status filter: every non-quarantined status, including terminal and archive/")
 	cmd.Flags().BoolVar(&open, "open", false, "with no status filter: every non-terminal status (includes backlog)")
 	cmd.Flags().BoolVar(&noLens, "no-lens", false, "ignore the active lens for this invocation")
+	cmd.Flags().BoolVar(&count, "count", false, "print the row count instead of ticket TSV")
 	return cmd
 }
 
@@ -78,6 +87,7 @@ type listParams struct {
 	all      bool
 	open     bool
 	noLens   bool
+	count    bool
 }
 
 func runList(app *App, c *cobra.Command, p listParams) error {
@@ -154,7 +164,7 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 	index.SortListing(kept, filter.Statuses, schema.CustomStatuses())
 
 	tokens := depgate.NewTokenSet()
-	emitBoard(c, kept, gate, tokens)
+	emitBoard(c, kept, gate, tokens, p.count, "")
 
 	if applyLens {
 		stderrln(c, lensEcho(lens))
@@ -195,7 +205,7 @@ func runListEvery(e *engine, c *cobra.Command, p listParams) error {
 		if err != nil {
 			return err
 		}
-		emitBoard(c, kept, gate, tokens)
+		emitBoard(c, kept, gate, tokens, p.count, scope)
 	}
 	for _, line := range tokens.Lines() {
 		stderrln(c, line)
@@ -245,10 +255,24 @@ func statusesThisScope(names []string, custom map[string]status.Category) []stri
 	return out
 }
 
-func emitBoard(c *cobra.Command, kept []*index.Ticket, gate *depgate.Gate, tokens *depgate.TokenSet) {
+// emitBoard prints the board, or with count the cardinality of the same rows.
+// scopeLabel is set for --every-scope --count (scope, count). An empty label
+// prints one integer. Depends tokens are collected either way.
+func emitBoard(c *cobra.Command, kept []*index.Ticket, gate *depgate.Gate, tokens *depgate.TokenSet, count bool, scopeLabel string) {
+	if count {
+		n := strconv.Itoa(len(kept))
+		if scopeLabel != "" {
+			stdoutln(c, tsvLine(scopeLabel, n))
+		} else {
+			stdoutln(c, n)
+		}
+	}
 	for _, row := range kept {
 		ds := gate.EvalDepends(row)
 		tokens.Add(ds.Tokens)
+		if count {
+			continue
+		}
 		stdoutln(c, tsvLine(row.ID, row.Status, row.Title, strings.Join(ds.WaitingOn, " ")))
 	}
 }

@@ -13,19 +13,15 @@
 <tr>
   <th>name</th>
   <th>mode</th>
+  <th>backlog</th>
+  <th>draft</th>
   <th>todo</th>
+  <th>blocked</th>
   <th>in-progress</th>
   <th>review</th>
-  <th>blocked</th>
-  <th>draft</th>
-  <th>backlog</th>
   <th>done</th>
   <th>cancelled</th>
   <th>total</th>
-  <th>next</th>
-  <th>claimed</th>
-  <th>dangling</th>
-  <th>integrity</th>
 </tr>
 </thead>
 <tbody>
@@ -33,28 +29,34 @@
 <tr{{if .Note}} class="has-note"{{end}}>
   <td><a href="/scope/{{.Name}}">{{.Name}}</a></td>
   <td>{{.Mode}}</td>
+  <td>{{.Backlog}}</td>
+  <td>{{.Draft}}</td>
   <td>{{.Todo}}</td>
+  <td>{{.Blocked}}</td>
   <td>{{.InProgress}}</td>
   <td>{{.Review}}</td>
-  <td>{{.Blocked}}</td>
-  <td>{{.Draft}}</td>
-  <td>{{.Backlog}}</td>
   <td>{{.Done}}</td>
   <td>{{.Cancelled}}</td>
   <td>{{.Total}}</td>
-  <td>{{if .NextHref}}<a href="{{.NextHref}}">{{.Next}}</a>{{else}}{{.Next}}{{end}}</td>
-  <td>{{range $i, $c := .Claimed}}{{if $i}} {{end}}<a href="{{$c.Href}}">{{$c.ID}}</a>{{end}}</td>
-  <td>{{.Dangling}}</td>
-  <td class="integrity-{{.Integrity}}">{{.Integrity}}</td>
 </tr>
 {{if .Note}}
-<tr class="note"><td colspan="15">{{.Note}}</td></tr>
+<tr class="note"><td colspan="11">{{.Note}}</td></tr>
 {{end}}
 {{else}}
-<tr><td colspan="15" class="empty">No scopes registered.</td></tr>
+<tr><td colspan="11" class="empty">No scopes registered.</td></tr>
 {{end}}
 </tbody>
 </table>
+{{if .Bars}}
+<section class="scope-mix" aria-label="working tickets">
+{{range .Bars}}
+<div class="scope-mix-row">
+  <span class="scope-mix-name">{{.Name}}</span>
+  <span class="scope-mix-track"><span class="scope-mix-bar" style="width: {{.Width}}%">{{range .Segs}}<span class="scope-mix-seg status-{{.Status}}" style="flex-grow: {{.Count}}"><span class="scope-mix-tip">{{.Status}}: {{.Count}}</span></span>{{end}}</span></span>
+</div>
+{{end}}
+</section>
+{{end}}
 </main>
 </body>
 </html>

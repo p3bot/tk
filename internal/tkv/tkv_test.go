@@ -450,8 +450,8 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 		t.Fatalf("GET / = %d %s", home.Code, home.Body.String())
 	}
 	body := home.Body.String()
-	if !strings.Contains(body, `href="/scope/wc"`) || !strings.Contains(body, "wc-ab2c") {
-		t.Fatalf("overview missing scope/next: %s", body)
+	if !strings.Contains(body, `href="/scope/wc"`) {
+		t.Fatalf("overview missing scope: %s", body)
 	}
 	if !strings.Contains(body, `/static/board.js`) {
 		t.Fatalf("overview must load board.js so scope links pick up stored layers: %s", body)
@@ -752,6 +752,66 @@ func TestKanbanNextRefreshesDependsTargetScope(t *testing.T) {
 	}
 }
 
+func TestOverviewMatrixAndWorkingBars(t *testing.T) {
+	app := newTestApp(t)
+	aa := initScope(t, app, "aa")
+	wc := initScope(t, app, "wc")
+	zz := initScope(t, app, "zz")
+	addTicket(t, aa, "aa-ab2c", "later", "backlog", "a0", "# Later\n", false, "")
+	addTicket(t, wc, "wc-ab2c", "one", "in-progress", "a0", "# One\n", false, "")
+	addTicket(t, wc, "wc-cd34", "two", "in-progress", "a1", "# Two\n", false, "")
+	addTicket(t, wc, "wc-ef56", "three", "todo", "a2", "# Three\n", false, "")
+	addTicket(t, wc, "wc-gh78", "old", "done", "a3", "# Old\n", true, "")
+	addTicket(t, zz, "zz-ab2c", "old", "done", "a0", "# Old\n", true, "")
+	s := mustServer(t, app)
+
+	body := do(s, "/").Body.String()
+	pos := -1
+	for _, h := range []string{"name", "mode", "backlog", "draft", "todo", "blocked", "in-progress", "review", "done", "cancelled", "total"} {
+		i := strings.Index(body, "<th>"+h+"</th>")
+		if i < 0 || i <= pos {
+			t.Fatalf("header %s at %d after %d\n%s", h, i, pos, body)
+		}
+		pos = i
+	}
+	for _, gone := range []string{"<th>next</th>", "<th>claimed</th>", "<th>dangling</th>", "<th>integrity</th>"} {
+		if strings.Contains(body, gone) {
+			t.Fatalf("overview still has %s", gone)
+		}
+	}
+	if !strings.Contains(body, "<td><a href=\"/scope/wc\">wc</a></td>\n  <td>plain-files</td>\n  <td>0</td>\n  <td>0</td>\n  <td>1</td>\n  <td>0</td>\n  <td>2</td>\n  <td>0</td>\n  <td>1</td>\n  <td>0</td>\n  <td>4</td>") {
+		t.Fatalf("wc matrix row:\n%s", body)
+	}
+	aaAt := strings.Index(body, `class="scope-mix-name">aa</span>`)
+	wcAt := strings.Index(body, `class="scope-mix-name">wc</span>`)
+	zzAt := strings.Index(body, `class="scope-mix-name">zz</span>`)
+	if aaAt < 0 || wcAt < 0 || zzAt < 0 || !(aaAt < wcAt && wcAt < zzAt) {
+		t.Fatalf("bar order aa=%d wc=%d zz=%d", aaAt, wcAt, zzAt)
+	}
+	if !strings.Contains(body, `scope-mix-name">aa</span>`) ||
+		!strings.Contains(body, `style="width: 33.33%"><span class="scope-mix-seg status-backlog" style="flex-grow: 1"><span class="scope-mix-tip">backlog: 1</span>`) {
+		t.Fatalf("aa bar:\n%s", body)
+	}
+	wcBar := body[wcAt:zzAt]
+	if !strings.Contains(wcBar, `style="width: 100.00%"`) ||
+		!strings.Contains(wcBar, `status-todo" style="flex-grow: 1"><span class="scope-mix-tip">todo: 1</span>`) ||
+		!strings.Contains(wcBar, `status-in-progress" style="flex-grow: 2"><span class="scope-mix-tip">in-progress: 2</span>`) {
+		t.Fatalf("wc bar:\n%s", wcBar)
+	}
+	todoAt := strings.Index(wcBar, `status-todo"`)
+	progAt := strings.Index(wcBar, `status-in-progress"`)
+	if todoAt < 0 || progAt < 0 || todoAt > progAt {
+		t.Fatalf("wc segment order:\n%s", wcBar)
+	}
+	zzBar := body[zzAt:]
+	if !strings.Contains(zzBar, `style="width: 0.00%"></span>`) || strings.Contains(zzBar, "scope-mix-seg") {
+		t.Fatalf("zz should be an empty bar:\n%s", zzBar)
+	}
+	if strings.Contains(body, `scope-mix-tip">done:`) || strings.Contains(body, "status-done") {
+		t.Fatalf("done must stay out of the working bars:\n%s", body)
+	}
+}
+
 func TestOverviewIntegrityFlagsForeignPrefix(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
@@ -782,14 +842,6 @@ func TestSchemaErrorHoldsFromNextAndSurfaces(t *testing.T) {
 	if home.Code != 200 {
 		t.Fatalf("overview = %d %s", home.Code, home.Body.String())
 	}
-	hb := home.Body.String()
-	if !strings.Contains(hb, "wc-ab2c") {
-		t.Fatalf("overview next should skip schema_error and pick the clean todo: %s", hb)
-	}
-	if strings.Contains(hb, "wc-de34") {
-		t.Fatalf("overview next picked the schema_error todo: %s", hb)
-	}
-
 	board := do(s, "/scope/wc")
 	if board.Code != 200 {
 		t.Fatalf("kanban = %d %s", board.Code, board.Body.String())

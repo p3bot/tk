@@ -246,7 +246,9 @@ func TestSkillChangedContract(t *testing.T) {
 func TestSkillDocumentsEveryScope(t *testing.T) {
 	text := skill.Text()
 	for _, want := range []string{
-		"tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens]",
+		"tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens] [--count]",
+		"--count prints the row count instead of TSV",
+		"--every-scope is headerless TSV scope, count for every registered scope, names ascending, including 0",
 		"--every-scope lists every registered scope and ignores the lens",
 		"a custom status keeps rows only from scopes that declare it",
 		"grouped by scope name ascending",
@@ -273,7 +275,9 @@ func TestSkillDocumentsEveryScope(t *testing.T) {
 func TestSkillDocumentsLog(t *testing.T) {
 	text := skill.Text()
 	for _, want := range []string{
-		"tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]...",
+		"tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]... [--count]",
+		"--count prints one integer for that selection, including 0",
+		"`--count` prints that selection as one integer, including 0",
 		"Default is done, today, every scope",
 		"Status entry: `tk log`",
 		"tk log cancelled --date YYYY-MM-DD",

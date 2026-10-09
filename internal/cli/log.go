@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -24,10 +25,12 @@ func newLogCmd(app *App) *cobra.Command {
 		date      string
 		since     string
 		until     string
+		count     bool
 	)
 	cmd := &cobra.Command{
-		Use:   "log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]...",
-		Short: "Tickets that entered their current status on a local day",
+		Use:     "log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]... [--count]",
+		Aliases: []string{"logs"},
+		Short:   "Tickets that entered their current status on a local day",
 		Long: "List tickets by the local day they entered the status they have now.\n" +
 			"Each row is that instant. Create counts: a new ticket enters its first status\n" +
 			"at create. A later status change replaces the instant. This is not git history\n" +
@@ -64,7 +67,9 @@ func newLogCmd(app *App) *cobra.Command {
 			"  schema_error: <id> changed \"<value>\" is not RFC3339 (<path>)\n" +
 			"--tag repeats as OR and is a hard membership filter (untagged rows are out).\n" +
 			"The tag lens is not applied. There is no --no-lens. An unused tag still filters\n" +
-			"and emits tag_unknown: on stderr. Empty stdout exits 0. Pure read.",
+			"and emits tag_unknown: on stderr.\n" +
+			"--count prints that selection as one integer, including 0, and prints no\n" +
+			"ticket TSV. Stderr is unchanged. Empty stdout without --count exits 0. Pure read.",
 		Args: anyArgs(),
 		RunE: func(c *cobra.Command, args []string) error {
 			days := logDays{
@@ -83,6 +88,7 @@ func newLogCmd(app *App) *cobra.Command {
 				scope:    scope,
 				tags:     tags,
 				days:     days,
+				count:    count,
 				now:      time.Now(),
 			})
 		},
@@ -95,6 +101,7 @@ func newLogCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&until, "until", "", "through the end of this local day; no lower bound unless --since is set")
 	cmd.Flags().StringVar(&scope, "scope", "", "read one scope (default: every registered scope)")
 	cmd.Flags().StringArrayVar(&tags, "tag", nil, "match any of these tags (repeatable; OR; hard filter)")
+	cmd.Flags().BoolVar(&count, "count", false, "print the row count instead of ticket TSV")
 	return cmd
 }
 
@@ -104,6 +111,7 @@ type logParams struct {
 	scope    string
 	tags     []string
 	days     logDays
+	count    bool
 	now      time.Time
 }
 
@@ -178,6 +186,10 @@ func runLog(app *App, c *cobra.Command, p logParams) error {
 	})
 	for _, row := range bad {
 		stderrln(c, token.FormatChangedNotRFC3339(row.ID, row.Changed, row.Path))
+	}
+	if p.count {
+		stdoutln(c, strconv.Itoa(len(hits)))
+		return nil
 	}
 	for _, hit := range hits {
 		row := hit.ticket

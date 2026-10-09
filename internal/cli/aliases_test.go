@@ -27,6 +27,8 @@ func TestUnixAliasesMatchCanonical(t *testing.T) {
 	}
 
 	eq("tk ls", []string{"list", "--scope", "wc"}, []string{"ls", "--scope", "wc"})
+	eq("tk logs", []string{"log", "--scope", "wc"}, []string{"logs", "--scope", "wc"})
+	eq("tk logs --count", []string{"log", "--count", "--scope", "wc"}, []string{"logs", "--count", "--scope", "wc"})
 	eq("note ls", []string{"note", "list", "--scope", "wc"}, []string{"note", "ls", "--scope", "wc"})
 	eq("scope ls", []string{"scope", "list"}, []string{"scope", "ls"})
 	eq("scope field ls", []string{"scope", "field", "list", "--scope", "wc"}, []string{"scope", "field", "ls", "--scope", "wc"})

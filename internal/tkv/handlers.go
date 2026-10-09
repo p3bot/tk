@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ type overviewPage struct {
 	Title  string
 	Chrome chrome
 	Rows   []overviewRow
+	Bars   []mixBar
 }
 
 type overviewRow struct {
@@ -44,12 +46,22 @@ type overviewRow struct {
 	Backlog    int
 	Done       int
 	Cancelled  int
-	Next       string
-	NextHref   string
-	Claimed    []idLink
 	Dangling   int
 	Integrity  string
 	Note       string
+}
+
+// mixBar is one scope's working-board stack. Width is a percentage of the
+// busiest scope on the page. Done, cancelled, and total stay out of the bar.
+type mixBar struct {
+	Name  string
+	Width string
+	Segs  []mixSeg
+}
+
+type mixSeg struct {
+	Status string
+	Count  int
 }
 
 type idLink struct {
@@ -79,7 +91,12 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) error {
 		}
 		rows = append(rows, row)
 	}
-	return s.render(w, "overview", overviewPage{Title: "scopes", Chrome: ch, Rows: rows})
+	return s.render(w, "overview", overviewPage{
+		Title:  "scopes",
+		Chrome: ch,
+		Rows:   rows,
+		Bars:   mixBars(rows),
+	})
 }
 
 func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name string) (overviewRow, error) {
@@ -132,7 +149,6 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 	row.Backlog = pulse.Backlog
 	row.Done = pulse.Done
 	row.Cancelled = pulse.Cancelled
-	row.Claimed = ticketLinks(pulse.Claimed)
 
 	dangling, err := s.db.SameScopeDanglingDependsCount(name)
 	if err != nil {
@@ -145,31 +161,47 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 		return row, err
 	}
 	row.Integrity = integ
-
-	if !res.Unreachable[name] {
-		gate, err := depgate.Load(s.gateDeps(reg), res, []string{name})
-		if err != nil {
-			return row, err
-		}
-		candidates, err := s.db.NextCandidates(name)
-		if err != nil {
-			return row, err
-		}
-		if next := gate.SelectNext(candidates, reg.Lens[name], false).Chosen; next != nil {
-			row.Next = next.ID
-			row.NextHref = inspectHref(next.ID)
-		}
-	}
 	return row, nil
 }
 
-func ticketLinks(rows []*index.Ticket) []idLink {
-	if len(rows) == 0 {
-		return nil
+// mixBars stacks backlog, draft, todo, blocked, in-progress, and review.
+// Bar length shares one scale: the busiest scope is 100. A scope with no
+// working tickets keeps a row and an empty bar so the chart lines up.
+func mixBars(rows []overviewRow) []mixBar {
+	sums := make([]int, len(rows))
+	max := 0
+	for i, row := range rows {
+		sums[i] = row.Backlog + row.Draft + row.Todo + row.Blocked + row.InProgress + row.Review
+		if sums[i] > max {
+			max = sums[i]
+		}
 	}
-	out := make([]idLink, len(rows))
-	for i, p := range rows {
-		out[i] = idLink{ID: p.ID, Href: inspectHref(p.ID)}
+	out := make([]mixBar, len(rows))
+	for i, row := range rows {
+		bar := mixBar{Name: row.Name, Width: "0.00"}
+		if max > 0 && sums[i] > 0 {
+			bar.Width = strconv.FormatFloat(float64(sums[i])/float64(max)*100, 'f', 2, 64)
+			bar.Segs = workingSegs(row)
+		}
+		out[i] = bar
+	}
+	return out
+}
+
+func workingSegs(row overviewRow) []mixSeg {
+	parts := []mixSeg{
+		{Status: status.Backlog, Count: row.Backlog},
+		{Status: status.Draft, Count: row.Draft},
+		{Status: status.Todo, Count: row.Todo},
+		{Status: status.Blocked, Count: row.Blocked},
+		{Status: status.InProgress, Count: row.InProgress},
+		{Status: status.Review, Count: row.Review},
+	}
+	out := make([]mixSeg, 0, len(parts))
+	for _, p := range parts {
+		if p.Count > 0 {
+			out = append(out, p)
+		}
 	}
 	return out
 }

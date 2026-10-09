@@ -9,43 +9,60 @@
 <main>
 <h1>{{.Name}}</h1>
 <div class="board-controls" data-board-scope="{{.Name}}">
-  <a class="switch{{if .Backlog}} on{{end}}" href="{{.BacklogHref}}" role="switch" aria-checked="{{if .Backlog}}true{{else}}false{{end}}" data-board-switch>
-    <span class="switch-ui" aria-hidden="true"></span>
-    Backlog
-  </a>
-  <a class="switch{{if .Archived}} on{{end}}" href="{{.ArchivedHref}}" role="switch" aria-checked="{{if .Archived}}true{{else}}false{{end}}" data-board-switch>
-    <span class="switch-ui" aria-hidden="true"></span>
-    Archived
-  </a>
-  {{if and .Next .CanWrite}}
-  <form class="write" method="post" action="/scope/{{.Name}}/claim" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
-    {{template "boardReturn" $}}
-    <button type="submit">Claim next</button>
-  </form>
+  <div class="board-toolbar">
+    <div class="board-actions">
+      {{if .CanWrite}}
+      <button type="button" class="toolbar-btn primary" commandfor="create-dialog" command="show-modal">Create</button>
+      {{end}}
+      {{if and .Next .CanWrite}}
+      <form class="write" method="post" action="/scope/{{.Name}}/claim" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+        {{template "boardReturn" $}}
+        <button type="submit">Claim next</button>
+      </form>
+      {{end}}
+      <a class="switch{{if .Backlog}} on{{end}}" href="{{.BacklogHref}}" role="switch" aria-checked="{{if .Backlog}}true{{else}}false{{end}}" data-board-switch>
+        <span class="switch-ui" aria-hidden="true"></span>
+        Backlog
+      </a>
+      <a class="switch{{if .Archived}} on{{end}}" href="{{.ArchivedHref}}" role="switch" aria-checked="{{if .Archived}}true{{else}}false{{end}}" data-board-switch>
+        <span class="switch-ui" aria-hidden="true"></span>
+        Archived
+      </a>
+    </div>
+    <input type="search" class="board-filter" data-board-filter placeholder="filter board" aria-label="filter board">
+  </div>
+  {{if .Tags}}
+  <div class="board-tags">
+    {{range .Tags}}
+      <a class="tag{{if $.TagOn .}} on{{end}}" href="{{$.TagHref .}}">{{.}}</a>
+    {{end}}
+  </div>
   {{end}}
   {{if .CanWrite}}
-  <form class="write create" method="post" action="/scope/{{.Name}}/create" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
-    <label>
-      <span class="sr-only">title</span>
-      <input type="text" name="title" required placeholder="new ticket" aria-label="new ticket title">
-    </label>
-    <label>
-      <span class="sr-only">status</span>
-      <select name="status" aria-label="status">
-        {{range .CreateStatuses}}<option value="{{.}}"{{if eq . "draft"}} selected{{end}}>{{.}}</option>{{end}}
-      </select>
-    </label>
-    <label>
-      <span class="sr-only">tags, comma-separated</span>
-      <input type="text" name="tag" value="" placeholder="tags, comma-separated" aria-label="tags, comma-separated">
-    </label>
-    <button type="submit">Create</button>
-  </form>
+  <dialog id="create-dialog" class="create-dialog" aria-labelledby="create-dialog-title">
+    <form class="write create" method="post" action="/scope/{{.Name}}/create" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+      <h2 id="create-dialog-title">New ticket</h2>
+      <label class="field">
+        Title
+        <input type="text" name="title" required autofocus aria-label="new ticket title">
+      </label>
+      <label class="field">
+        Status
+        <select name="status" aria-label="status">
+          {{range .CreateStatuses}}<option value="{{.}}"{{if eq . "draft"}} selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </label>
+      <label class="field">
+        Tags
+        <input type="text" name="tag" value="" placeholder="tags, comma-separated" aria-label="tags, comma-separated">
+      </label>
+      <div class="actions">
+        <button type="button" commandfor="create-dialog" command="close">Cancel</button>
+        <button type="submit">Create</button>
+      </div>
+    </form>
+  </dialog>
   {{end}}
-  {{range .Tags}}
-    <a class="tag{{if $.TagOn .}} on{{end}}" href="{{$.TagHref .}}">{{.}}</a>
-  {{end}}
-  <input type="search" class="board-filter" data-board-filter placeholder="filter board" aria-label="filter board">
 </div>
 <section class="kanban" aria-label="board">
 {{range .Cols}}

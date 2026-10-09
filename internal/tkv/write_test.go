@@ -1438,11 +1438,24 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if !strings.Contains(board, `method="post" action="/scope/wc/create"`) {
 		t.Fatalf("kanban missing create form: %s", board)
 	}
+	const createOpen = `commandfor="create-dialog" command="show-modal"`
+	if !strings.Contains(board, `<dialog id="create-dialog"`) || !strings.Contains(board, createOpen) {
+		t.Fatalf("create must open from a dialog: %s", board)
+	}
 	if !strings.Contains(board, `name="title" required`) {
 		t.Fatalf("create form missing required title: %s", board)
 	}
 	if !strings.Contains(board, `placeholder="tags, comma-separated"`) {
 		t.Fatalf("create tags field must disclose comma-splitting: %s", board)
+	}
+	createAt := strings.Index(board, createOpen)
+	claimAt := strings.Index(board, ">Claim next<")
+	backlogAt := strings.Index(board, "Backlog")
+	filterAt := strings.Index(board, `data-board-filter`)
+	tagsAt := strings.Index(board, `class="board-tags"`)
+	if createAt < 0 || claimAt < 0 || backlogAt < 0 || filterAt < 0 || tagsAt < 0 ||
+		!(createAt < claimAt && claimAt < backlogAt && backlogAt < filterAt && filterAt < tagsAt) {
+		t.Fatalf("toolbar order create, claim, layers, filter, then tags: %s", board)
 	}
 	if strings.Contains(board, `action="/scope/wc/create"`) && strings.Contains(board, "<textarea") {
 		t.Fatalf("create form must not have a body textarea: %s", board)
@@ -1569,6 +1582,12 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	}
 	if !strings.Contains(board, `method="post" action="/scope/wc/lens/clear"`) {
 		t.Fatalf("kanban missing chrome lens clear: %s", board)
+	}
+	if !strings.Contains(board, `<dialog id="lens-dialog"`) || !strings.Contains(board, `command="show-modal">Lens</button>`) {
+		t.Fatalf("lens editor must open from a dialog: %s", board)
+	}
+	if strings.Contains(board, `class="chrome-row chrome-lens"`) {
+		t.Fatalf("lens editor must not be a chrome row: %s", board)
 	}
 	if !strings.Contains(ins, `method="post" action="/scope/wc/lens"`) {
 		t.Fatalf("inspect missing chrome lens form: %s", ins)

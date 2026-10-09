@@ -49,12 +49,13 @@
     <dl class="meta">
       <div><dt>scope</dt><dd>{{.Chrome.Selected}}</dd></div>
       <div><dt>mode</dt><dd>{{.Chrome.Mode}}</dd></div>
-      <div><dt>lens</dt><dd>{{.Chrome.Lens}}</dd></div>
+      <div><dt>lens</dt><dd class="lens-readout">{{.Chrome.Lens}}{{if and .Chrome.Selected .Chrome.CanLens}}<button type="button" class="toolbar-btn chrome-lens" commandfor="lens-dialog" command="show-modal">Lens</button>{{end}}</dd></div>
       <div><dt>integrity</dt><dd class="integrity-{{.Chrome.Integrity}}">{{.Chrome.Integrity}}</dd></div>
     </dl>
   </div>
   {{if and .Chrome.Selected .Chrome.CanLens}}
-  <div class="chrome-row chrome-lens">
+  <dialog id="lens-dialog" class="lens-dialog chrome-lens" aria-labelledby="lens-dialog-title">
+    <h2 id="lens-dialog-title">Lens</h2>
     <form class="write lens-set" method="post" action="/scope/{{.Chrome.Selected}}/lens">
       <input type="hidden" name="return" value="{{.Chrome.Return}}">
       <span class="lens-picker" aria-label="lens tags">
@@ -62,14 +63,20 @@
         <label><input type="checkbox" name="tag" value="{{.}}"{{if $.Chrome.LensOn .}} checked{{end}}> {{.}}</label>
         {{end}}
       </span>
-      <input type="text" name="tag" value="" placeholder="tag" aria-label="additional lens tag">
-      <button type="submit">Set lens</button>
+      <label class="field">
+        Tag
+        <input type="text" name="tag" value="" placeholder="tag" aria-label="additional lens tag">
+      </label>
+      <div class="actions">
+        <button type="button" commandfor="lens-dialog" command="close">Cancel</button>
+        <button type="submit">Set lens</button>
+      </div>
     </form>
     <form class="write lens-clear" method="post" action="/scope/{{.Chrome.Selected}}/lens/clear">
       <input type="hidden" name="return" value="{{.Chrome.Return}}">
       <button type="submit">Clear lens</button>
     </form>
-  </div>
+  </dialog>
   {{end}}
 </header>
 {{if or .Chrome.Notices .Chrome.Alerts}}

@@ -16,17 +16,20 @@ func newSyncCmd(app *App) *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
 		Use:   "sync [--scope S] [--all]",
-		Short: "Snapshot, fetch, integrate, repair, and push an auto-commit git-root",
-		Long: "Sync snapshots allowlisted dirty files, fetches and rebases the remote\n" +
-			"in, resolves frontmatter conflicts, runs the sync-time integrity repairs, and\n" +
-			"pushes if ahead. It applies only to auto-commit scopes. It is not tk's only\n" +
-			"push: on a tk-driven git-root with an upstream, `tk next --claim` and\n" +
-			"`tk mark` todo → in-progress refresh that root and push after the write.\n" +
-			"Never host-push an auto-commit root. With no flag it targets the ambient\n" +
-			"scope's whole git-root; --all (which wins over --scope/TK_SCOPE) syncs every\n" +
-			"auto-commit git-root, each an independent unit whose failure never strands\n" +
-			"the others. A non-auto-commit scope is refused (ambient) or skipped (--all);\n" +
-			"an empty auto-commit set exits 0.",
+		Short: "Fetch, integrate, and push an auto-commit git-root",
+		Long: "Sync fetches, then classifies the checkout against that upstream. When\n" +
+			"the checkout is already based on it, including equal, sync does not rebase.\n" +
+			"A strictly-behind checkout fast-forwards, keeping unrelated local edits.\n" +
+			"Diverged history rebases in place. `tk sync` and `tk sync --scope S` commit\n" +
+			"that scope's allowlisted dirty files: after the fast-forward, before a\n" +
+			"diverged rebase, or instead of a rebase when already based on upstream.\n" +
+			"`tk sync --all`, and a bare sync with no ambient scope, commits nothing and\n" +
+			"still integrates and pushes each auto-commit root. --all wins over\n" +
+			"--scope/TK_SCOPE. Each root is an independent unit. It applies only to\n" +
+			"auto-commit scopes. On a tk-driven git-root with an upstream, `tk next --claim`\n" +
+			"and `tk mark` todo → in-progress refresh that root without committing and push\n" +
+			"after the write. Never host-push an auto-commit root. A non-auto-commit scope\n" +
+			"is refused (ambient) or skipped (--all); an empty auto-commit set exits 0.",
 		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runSync(app, c, scope, all)

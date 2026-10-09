@@ -63,7 +63,7 @@ func pushIfAhead(deps Deps, r Reporter, t Target, rep *syncReport) pushResult {
 
 	if err := git.Push(ctx, t.Root); err != nil {
 		r.Err(fmt.Sprintf("%s: push rejected — re-integrating and retrying (%v)", rep.label, err))
-		switch fetchAndIntegrate(deps, r, t, rep) {
+		switch fetchAndIntegrate(deps, r, t, rep, false) {
 		case integratePaused:
 			recordPushFailure(deps, r, t, rep, err, "resolve the conflict reported above, then run tk sync")
 			return pushPaused

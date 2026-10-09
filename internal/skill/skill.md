@@ -85,7 +85,7 @@ tk scope auto-commit [true|false] [--scope S]                       # Read or se
 tk scope field list [--scope S]                                     # List custom fields: (name type required values)
 tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # Upsert field; full replace from flags (omit --required demotes)
 tk scope field unset <name> [--strip] [--scope S]                   # Remove field declaration; --strip also drops the key from all tickets
-tk sync [--scope S] [--all]                                         # Snapshot/integrate/push auto-commit roots (claim also pushes)
+tk sync [--scope S] [--all]                                         # Commit that scope's allowlisted dirty files, integrate, and push; --all, and a bare sync with no ambient scope, commits nothing
 tk doctor                                                           # Diagnose integrity (never mutates files)
 tk repair [--re-space-order] [--all]                                # Repair id collisions, id prefix, equal order, archive layout
 tk reindex                                                          # Rebuild the machine-wide index from files
@@ -149,6 +149,8 @@ Durability (`tk pulse mode`):
   - Commands that self commit: mark, order, next --claim, rehome, meta set/add/remove, design mark, design meta add|remove, design rehome, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
   - Create, design create, and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
+  - `tk sync` and `tk sync --scope S` commit that scope's allowlisted dirty files. `tk sync --all`, and a bare sync with no ambient scope, commits nothing
+  - Sync and claim refresh do not rebase when the checkout is already based on the fetched upstream
 - repo-driven: host git commit/push (no `tk sync`)
 - plain-files: no git step
 

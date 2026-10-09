@@ -207,6 +207,29 @@ func TestSkillListsScopeAutoCommit(t *testing.T) {
 	}
 }
 
+func TestSkillSyncScopedSnapshot(t *testing.T) {
+	text := skill.Text()
+	for _, want := range []string{
+		"tk sync [--scope S] [--all]",
+		"`tk sync` and `tk sync --scope S` commit that scope's allowlisted dirty files",
+		"`tk sync --all`, and a bare sync with no ambient scope, commits nothing",
+		"do not rebase when the checkout is already based on the fetched upstream",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("skill missing %q", want)
+		}
+	}
+	count := 0
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			count++
+		}
+	}
+	if count != len(skill.RequiredHeadings()) {
+		t.Fatalf("sync docs added a ## heading: want %d, got %d", len(skill.RequiredHeadings()), count)
+	}
+}
+
 func TestSkillChangedContract(t *testing.T) {
 	text := skill.Text()
 	for _, want := range []string{

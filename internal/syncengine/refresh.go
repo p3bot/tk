@@ -16,8 +16,8 @@ func RootTarget(deps Deps, root string) Target {
 	return Target{Root: root, Participants: autoCommitParticipants(deps, root)}
 }
 
-// RefreshRoot snapshots dirty allowlisted files, fetches, integrates, and runs
-// integrity for one git-root. It does not resume a mid-rebase and does not push.
+// RefreshRoot fetches and integrates one git-root, then runs integrity.
+// It commits nothing, does not resume a mid-rebase, and does not push.
 // Caller must not hold a write-path flock or the git-root commit lock.
 func RefreshRoot(deps Deps, r Reporter, t Target) error {
 	return withSyncLocks(deps, r, t, func(rep *syncReport) error {
@@ -34,11 +34,7 @@ func RefreshRoot(deps Deps, r Reporter, t Target) error {
 			r.Err(fmt.Sprintf("%s: git-root %s has no upstream", rep.label, t.Root))
 			return ErrRootFailed
 		}
-		if err := snapshot(deps, r, t, rep); err != nil {
-			r.Err(fmt.Sprintf("%s: snapshot failed: %v", rep.label, err))
-			return ErrRootFailed
-		}
-		switch fetchAndIntegrate(deps, r, t, rep) {
+		switch fetchAndIntegrate(deps, r, t, rep, false) {
 		case integrateCompleted:
 		case integratePaused:
 			reportPaused(r, rep)
@@ -62,7 +58,7 @@ func RefreshRoot(deps Deps, r Reporter, t Target) error {
 // merge preflight. Caller must not hold a write-path flock or the git-root
 // commit lock. Any failure records last-push-error.
 func PushRootIfAhead(deps Deps, r Reporter, t Target) error {
-	rep := &syncReport{label: participantLabel(t.Participants)}
+	rep := &syncReport{label: reportLabel(t)}
 	release, err := acquireSyncLocks(deps, t)
 	if err != nil {
 		r.Err(fmt.Sprintf("%s: could not acquire sync locks: %v", rep.label, err))
@@ -86,10 +82,10 @@ func withSyncLocks(deps Deps, r Reporter, t Target, fn func(*syncReport) error) 
 	}
 	release, err := acquireSyncLocks(deps, t)
 	if err != nil {
-		r.Err(fmt.Sprintf("%s: could not acquire sync locks: %v", participantLabel(t.Participants), err))
+		r.Err(fmt.Sprintf("%s: could not acquire sync locks: %v", reportLabel(t), err))
 		return err
 	}
 	defer release()
-	rep := &syncReport{label: participantLabel(t.Participants)}
+	rep := &syncReport{label: reportLabel(t)}
 	return fn(rep)
 }

@@ -230,8 +230,8 @@ func TestDoctorSyncAllIsolatesPerRoot(t *testing.T) {
 		t.Fatalf("sync output stuffed into Location %s: %v", loc, hit)
 	}
 
-	if porcelain(t, goodRepo) != "" {
-		t.Fatalf("healthy root should still snapshot: %s", porcelain(t, goodRepo))
+	if !strings.Contains(porcelain(t, goodRepo), "aa-ab2c-work.md") {
+		t.Fatalf("doctor sync --all must leave the healthy root's dirty ticket uncommitted: %s", porcelain(t, goodRepo))
 	}
 	if n := unpushed(t, goodRepo); n != "0" {
 		t.Fatalf("healthy root unpushed = %s", n)
@@ -485,6 +485,8 @@ func TestChromeSyncResumesPausedBodyConflict(t *testing.T) {
 	}
 
 	replaceOnce(t, pB, "body line", "B version of the body")
+	testgit.Run(t, repoB, "add", "-A")
+	testgit.Run(t, repoB, "commit", "-m", "B body")
 
 	s := mustServer(t, appB)
 	w = doPost(s, "/scope/wc/sync", url.Values{"return": {"/scope/wc"}})

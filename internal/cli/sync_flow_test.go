@@ -81,6 +81,7 @@ func TestSyncBodyConflictPausesThenResumes(t *testing.T) {
 
 	pB, _ := findTicket(t, b.scopeDir(), "wc-ab2c-alpha.md")
 	editBody(t, pB, "B version of the body")
+	commitLocal(t, b.clone, "B body")
 	_, errOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("body conflict must pause non-zero, got %v (stderr %q)", err, errOut)
@@ -119,6 +120,7 @@ func TestSyncMidRebaseEntryMakesNoCommitBeforeResume(t *testing.T) {
 	}
 	pB, _ := findTicket(t, b.scopeDir(), "wc-ab2c-alpha.md")
 	editBody(t, pB, "B version")
+	commitLocal(t, b.clone, "B body")
 	if _, _, err := b.sync(t, "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("expected a paused body conflict, got %v", err)
 	}
@@ -278,6 +280,7 @@ func TestSyncDeleteEditMirroredUnactionedRerunPauses(t *testing.T) {
 	if err := os.Remove(pB); err != nil {
 		t.Fatal(err)
 	}
+	commitLocal(t, b.clone, "B delete")
 	_, firstOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("mirrored delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
@@ -317,6 +320,7 @@ func TestSyncDeleteEditUnparseableSurvivorFailClosed(t *testing.T) {
 	if err := os.WriteFile(pB, []byte(broken), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	commitLocal(t, b.clone, "B broken")
 	_, firstOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("unparseable survivor must pause non-zero, got %v (stderr %q)", err, firstOut)

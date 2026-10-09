@@ -18,12 +18,18 @@ type dirtyPath struct {
 	dir   string
 }
 
-// snapshot: CommitPathsCore under held lock; non-allowlist warned, not committed.
+// snapshot commits allowlisted dirty paths under SnapshotScope only.
+// An empty SnapshotScope commits nothing and reports no residue.
+// Non-allowlist paths under that scope are warned, not committed.
 func snapshot(deps Deps, r Reporter, t Target, rep *syncReport) error {
+	parts, err := snapshotParts(t)
+	if err != nil || len(parts) == 0 {
+		return err
+	}
 	ctx := deps.Ctx
 	var staged []dirtyPath
 	var allowlisted []string
-	for _, p := range t.Participants {
+	for _, p := range parts {
 		entries, err := git.DirtyEntries(ctx, t.Root, p.Dir)
 		if err != nil {
 			return err
@@ -51,7 +57,7 @@ func snapshot(deps Deps, r Reporter, t Target, rep *syncReport) error {
 	}
 
 	if len(allowlisted) == 0 {
-		return nil // nothing dirty to snapshot; the fetch/integrate still runs
+		return nil // an empty allowlist is success, not a missed commit
 	}
 	rep.snapshotN = len(allowlisted)
 	return selfcommit.CommitPathsCore(ctx, selfcommit.BatchRequest{
@@ -60,6 +66,18 @@ func snapshot(deps Deps, r Reporter, t Target, rep *syncReport) error {
 		Message:  snapshotMessage(staged),
 		Paths:    allowlisted,
 	})
+}
+
+func snapshotParts(t Target) ([]Participant, error) {
+	if t.SnapshotScope == "" {
+		return nil, nil
+	}
+	for _, p := range t.Participants {
+		if p.Name == t.SnapshotScope {
+			return []Participant{p}, nil
+		}
+	}
+	return nil, fmt.Errorf("snapshot scope %s is not an auto-commit participant", t.SnapshotScope)
 }
 
 func skipSnapshotPath(path string) bool {

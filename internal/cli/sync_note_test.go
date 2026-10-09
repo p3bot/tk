@@ -57,6 +57,7 @@ func TestSyncNoteConflictPausesThenResume(t *testing.T) {
 	}
 
 	writeNoteFile(t, b.scopeDir(), "default", "b-edit\n")
+	commitLocal(t, b.clone, "B note")
 	_, errOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("conflicted note must pause non-zero, got %v (stderr %q)", err, errOut)
@@ -98,6 +99,7 @@ func TestSyncNoteDeleteEditThenAct(t *testing.T) {
 	}
 
 	writeNoteFile(t, b.scopeDir(), "default", "b-kept\n")
+	commitLocal(t, b.clone, "B note")
 	_, firstOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("note delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
@@ -141,6 +143,7 @@ func TestSyncConflictedCueDoesNotSuppressNote(t *testing.T) {
 	writeNoteFile(t, b.scopeDir(), "default", "b-note\n")
 	pB := mustSeedTicket(t, b.scopeDir())
 	setStatusLine(t, pB, "review")
+	commitLocal(t, b.clone, "B cue and note")
 	_, errOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("cue+note conflict must pause, got %v (stderr %q)", err, errOut)

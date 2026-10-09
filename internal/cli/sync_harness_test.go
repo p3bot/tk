@@ -85,6 +85,14 @@ func (m *machine) importScope(t *testing.T) string {
 	return dir
 }
 
+// commitLocal records the worktree as a local commit and does not push.
+// A later sync then sees diverged history instead of a strictly-behind checkout.
+func commitLocal(t *testing.T, clone, message string) {
+	t.Helper()
+	gitIn(t, clone, "add", "-A")
+	gitIn(t, clone, "commit", "-m", message)
+}
+
 func (m *machine) sync(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	return run(t, m.app, append([]string{"sync"}, args...)...)

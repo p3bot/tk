@@ -1,9 +1,10 @@
 // Package syncengine is tk's push machinery: selection policy (auto-commit-only
 // filter, unreachable/disabled/config-error reporting, participants grouped by
-// git-root) and the per-root flow (preflight, lock order, snapshot, fetch/integrate,
-// mid-rebase resume, sync-time integrity via integrity.RunBatches, push-if-ahead).
+// git-root) and the per-root flow (preflight, lock order, fetch, classify against
+// upstream, scoped snapshot, fast-forward or in-place rebase, mid-rebase resume,
+// sync-time integrity via integrity.RunBatches, push-if-ahead).
 // RefreshRoot and PushRootIfAhead are acquiring wrappers for the claim workflow
-// (refresh does not resume a mid-rebase and does not push).
+// (refresh commits nothing, does not resume a mid-rebase, and does not push).
 // Cobra-free; the composition root supplies ambient or all-registered inputs.
 package syncengine
 
@@ -28,6 +29,9 @@ type Participant struct {
 type Target struct {
 	Root         string
 	Participants []Participant
+	// SnapshotScope is the one scope whose allowlisted dirty paths this run commits.
+	// Empty commits nothing: tk sync --all, a bare sync with no ambient scope, and claim refresh.
+	SnapshotScope string
 }
 
 // Selection is the structured outcome of auto-commit git-root target selection.
@@ -89,7 +93,9 @@ func ambientSelection(deps Deps, scope, dir string) (Selection, error) {
 		return Selection{Candidates: 1, Disabled: []string{syncDisabledLine(scope, dir)}}, nil
 	}
 	parts := autoCommitParticipants(deps, root)
-	return Selection{Candidates: 1, Targets: []Target{{Root: root, Participants: parts}}}, nil
+	return Selection{Candidates: 1, Targets: []Target{{
+		Root: root, Participants: parts, SnapshotScope: scope,
+	}}}, nil
 }
 
 func allSelection(deps Deps) Selection {

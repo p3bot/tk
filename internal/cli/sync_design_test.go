@@ -119,6 +119,7 @@ func TestSyncDesignConflictPauses(t *testing.T) {
 		t.Fatalf("A edit: %v", err)
 	}
 	writeDesignBody(t, b.scopeDir(), "wc-gh56-shape.md", "b-edit\n")
+	commitLocal(t, b.clone, "B design")
 	_, errOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("conflicted design must pause, got %v stderr %q", err, errOut)

@@ -33,7 +33,7 @@ type syncReport struct {
 // syncRoot isolates one git-root so --all continues past a bad sibling.
 func syncRoot(deps Deps, r Reporter, t Target) rootOutcome {
 	ctx := deps.Ctx
-	rep := &syncReport{label: participantLabel(t.Participants)}
+	rep := &syncReport{label: reportLabel(t)}
 
 	if !syncPreflight(deps, r, t.Root) {
 		return outcomeNeedsAttention
@@ -52,33 +52,29 @@ func syncRoot(deps Deps, r Reporter, t Target) rootOutcome {
 		}
 	}()
 
-	var res integrateResult
-	snapshotted := false
-	// Mid-rebase entry: skip snapshot (no commit on temporary HEAD), resume, then fall through.
+	// A paused rebase is resumed before any scoped commit, so the commit does not land on the temporary HEAD.
 	if git.MidRebase(ctx, t.Root) {
-		res = resumeRebase(deps, r, t, rep)
-	} else {
-		if !git.HasUpstream(ctx, t.Root) {
-			r.Err(token.Line(token.SyncDisabled,
-				fmt.Sprintf("%s: git-root %s has no upstream — add a remote, then tk sync", rep.label, t.Root)))
-			return outcomeNeedsAttention
-		}
-		if err := snapshot(deps, r, t, rep); err != nil {
-			r.Err(fmt.Sprintf("%s: snapshot failed: %v", rep.label, err))
-			return outcomeNeedsAttention
-		}
-		snapshotted = true
-		res = fetchAndIntegrate(deps, r, t, rep)
-	}
-
-	switch res {
-	case integrateCompleted:
-		if !snapshotted {
+		switch resumeRebase(deps, r, t, rep) {
+		case integrateCompleted:
 			if err := snapshot(deps, r, t, rep); err != nil {
 				r.Err(fmt.Sprintf("%s: snapshot failed: %v", rep.label, err))
 				return outcomeNeedsAttention
 			}
+			return finishSynced(deps, r, t, rep)
+		case integratePaused:
+			reportPaused(r, rep)
+			return outcomeNeedsAttention
+		default:
+			return outcomeNeedsAttention
 		}
+	}
+	if !git.HasUpstream(ctx, t.Root) {
+		r.Err(token.Line(token.SyncDisabled,
+			fmt.Sprintf("%s: git-root %s has no upstream — add a remote, then tk sync", rep.label, t.Root)))
+		return outcomeNeedsAttention
+	}
+	switch fetchAndIntegrate(deps, r, t, rep, true) {
+	case integrateCompleted:
 		return finishSynced(deps, r, t, rep)
 	case integratePaused:
 		reportPaused(r, rep)
@@ -205,6 +201,14 @@ func reportSuccess(r Reporter, rep *syncReport) {
 		parts = append(parts, fmt.Sprintf("%d non-allowlist path(s) left", rep.residueN))
 	}
 	r.Err(fmt.Sprintf("tk sync %s: %s", rep.label, strings.Join(parts, ", ")))
+}
+
+// A scoped run names only its snapshot scope, so the result line is not read as a commit of every scope on the root.
+func reportLabel(t Target) string {
+	if t.SnapshotScope != "" {
+		return t.SnapshotScope
+	}
+	return participantLabel(t.Participants)
 }
 
 func participantLabel(parts []Participant) string {

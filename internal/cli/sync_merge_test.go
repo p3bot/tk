@@ -103,6 +103,7 @@ func TestSyncCueConflictPausesThenResumeMergesMD(t *testing.T) {
 	writeCue(t, dirB, "name: \"wc\"\nautoCommit: true\nfields: {b: {type: \"string\"}}\n")
 	pB := mustSeedTicket(t, dirB)
 	setStatusLine(t, pB, "review")
+	commitLocal(t, b.clone, "B cue and status")
 	_, errOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("a tk.cue conflict must pause non-zero, got %v (stderr %q)", err, errOut)
@@ -142,6 +143,7 @@ func TestSyncGitignoreConflictDoesNotBlockTicketMerges(t *testing.T) {
 
 	appendLine(t, filepath.Join(b.scopeDir(), ".gitignore"), "b-only/")
 	setStatusLine(t, mustSeedTicket(t, b.scopeDir()), "review")
+	commitLocal(t, b.clone, "B gitignore and status")
 	_, errOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("a conflicted .gitignore must pause non-zero, got %v (stderr %q)", err, errOut)
@@ -181,6 +183,7 @@ func TestSyncGitignoreDeleteEditUnactionedThenRemove(t *testing.T) {
 	}
 
 	appendLine(t, filepath.Join(b.scopeDir(), ".gitignore"), "b-extra/")
+	commitLocal(t, b.clone, "B gitignore")
 	_, firstOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf(".gitignore delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
@@ -223,6 +226,7 @@ func TestSyncGitignoreDeleteEditModifiedResumes(t *testing.T) {
 	}
 
 	appendLine(t, filepath.Join(b.scopeDir(), ".gitignore"), "b-extra/")
+	commitLocal(t, b.clone, "B gitignore")
 	if _, _, err := b.sync(t, "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("expected .gitignore delete/edit pause, got %v", err)
 	}
@@ -255,6 +259,7 @@ func TestSyncGitignoreDeleteEditGitAddResumes(t *testing.T) {
 	}
 
 	appendLine(t, filepath.Join(b.scopeDir(), ".gitignore"), "b-extra/")
+	commitLocal(t, b.clone, "B gitignore")
 	if _, _, err := b.sync(t, "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("expected .gitignore delete/edit pause, got %v", err)
 	}
@@ -289,6 +294,7 @@ func TestSyncCueDeleteEditKeepsTicketFailClosed(t *testing.T) {
 	writeCue(t, dirB, "name: \"wc\"\nautoCommit: true\nfields: {b: {type: \"string\"}}\n")
 	pB := mustSeedTicket(t, dirB)
 	setStatusLine(t, pB, "review")
+	commitLocal(t, b.clone, "B cue and status")
 	_, firstOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("tk.cue delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
@@ -378,6 +384,7 @@ func TestSyncAddAddRenameEmitsEdgeVerify(t *testing.T) {
 		t.Fatalf("A add sync: %v", err)
 	}
 	addTicket(t, dirB, "wc-ab2c", "alpha", "todo", "a2", "# B body\n", false, "")
+	commitLocal(t, b.clone, "B add")
 	out, errOut, err := b.sync(t, "--scope", "wc")
 	if err != nil {
 		t.Fatalf("add/add rename should auto-resolve and complete: %v (stderr %q)", err, errOut)
@@ -462,7 +469,14 @@ func TestSyncAllIsolatesFailingRoot(t *testing.T) {
 	if !strings.Contains(errOut, "sync_disabled:") || !strings.Contains(errOut, "xy") {
 		t.Errorf("the failing xy root should ride sync_disabled, got %q", errOut)
 	}
-	if !remoteHas(t, remote, "wc/wc-ab2c-alpha.md") {
-		t.Errorf("the healthy wc root must still sync and push despite xy failing")
+	if remoteHas(t, remote, "wc/wc-ab2c-alpha.md") {
+		t.Error("--all must not commit the healthy root's dirty ticket")
+	}
+	st := gitIn(t, wcClone, "status", "--porcelain")
+	if !strings.Contains(st, "wc") {
+		t.Errorf("wc's dirty ticket must remain, status %q", st)
+	}
+	if !strings.Contains(errOut, "wc") {
+		t.Errorf("--all must still visit the healthy root, got %q", errOut)
 	}
 }

@@ -145,6 +145,26 @@ func TreeContains(ctx context.Context, gitRoot, rev, path string) (bool, error) 
 	return strings.TrimSpace(string(out)) != "", nil
 }
 
+// PathChanged reports whether path's committed tree entry differs between revA and revB.
+// A missing path on one side is a change. Exit 1 is a difference, not an operational fault.
+func PathChanged(ctx context.Context, gitRoot, revA, revB, path string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "diff", "--quiet", revA, revB, "--", filepath.ToSlash(path))
+	cmd.Dir = gitRoot
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return false, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return true, nil
+	}
+	msg := strings.TrimSpace(string(out))
+	if msg == "" {
+		msg = err.Error()
+	}
+	return false, fmt.Errorf("git diff --quiet: %s", msg)
+}
+
 // FirstParent returns the first parent of rev.
 // ok is false when rev is a root commit.
 func FirstParent(ctx context.Context, gitRoot, rev string) (string, bool, error) {
@@ -190,6 +210,59 @@ func RebaseSides(ctx context.Context, gitRoot string) (head, rebaseHead string, 
 		return "", "", err
 	}
 	return strings.TrimSpace(string(h)), strings.TrimSpace(string(rh)), nil
+}
+
+// UpstreamRelation is how HEAD sits against the fetched upstream.
+type UpstreamRelation int
+
+const (
+	// RelBased means @{u} is an ancestor of HEAD, including equal.
+	RelBased UpstreamRelation = iota
+	// RelBehind means HEAD is a strict ancestor of @{u}.
+	RelBehind
+	// RelDiverged means both sides have commits the other lacks.
+	RelDiverged
+)
+
+// IsAncestor reports whether ancestor is an ancestor of descendant.
+// Equal revisions count as ancestors. Exit 1 is false, not an operational fault.
+func IsAncestor(ctx context.Context, gitRoot, ancestor, descendant string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "merge-base", "--is-ancestor", ancestor, descendant)
+	cmd.Dir = gitRoot
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("git merge-base --is-ancestor: %w", err)
+}
+
+// CompareUpstream classifies HEAD against @{u}. Fetch first so @{u} is current.
+func CompareUpstream(ctx context.Context, gitRoot string) (UpstreamRelation, error) {
+	based, err := IsAncestor(ctx, gitRoot, "@{u}", "HEAD")
+	if err != nil {
+		return 0, err
+	}
+	if based {
+		return RelBased, nil
+	}
+	behind, err := IsAncestor(ctx, gitRoot, "HEAD", "@{u}")
+	if err != nil {
+		return 0, err
+	}
+	if behind {
+		return RelBehind, nil
+	}
+	return RelDiverged, nil
+}
+
+// MergeFFOnly fast-forwards HEAD to upstream. It refuses when the update is not
+// a fast-forward, or when local changes would be overwritten, and then leaves HEAD unmoved.
+func MergeFFOnly(ctx context.Context, gitRoot, upstream string) error {
+	return runEnv(ctx, gitRoot, nil, "merge", "--ff-only", upstream)
 }
 
 // Fetch updates remote-tracking refs (git fetch).

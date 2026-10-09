@@ -299,6 +299,7 @@ func TestClaimMidRebaseRefusesWithoutResume(t *testing.T) {
 		t.Fatalf("A body sync: %v", err)
 	}
 	editBody(t, mustSeedTicket(t, b.scopeDir()), "B version of the body")
+	commitLocal(t, b.clone, "B body")
 	if _, _, err := b.sync(t, "--scope", "wc"); ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("expected paused body conflict")
 	}

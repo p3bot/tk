@@ -348,7 +348,7 @@ func TestSyncReleasesLocksForSubsequentWrite(t *testing.T) {
 	}
 }
 
-func TestSyncTwoScopesShareGitRootSnapshotOneCommit(t *testing.T) {
+func TestSyncScopedLeavesSiblingDirty(t *testing.T) {
 	requireGit(t)
 	remote := newBareRemote(t)
 	m := cloneMachine(t, remote)
@@ -366,17 +366,30 @@ func TestSyncTwoScopesShareGitRootSnapshotOneCommit(t *testing.T) {
 	addTicket(t, wcDir, "wc-ab2c", "alpha", "todo", "a0", "# Alpha\n", false, "")
 	addTicket(t, xyDir, "xy-cd3e", "beta", "todo", "a0", "# Beta\n", false, "")
 
-	if _, errOut, err := m.sync(t, "--scope", "wc"); err != nil {
-		t.Fatalf("two-scope sync should complete: %v (stderr %q)", err, errOut)
+	_, errOut, err := m.sync(t, "--scope", "wc")
+	if err != nil {
+		t.Fatalf("scoped sync should complete: %v (stderr %q)", err, errOut)
+	}
+	if !strings.Contains(errOut, "tk sync wc:") || strings.Contains(errOut, "xy") {
+		t.Errorf("scoped sync must name only wc, got %q", errOut)
 	}
 
-	if got := topCommit(t, m.clone); !strings.HasPrefix(got, "tk: sync ") {
-		t.Errorf("both dirs should ride one snapshot commit, got %q", got)
+	_, allOut, err := m.sync(t, "--all")
+	if err != nil {
+		t.Fatalf("--all: %v (stderr %q)", err, allOut)
 	}
+	if !strings.Contains(allOut, "tk sync wc, xy:") {
+		t.Errorf("--all must name every scope on the root, got %q", allOut)
+	}
+
 	if !remoteHas(t, remote, "wc/wc-ab2c-alpha.md") {
 		t.Error("wc's ticket should be pushed")
 	}
-	if !remoteHas(t, remote, "xy/xy-cd3e-beta.md") {
-		t.Error("xy's ticket should be pushed in the same sync")
+	if remoteHas(t, remote, "xy/xy-cd3e-beta.md") {
+		t.Error("xy's ticket must stay out of a wc-scoped sync")
+	}
+	st := gitIn(t, m.clone, "status", "--porcelain")
+	if !strings.Contains(st, "xy") {
+		t.Errorf("xy's ticket must stay unstaged, status %q", st)
 	}
 }

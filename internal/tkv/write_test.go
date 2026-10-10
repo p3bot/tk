@@ -2486,6 +2486,8 @@ func TestValidLensReturn(t *testing.T) {
 	}{
 		{"/scope/wc?archived=1&tag=rel..notes", "wc", true},
 		{"/search?scope=wc&q=..", "wc", true},
+		{"/brief?scope=wc", "wc", true},
+		{"/brief/depends?scope=wc", "wc", true},
 		{"/graphs?scope=wc", "wc", true},
 		{"/graphs/depends?scope=wc", "wc", true},
 		{"/doctor?scope=wc", "wc", true},
@@ -2585,7 +2587,7 @@ func TestPOSTLensUnknownTagBannerOnNonBoard(t *testing.T) {
 	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "tags: [frontend]\n")
 	s := mustServer(t, app)
 
-	for _, ret := range []string{"/search?scope=wc", "/graphs?scope=wc", "/doctor?scope=wc"} {
+	for _, ret := range []string{"/search?scope=wc", "/brief?scope=wc", "/doctor?scope=wc"} {
 		w := doPost(s, "/scope/wc/lens", url.Values{
 			"tag":    {"ghost"},
 			"return": {ret},
@@ -2751,12 +2753,24 @@ func metaSetInputValue(body, key string) (string, bool) {
 			continue
 		}
 		const marker = `type="text" name="value" value="`
-		j := strings.Index(form, marker)
+		if j := strings.Index(form, marker); j >= 0 {
+			val := form[j+len(marker):]
+			k := strings.Index(val, `"`)
+			if k < 0 {
+				return "", false
+			}
+			return html.UnescapeString(val[:k]), true
+		}
+		j := strings.Index(form, "<textarea")
 		if j < 0 {
 			continue
 		}
-		val := form[j+len(marker):]
-		k := strings.Index(val, `"`)
+		tagEnd := strings.Index(form[j:], ">")
+		if tagEnd < 0 || !strings.Contains(form[j:j+tagEnd], `name="value"`) {
+			continue
+		}
+		val := form[j+tagEnd+1:]
+		k := strings.Index(val, "</textarea>")
 		if k < 0 {
 			return "", false
 		}
@@ -2777,8 +2791,8 @@ func TestInspectMetaWrites(t *testing.T) {
 		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "frontend") {
 			t.Fatalf("file missing tag: %s", ticketBody(t, dir, "wc-ab2c"))
 		}
-		if !strings.Contains(body, `class="tag">frontend</span>`) {
-			t.Fatalf("inspect missing tag: %s", body)
+		if !strings.Contains(body, `class="tag"`) || !strings.Contains(body, `>frontend</span>`) || !strings.Contains(body, `class="tag-x"`) {
+			t.Fatalf("inspect missing tag chip: %s", body)
 		}
 		if !strings.Contains(body, html.EscapeString(token.FormatTagNew("frontend"))) {
 			t.Fatalf("missing tag_new banner: %s", body)
@@ -2790,7 +2804,7 @@ func TestInspectMetaWrites(t *testing.T) {
 		if strings.Contains(raw, "frontend") || strings.Contains(raw, "tags:") {
 			t.Fatalf("tag still on file: %s", raw)
 		}
-		if strings.Contains(page.Body.String(), `class="tag">frontend</span>`) {
+		if strings.Contains(page.Body.String(), `>frontend</span>`) {
 			t.Fatalf("inspect still shows tag: %s", page.Body.String())
 		}
 	})
@@ -2828,6 +2842,49 @@ func TestInspectMetaWrites(t *testing.T) {
 		}
 		if got, ok := metaSetInputValue(page.Body.String(), "summary"); !ok || got != "" {
 			t.Fatalf("empty save field = %q ok=%v", got, ok)
+		}
+	})
+
+	t.Run("summary folds line breaks", func(t *testing.T) {
+		app := newTestApp(t)
+		dir := initScope(t, app, "wc")
+		addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+		s := mustServer(t, app)
+
+		w := postMeta(s, "set", "summary", "one  line")
+		page := mustFollow(t, s, w)
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "summary: one  line") {
+			t.Fatalf("spaced summary: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if got, ok := metaSetInputValue(page.Body.String(), "summary"); !ok || got != "one  line" {
+			t.Fatalf("spaced field = %q ok=%v", got, ok)
+		}
+
+		w = postMeta(s, "set", "summary", "ships the API\nbefore Friday")
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("folded summary = %d %s", w.Code, w.Body.String())
+		}
+		page = mustFollow(t, s, w)
+		const want = "summary: ships the API before Friday"
+		if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), want) {
+			t.Fatalf("folded file: %s", ticketBody(t, dir, "wc-ab2c"))
+		}
+		if got, ok := metaSetInputValue(page.Body.String(), "summary"); !ok || got != "ships the API before Friday" {
+			t.Fatalf("folded field = %q ok=%v", got, ok)
+		}
+
+		w = postMeta(s, "set", "summary", "ships the API\r\nbefore Monday")
+		page = mustFollow(t, s, w)
+		if got, ok := metaSetInputValue(page.Body.String(), "summary"); !ok || got != "ships the API before Monday" {
+			t.Fatalf("crlf field = %q ok=%v", got, ok)
+		}
+
+		w = postMeta(s, "add", "tags", "front\nend")
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "embedded newlines") {
+			t.Fatalf("tag newline = %d %s", w.Code, w.Body.String())
+		}
+		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "front") {
+			t.Fatalf("tag newline was stored: %s", ticketBody(t, dir, "wc-ab2c"))
 		}
 	})
 
@@ -3035,7 +3092,7 @@ func TestInspectMetaWrites(t *testing.T) {
 		if strings.Contains(ticketBody(t, dir, "wc-ab2c"), "keep") {
 			t.Fatalf("rm alias did not remove: %s", ticketBody(t, dir, "wc-ab2c"))
 		}
-		if strings.Contains(page.Body.String(), `class="tag">keep</span>`) {
+		if strings.Contains(page.Body.String(), `>keep</span>`) {
 			t.Fatalf("inspect still shows tag: %s", page.Body.String())
 		}
 	})

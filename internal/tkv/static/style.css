@@ -31,6 +31,14 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1 { font-size: 1.35rem; font-weight: 650; margin: 0 0 1rem; }
 h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 0.5rem; }
+aside h2 {
+  margin-top: 1rem;
+  padding-bottom: 0.22rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  font-weight: 650;
+}
+aside > h2:first-child { margin-top: 0; }
 main { padding: 1.25rem 1.5rem 3rem; }
 .chrome {
   display: flex;
@@ -640,6 +648,67 @@ aside dd { margin: 0; overflow-wrap: anywhere; }
   padding: 0.15rem 0;
 }
 aside h2 + p { margin: 0 0 0.6rem; }
+aside .board-place {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+aside .board-place .write { margin-top: 0; }
+aside .board-place .write button { width: 100%; }
+aside .panel-edit > form.write { display: block; margin-top: 0; }
+aside .panel-edit label { display: block; }
+aside .panel-edit textarea,
+aside .panel-edit input[type="text"] {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  padding: 0.4rem 0.5rem;
+}
+aside .panel-edit textarea {
+  min-height: 4.8rem;
+  max-height: 14rem;
+  resize: vertical;
+  field-sizing: content;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+}
+aside .panel-actions { display: flex; justify-content: flex-end; margin-top: 0.35rem; }
+aside .panel-actions > .write { margin-top: 0; }
+aside .tag-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.4rem;
+}
+aside .tag-flow > .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.05rem 0.15rem 0.05rem 0.45rem;
+}
+aside .tag-flow .write { margin: 0; flex: 0 0 auto; }
+aside .tag-flow .write button.tag-x {
+  width: auto;
+  min-width: 1.1rem;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--issues);
+  padding: 0 0.15rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+}
+aside .tag-flow .write button.tag-x:hover { border-color: transparent; color: #881337; }
 .unresolved { color: var(--issues); }
 .banner { background: var(--banner); color: var(--issues); padding: 0.5rem 0.7rem; border-radius: 4px; }
 .banner.soft { background: #fffbeb; color: #92400e; }

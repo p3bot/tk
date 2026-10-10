@@ -60,9 +60,9 @@ type briefTag struct {
 
 func (p briefPage) DependsHref() string {
 	if p.Scope == "" {
-		return "/graphs/depends"
+		return "/brief/depends"
 	}
-	return "/graphs/depends?scope=" + url.QueryEscape(p.Scope)
+	return "/brief/depends?scope=" + url.QueryEscape(p.Scope)
 }
 
 func (s *Server) brief(w http.ResponseWriter, r *http.Request) error {
@@ -84,7 +84,7 @@ func (s *Server) brief(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ch, err := s.pageChrome(reg, selected, "", navGraphs, r)
+	ch, err := s.pageChrome(reg, selected, "", navBrief, r)
 	if err != nil {
 		return err
 	}

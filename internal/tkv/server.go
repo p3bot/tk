@@ -165,8 +165,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
 	mux.HandleFunc("GET /{$}", s.wrap(s.overview))
 	mux.HandleFunc("GET /search", s.wrap(s.search))
-	mux.HandleFunc("GET /graphs", s.wrap(s.brief))
-	mux.HandleFunc("GET /graphs/depends", s.wrap(s.dependsGraph))
+	mux.HandleFunc("GET /brief", s.wrap(s.brief))
+	mux.HandleFunc("GET /brief/depends", s.wrap(s.dependsGraph))
+	mux.HandleFunc("GET /graphs", redirectQuery("/brief"))
+	mux.HandleFunc("GET /graphs/depends", redirectQuery("/brief/depends"))
 	mux.HandleFunc("GET /doctor", s.wrap(s.doctor))
 	mux.HandleFunc("GET /notes", s.wrap(s.notesPick))
 	mux.HandleFunc("GET /designs", s.wrap(s.designsPick))
@@ -266,7 +268,7 @@ const (
 	navDesigns = "designs"
 	navNotes   = "notes"
 	navSearch  = "search"
-	navGraphs  = "graphs"
+	navBrief   = "brief"
 	navDoctor  = "doctor"
 )
 
@@ -328,8 +330,14 @@ func requestPath(r *http.Request) string {
 	return r.URL.Path + "?" + r.URL.RawQuery
 }
 
-// BoardHref is always the scope summary. A selected scope is reached from the switcher.
-func (c chrome) BoardHref() string { return "/" }
+// BoardHref is the selected scope's board. With nothing selected it is the
+// all-scopes summary at /. The brand mark also links to that summary.
+func (c chrome) BoardHref() string {
+	if c.Selected == "" {
+		return "/"
+	}
+	return "/scope/" + c.Selected
+}
 
 func (c chrome) DesignsHref() string {
 	if c.Selected == "" {
@@ -345,12 +353,12 @@ func (c chrome) NotesHref() string {
 	return notesListHref(c.Selected)
 }
 
-func (c chrome) GraphsHref() string { return c.sectionHref("/graphs") }
+func (c chrome) BriefHref() string { return c.sectionHref("/brief") }
 
 func (c chrome) DoctorHref() string { return c.sectionHref("/doctor") }
 
 // ScopeHref is the switcher target for name. Board and inspect land on that
-// scope's board; notes, graphs, and doctor keep the current section.
+// scope's board; designs, notes, brief, and doctor keep the current section.
 func (c chrome) ScopeHref(name string) string {
 	if name == "" {
 		return ""
@@ -360,8 +368,8 @@ func (c chrome) ScopeHref(name string) string {
 		return designsListHref(name)
 	case navNotes:
 		return notesListHref(name)
-	case navGraphs:
-		return c.sectionHrefFor(name, graphsKeepPath(c.Return))
+	case navBrief:
+		return c.sectionHrefFor(name, briefKeepPath(c.Return))
 	case navDoctor:
 		return c.sectionHrefFor(name, "/doctor")
 	default:
@@ -369,12 +377,22 @@ func (c chrome) ScopeHref(name string) string {
 	}
 }
 
-func graphsKeepPath(ret string) string {
+func briefKeepPath(ret string) string {
 	switch stripQuery(ret) {
-	case "/graphs/depends":
-		return "/graphs/depends"
+	case "/brief/depends", "/graphs/depends":
+		return "/brief/depends"
 	default:
-		return "/graphs"
+		return "/brief"
+	}
+}
+
+func redirectQuery(dst string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		loc := dst
+		if r.URL.RawQuery != "" {
+			loc += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, loc, http.StatusPermanentRedirect)
 	}
 }
 
@@ -603,8 +621,8 @@ func sectionFromPath(p string) string {
 		return navBoard
 	case strings.HasPrefix(p, "/search"):
 		return navSearch
-	case strings.HasPrefix(p, "/graphs"):
-		return navGraphs
+	case strings.HasPrefix(p, "/brief"), strings.HasPrefix(p, "/graphs"):
+		return navBrief
 	case strings.HasPrefix(p, "/doctor"):
 		return navDoctor
 	case p == "/notes" || strings.HasPrefix(p, "/notes/"):

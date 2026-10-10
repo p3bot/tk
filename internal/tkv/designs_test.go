@@ -285,7 +285,7 @@ func TestDesignsListInspectAndWrites(t *testing.T) {
 	if hits.Code != http.StatusOK || !strings.Contains(hits.Body.String(), "No matches.") {
 		t.Fatalf("search hit a design: %d %s", hits.Code, hits.Body.String())
 	}
-	graph := do(s, "/graphs/depends?scope=wc").Body.String()
+	graph := do(s, "/brief/depends?scope=wc").Body.String()
 	if strings.Contains(graph, "Designfish") || strings.Contains(graph, "wc-ab2c") || strings.Contains(graph, "Renamed shape") {
 		t.Fatalf("depends forest listed a design: %s", graph)
 	}

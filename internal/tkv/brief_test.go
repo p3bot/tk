@@ -24,7 +24,7 @@ func TestBriefScope(t *testing.T) {
 	addDesign(t, dir, "wc-xy6z", "split-design", "decomposed", "# Split design\n", "produces: [wc-jk78]\n")
 	s := mustServer(t, app)
 
-	body := do(s, "/graphs?scope=wc").Body.String()
+	body := do(s, "/brief?scope=wc").Body.String()
 	if !strings.Contains(body, "Doing") || !strings.Contains(body, "Stuck") || !strings.Contains(body, "no open depends") {
 		t.Fatalf("now: %s", body)
 	}
@@ -46,7 +46,7 @@ func TestBriefScope(t *testing.T) {
 	if !strings.Contains(wait, "Needs draft") || !strings.Contains(wait, "Old draft") || !strings.Contains(wait, "<svg") {
 		t.Fatalf("waiting: %s", wait)
 	}
-	if !strings.Contains(wait, `href="/graphs/depends?scope=wc"`) {
+	if !strings.Contains(wait, `href="/brief/depends?scope=wc"`) {
 		t.Fatalf("waiting missing depends graph: %s", wait)
 	}
 	tags := sectionText(t, body, "tags")
@@ -58,7 +58,7 @@ func TestBriefScope(t *testing.T) {
 		t.Fatalf("designs: %s", designs)
 	}
 
-	unknown := do(s, "/graphs?scope=zz")
+	unknown := do(s, "/brief?scope=zz")
 	if unknown.Code != 404 {
 		t.Fatalf("unknown scope = %d", unknown.Code)
 	}
@@ -80,7 +80,7 @@ func TestBriefCustomStatuses(t *testing.T) {
 	addTicket(t, dir, "wc-mn9p", "odd", "weird", "a5", "# Odd\n", false, "")
 	s := mustServer(t, app)
 
-	body := do(s, "/graphs?scope=wc").Body.String()
+	body := do(s, "/brief?scope=wc").Body.String()
 	now := sectionText(t, body, "now")
 	doing := strings.Index(now, "Doing")
 	qa := strings.Index(now, "Queue check")
@@ -98,7 +98,7 @@ func TestBriefCustomStatuses(t *testing.T) {
 	if strings.Contains(body, ">Gone</a>") || strings.Contains(body, ">Odd</a>") {
 		t.Fatalf("finished or unknown status leaked: %s", body)
 	}
-	if !strings.Contains(sectionText(t, body, "waiting"), `href="/graphs/depends?scope=wc"`) {
+	if !strings.Contains(sectionText(t, body, "waiting"), `href="/brief/depends?scope=wc"`) {
 		t.Fatalf("empty waiting missing depends graph: %s", body)
 	}
 }
@@ -120,7 +120,7 @@ func TestBriefBacklogCap(t *testing.T) {
 	}
 	s := mustServer(t, app)
 
-	backlog := sectionText(t, do(s, "/graphs?scope=wc").Body.String(), "backlog")
+	backlog := sectionText(t, do(s, "/brief?scope=wc").Body.String(), "backlog")
 	want := fmt.Sprintf("%d backlog, oldest %d", len(ids), briefBacklogShown)
 	if !strings.Contains(backlog, want) {
 		t.Fatalf("cap sentence: %s", backlog)
@@ -153,7 +153,7 @@ func TestBriefCrossScopeFinished(t *testing.T) {
 	addTicket(t, wc, "wc-ef4g", "needs-hold", "todo", "a1", "# Needs a hold\n", false, "depends: [ot-gh56]\n")
 	s := mustServer(t, app)
 
-	wait := sectionText(t, do(s, "/graphs?scope=wc").Body.String(), "waiting")
+	wait := sectionText(t, do(s, "/brief?scope=wc").Body.String(), "waiting")
 	if strings.Contains(wait, "Ship the API") || strings.Contains(wait, "Needs the API") {
 		t.Fatalf("arrow into a foreign finished status stayed: %s", wait)
 	}

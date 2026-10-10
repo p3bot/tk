@@ -139,7 +139,7 @@ func validLensReturn(loc, name string) bool {
 	}
 	p := path.Clean(u.Path)
 	switch p {
-	case "/search", "/graphs", "/graphs/depends", "/doctor", "/scope/" + name:
+	case "/search", "/brief", "/brief/depends", "/graphs", "/graphs/depends", "/doctor", "/scope/" + name:
 		return true
 	}
 	// Nested scope pages (designs, notes, ticket edit) stay on that page.

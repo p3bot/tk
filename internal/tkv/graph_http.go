@@ -45,7 +45,7 @@ func (s *Server) dependsGraph(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ch, err := s.pageChrome(reg, selected, "", navGraphs, r)
+	ch, err := s.pageChrome(reg, selected, "", navBrief, r)
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func (p dependsPage) AllHref() string {
 	}
 	enc := v.Encode()
 	if enc == "" {
-		return "/graphs/depends"
+		return "/brief/depends"
 	}
-	return "/graphs/depends?" + enc
+	return "/brief/depends?" + enc
 }

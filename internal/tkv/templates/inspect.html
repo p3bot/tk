@@ -31,7 +31,7 @@
   {{if .CanOrder}}
   <h2>board order</h2>
   <p class="empty">Whole scope, including other statuses and archive.</p>
-  <div class="order">
+  <div class="board-place">
     <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/order">
       <input type="hidden" name="id" value="{{.ID}}">
       <input type="hidden" name="dest" value="first">
@@ -48,25 +48,29 @@
   {{end}}
   <h2>summary</h2>
   {{if .CanMeta}}
-  <form class="write" method="post" action="/scope/{{.Chrome.Selected}}/meta">
-    {{template "metaSetFields" (.MetaSet "summary")}}
-    <label>
-      Summary
-      <input type="text" name="value" value="{{.Summary}}">
-    </label>
-    <button type="submit" aria-label="Save summary">Save</button>
-  </form>
-  {{template "metaClear" (.MetaSet "summary")}}
+  <div class="panel-edit">
+    <form class="write" id="meta-summary" method="post" action="/scope/{{.Chrome.Selected}}/meta">
+      {{template "metaSetFields" (.MetaSet "summary")}}
+      <label>
+        <span class="sr-only">Summary</span>
+        <textarea name="value" rows="3">{{.Summary}}</textarea>
+      </label>
+    </form>
+    <div class="write panel-actions">
+      {{template "metaClear" (.MetaSet "summary")}}
+      <button type="submit" form="meta-summary" aria-label="Save summary">Save</button>
+    </div>
+  </div>
   {{else}}
   <p>{{if .Summary}}{{.Summary}}{{else}}<span class="empty">none</span>{{end}}</p>
   {{end}}
   <h2>tags</h2>
   {{if .Tags}}
-  <ul class="meta-list">
+  <ul class="tag-flow">
     {{range .Tags}}
-    <li>
-      <span class="tag">{{.}}</span>
-      {{if $.CanMeta}}{{template "metaRemove" ($.MetaRemove "tags" .)}}{{end}}
+    <li class="tag">
+      <span>{{.}}</span>
+      {{if $.CanMeta}}{{template "metaRemove" ($.MetaRemoveChip "tags" .)}}{{end}}
     </li>
     {{end}}
   </ul>
@@ -94,15 +98,19 @@
   {{else if or $field.Undeclared (not $.CanMeta) (not $field.Writable)}}
   <p>{{if $field.Scalar}}{{$field.Scalar}}{{else}}<span class="empty">none</span>{{end}}</p>
   {{else}}
-  <form class="write" method="post" action="/scope/{{$.Chrome.Selected}}/meta">
-    {{template "metaSetFields" ($.MetaSet $field.Key)}}
-    <label>
-      {{$field.Key}}
-      <input type="text" name="value" value="{{$field.Scalar}}">
-    </label>
-    <button type="submit" aria-label="Save {{$field.Key}}">Save</button>
-  </form>
-  {{template "metaClear" ($.MetaSet $field.Key)}}
+  <div class="panel-edit">
+    <form class="write" id="meta-{{$field.Key}}" method="post" action="/scope/{{$.Chrome.Selected}}/meta">
+      {{template "metaSetFields" ($.MetaSet $field.Key)}}
+      <label>
+        <span class="sr-only">{{$field.Key}}</span>
+        <input type="text" name="value" value="{{$field.Scalar}}">
+      </label>
+    </form>
+    <div class="write panel-actions">
+      {{template "metaClear" ($.MetaSet $field.Key)}}
+      <button type="submit" form="meta-{{$field.Key}}" aria-label="Save {{$field.Key}}">Save</button>
+    </div>
+  </div>
   {{end}}
   {{end}}
   {{if .CanClaim}}
@@ -204,7 +212,7 @@
   <input type="hidden" name="op" value="remove">
   <input type="hidden" name="key" value="{{.Key}}">
   <input type="hidden" name="value" value="{{.Value}}">
-  <button type="submit" aria-label="Remove {{.Key}} {{.Value}}">Remove</button>
+  <button type="submit"{{if .Chip}} class="tag-x"{{end}} aria-label="Remove {{.Key}} {{.Value}}">{{if .Chip}}×{{else}}Remove{{end}}</button>
 </form>
 {{end}}
 

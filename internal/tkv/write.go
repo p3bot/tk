@@ -12,6 +12,7 @@ import (
 	"cuelang.org/go/cue/cuecontext"
 
 	"github.com/p3bot/tk/internal/depgate"
+	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/gitstate"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/reconcile"
@@ -252,6 +253,9 @@ func (s *Server) postMeta(w http.ResponseWriter, r *http.Request) error {
 		return errBadRequest("missing key")
 	}
 	value := strings.TrimSpace(r.FormValue("value"))
+	if op == writeengine.MetaSet && key == frontmatter.KeySummary {
+		value = foldSummaryLines(value)
+	}
 	if (op == writeengine.MetaAdd || op == writeengine.MetaRemove) && value == "" {
 		return errBadRequest(fmt.Sprintf("meta %s value must be non-empty", op))
 	}
@@ -275,6 +279,15 @@ func (s *Server) postMeta(w http.ResponseWriter, r *http.Request) error {
 	}
 	http.Redirect(w, r, appendNotices(inspectHref(res.ID), res), http.StatusSeeOther)
 	return nil
+}
+
+// foldSummaryLines joins a wrapped summary into the one line the ticket file
+// stores. A value with no line break is returned unchanged.
+func foldSummaryLines(s string) string {
+	if !strings.ContainsAny(s, "\r\n") {
+		return s
+	}
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func (s *Server) postOrder(w http.ResponseWriter, r *http.Request) error {

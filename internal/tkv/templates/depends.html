@@ -13,7 +13,7 @@
 <p>Pick a scope to draw its depends graph.</p>
 <ul class="scope-pick">
   {{range .Chrome.Scopes}}
-  <li><a href="/graphs/depends?scope={{.}}">{{.}}</a></li>
+  <li><a href="/brief/depends?scope={{.}}">{{.}}</a></li>
   {{else}}
   <li class="empty">No scopes registered.</li>
   {{end}}

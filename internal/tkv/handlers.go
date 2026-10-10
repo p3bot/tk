@@ -540,6 +540,7 @@ type metaAddView struct {
 
 type metaRemoveView struct {
 	Scope, ID, Key, Value string
+	Chip                  bool
 }
 
 type metaSetView struct {
@@ -552,6 +553,12 @@ func (p inspectPage) MetaAdd(key, placeholder string) metaAddView {
 
 func (p inspectPage) MetaRemove(key, value string) metaRemoveView {
 	return metaRemoveView{Scope: p.Chrome.Selected, ID: p.ID, Key: key, Value: value}
+}
+
+func (p inspectPage) MetaRemoveChip(key, value string) metaRemoveView {
+	v := p.MetaRemove(key, value)
+	v.Chip = true
+	return v
 }
 
 func (p inspectPage) MetaSet(key string) metaSetView {

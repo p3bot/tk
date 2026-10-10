@@ -84,12 +84,18 @@ main { padding: 1.25rem 1.5rem 3rem; }
   font-weight: 650;
   box-shadow: inset 0 -2px 0 var(--accent);
 }
-.meta { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; margin: 0 0 0 auto; font-size: 0.875rem; color: var(--muted); }
+.chrome-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  align-items: center;
+  margin-left: auto;
+}
+.meta { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; margin: 0; font-size: 0.875rem; color: var(--muted); }
 .meta div { display: flex; gap: 0.35rem; align-items: center; }
 .meta dt { font-weight: 650; }
 .meta dd { margin: 0; color: var(--fg); }
 .lens-readout { display: inline-flex; align-items: center; gap: 0.45rem; }
-.search { margin-left: auto; }
 .chrome-primary .write { margin-top: 0; }
 .lens-set, .lens-clear { margin-top: 0; }
 .lens-picker {
@@ -748,6 +754,11 @@ aside h2 + p { margin: 0 0 0.6rem; }
   padding: 0.3rem 0.7rem;
 }
 .bound { color: var(--muted); font-size: 0.875rem; }
+.brief section { margin: 0 0 1.75rem; }
+.brief h2 { font-size: 1.05rem; margin: 0 0 0.35rem; }
+.brief .bound { margin: 0 0 0.6rem; }
+.tag-counts { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; margin: 0; padding: 0; list-style: none; }
+.tag-counts .n { color: var(--muted); margin-left: 0.3rem; }
 .scope-pick { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
 .graph-wrap {
   overflow: auto;

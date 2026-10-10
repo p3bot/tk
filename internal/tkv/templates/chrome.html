@@ -27,18 +27,25 @@
       <a href="{{.Chrome.BoardHref}}"{{if eq .Chrome.Section "board"}} class="current"{{end}}>Board</a>
       <a href="{{.Chrome.DesignsHref}}"{{if eq .Chrome.Section "designs"}} class="current"{{end}}>Designs</a>
       <a href="{{.Chrome.NotesHref}}"{{if eq .Chrome.Section "notes"}} class="current"{{end}}>Notes</a>
-      <a href="{{.Chrome.GraphsHref}}"{{if eq .Chrome.Section "graphs"}} class="current"{{end}}>Graphs</a>
+      <a href="{{.Chrome.GraphsHref}}"{{if eq .Chrome.Section "graphs"}} class="current"{{end}}>Brief</a>
       <a href="{{.Chrome.DoctorHref}}"{{if eq .Chrome.Section "doctor"}} class="current"{{end}}>Doctor</a>
     </nav>
-    <form class="search" action="/search" method="get">
-      <input type="search" name="q" placeholder="search" value="{{.Chrome.Query}}" aria-label="search">
-    </form>
-    {{if .Chrome.CanSync}}
-    <form class="write chrome-sync" method="post" action="/scope/{{.Chrome.Selected}}/sync" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
-      <input type="hidden" name="return" value="{{.Chrome.Return}}">
-      <button type="submit">Sync</button>
-    </form>
-    {{end}}
+    <div class="chrome-tools">
+      <dl class="meta">
+        {{if .Chrome.Mode}}<div><dt>mode</dt><dd>{{.Chrome.Mode}}</dd></div>{{end}}
+        {{if .Chrome.Selected}}<div><dt>lens</dt><dd class="lens-readout">{{if .Chrome.Lens}}{{.Chrome.Lens}}{{else}}off{{end}}{{if .Chrome.CanLens}}<button type="button" class="toolbar-btn chrome-lens" commandfor="lens-dialog" command="show-modal">Lens</button>{{end}}</dd></div>{{end}}
+        <div><dt>integrity</dt><dd class="integrity-{{.Chrome.Integrity}}">{{.Chrome.Integrity}}</dd></div>
+      </dl>
+      {{if .Chrome.CanSync}}
+      <form class="write chrome-sync" method="post" action="/scope/{{.Chrome.Selected}}/sync" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelector('button');if(b)b.disabled=true">
+        <input type="hidden" name="return" value="{{.Chrome.Return}}">
+        <button type="submit">Sync</button>
+      </form>
+      {{end}}
+      <form class="search" action="/search" method="get">
+        <input type="search" name="q" placeholder="search" value="{{.Chrome.Query}}" aria-label="search">
+      </form>
+    </div>
   </div>
   <div class="chrome-row chrome-context">
     <nav class="scopes" aria-label="scopes">
@@ -46,12 +53,6 @@
         <a href="{{$.Chrome.ScopeHref .}}"{{if eq $.Chrome.Selected .}} class="selected" aria-current="{{$.Chrome.ScopeAriaCurrent .}}"{{end}}>{{.}}</a>
       {{end}}
     </nav>
-    <dl class="meta">
-      <div><dt>scope</dt><dd>{{.Chrome.Selected}}</dd></div>
-      <div><dt>mode</dt><dd>{{.Chrome.Mode}}</dd></div>
-      <div><dt>lens</dt><dd class="lens-readout">{{.Chrome.Lens}}{{if and .Chrome.Selected .Chrome.CanLens}}<button type="button" class="toolbar-btn chrome-lens" commandfor="lens-dialog" command="show-modal">Lens</button>{{end}}</dd></div>
-      <div><dt>integrity</dt><dd class="integrity-{{.Chrome.Integrity}}">{{.Chrome.Integrity}}</dd></div>
-    </dl>
   </div>
   {{if and .Chrome.Selected .Chrome.CanLens}}
   <dialog id="lens-dialog" class="lens-dialog chrome-lens" aria-labelledby="lens-dialog-title">

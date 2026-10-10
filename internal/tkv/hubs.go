@@ -30,37 +30,6 @@ type hubItem struct {
 	PostLabel  string
 }
 
-func (s *Server) graphs(w http.ResponseWriter, r *http.Request) error {
-	reg, err := s.loadRegistry()
-	if err != nil {
-		return err
-	}
-	if _, err := s.rec.Reconcile(allTargets(reg), registeredSet(reg), nowNS()); err != nil {
-		return err
-	}
-	ch, err := s.pageChrome(reg, registeredScope(reg, r.URL.Query().Get("scope")), "", navGraphs, r)
-	if err != nil {
-		return err
-	}
-	return s.render(w, "hub", hubPage{
-		Title:  "graphs",
-		Chrome: ch,
-		Lead:   "Machine-level and whole-scope pictures. Ticket inspect already shows one-hop depends, depended-on-by, and related.",
-		Items: []hubItem{
-			{
-				Title: "Depends",
-				Blurb: "Layered graph for one scope. Arrows point at what a ticket is waiting on. Cross-scope endpoints and done prerequisites are included when a shown ticket needs them.",
-				Href:  ch.sectionHref("/graphs/depends"),
-				Ready: true,
-			},
-			{
-				Title: "More graphs",
-				Blurb: "Related-only, blocked-by, and other layouts land here. This page is the list; each graph gets its own URL when it ships.",
-			},
-		},
-	})
-}
-
 func (s *Server) doctor(w http.ResponseWriter, r *http.Request) error {
 	reg, err := s.loadRegistry()
 	if err != nil {

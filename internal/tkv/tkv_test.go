@@ -1265,7 +1265,7 @@ func TestPrimaryNav(t *testing.T) {
 		{"/", "Board", "/scope/wc"},
 		{"/scope/wc", "Board", "/scope/wc"},
 		{"/search", "", "/scope/wc"},
-		{"/graphs", "Graphs", "/graphs?scope=wc"},
+		{"/graphs", "Brief", "/graphs?scope=wc"},
 		{"/doctor", "Doctor", "/doctor?scope=wc"},
 	}
 	for _, c := range cases {
@@ -1277,7 +1277,7 @@ func TestPrimaryNav(t *testing.T) {
 		if strings.Contains(body, ">Overview</a>") || strings.Contains(body, ">Search</a>") {
 			t.Errorf("%s still has Overview or Search in primary nav", c.path)
 		}
-		for _, label := range []string{"Board", "Designs", "Notes", "Graphs", "Doctor"} {
+		for _, label := range []string{"Board", "Designs", "Notes", "Brief", "Doctor"} {
 			if !strings.Contains(body, ">"+label+"</a>") {
 				t.Errorf("%s missing primary nav %s", c.path, label)
 			}
@@ -1334,8 +1334,8 @@ func TestPrimaryNav(t *testing.T) {
 	}
 
 	graphs := do(s, "/graphs").Body.String()
-	if !strings.Contains(graphs, "Depends") || !strings.Contains(graphs, `href="/graphs/depends"`) {
-		t.Errorf("graphs hub: %s", graphs)
+	if !strings.Contains(graphs, "Select a scope.") || strings.Contains(graphs, "More graphs") {
+		t.Errorf("brief without a scope: %s", graphs)
 	}
 	if !strings.Contains(graphs, `href="/notes">Notes</a>`) {
 		t.Errorf("graphs without a scope should offer Notes picker: %s", graphs)
@@ -1366,8 +1366,8 @@ func TestPrimaryNav(t *testing.T) {
 	if !strings.Contains(kb, `href="/">Board</a>`) {
 		t.Errorf("graphs with scope: board should still go to the scope summary")
 	}
-	if !strings.Contains(kb, `class="current">Graphs</a>`) {
-		t.Errorf("graphs?scope=wc should keep Graphs current")
+	if !strings.Contains(kb, `class="current">Brief</a>`) {
+		t.Errorf("graphs?scope=wc should keep Brief current")
 	}
 	if !strings.Contains(kb, `href="/scope/wc/notes">Notes</a>`) {
 		t.Errorf("graphs with a scope should offer that scope's notes: %s", kb)
@@ -1705,10 +1705,22 @@ func TestChromeOmitsMePointer(t *testing.T) {
 	if strings.Contains(b, "<dt>me</dt>") {
 		t.Fatalf("chrome shows a me row: %s", b)
 	}
-	for _, key := range []string{"scope", "mode", "lens", "integrity"} {
+	if strings.Contains(b, "<dt>scope</dt>") {
+		t.Fatalf("chrome repeats the selected scope: %s", b)
+	}
+	nav := scopesNav(t, b)
+	for _, key := range []string{"mode", "lens", "integrity"} {
+		if strings.Contains(nav, "<dt>"+key+"</dt>") {
+			t.Fatalf("scope switcher still carries %s: %s", key, nav)
+		}
 		if !strings.Contains(b, "<dt>"+key+"</dt>") {
 			t.Fatalf("chrome missing %s: %s", key, b)
 		}
+	}
+	integrityAt := strings.Index(b, "<dt>integrity</dt>")
+	searchAt := strings.Index(b, `class="search"`)
+	if integrityAt < 0 || searchAt < 0 || searchAt < integrityAt {
+		t.Fatalf("search must follow the scope metadata: %s", b)
 	}
 }
 
@@ -1738,8 +1750,8 @@ func TestDependsGraphPage(t *testing.T) {
 		t.Fatalf("graph = %d %s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, `class="current">Graphs</a>`) {
-		t.Errorf("section should stay Graphs")
+	if !strings.Contains(body, `class="current">Brief</a>`) {
+		t.Errorf("section should stay Brief")
 	}
 	if !strings.Contains(body, "<svg") || !strings.Contains(body, "wc-ab2c") || !strings.Contains(body, "wc-de34") {
 		t.Fatalf("missing svg nodes: %s", body)

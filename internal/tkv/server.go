@@ -165,7 +165,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
 	mux.HandleFunc("GET /{$}", s.wrap(s.overview))
 	mux.HandleFunc("GET /search", s.wrap(s.search))
-	mux.HandleFunc("GET /graphs", s.wrap(s.graphs))
+	mux.HandleFunc("GET /graphs", s.wrap(s.brief))
 	mux.HandleFunc("GET /graphs/depends", s.wrap(s.dependsGraph))
 	mux.HandleFunc("GET /doctor", s.wrap(s.doctor))
 	mux.HandleFunc("GET /notes", s.wrap(s.notesPick))

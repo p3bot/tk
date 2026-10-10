@@ -1,0 +1,131 @@
+{{define "brief"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body>
+{{template "chrome" .}}
+<main class="brief">
+<h1>brief</h1>
+<p class="lead">Drafts wait to be reviewed onto the board. Todo is the short queue. Done and cancelled stay off this page.</p>
+{{if not .Scope}}
+<p>Select a scope.</p>
+{{else}}
+<section aria-label="now">
+  <h2>Now</h2>
+  {{if .Todo}}<p class="bound">{{.Todo}} todo.</p>{{end}}
+  {{if .Now}}
+  <table class="overview">
+    <thead><tr><th>status</th><th>age</th><th>title</th></tr></thead>
+    <tbody>
+    {{range .Now}}
+      <tr>
+        <td>{{.Status}}</td>
+        <td>{{.Age}}</td>
+        <td><a href="{{.Href}}">{{.Title}}</a>{{if .Note}} <span class="empty">{{.Note}}</span>{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">Nothing in progress, review, or blocked.</p>
+  {{end}}
+</section>
+
+<section aria-label="waiting">
+  <h2>Waiting</h2>
+  <p class="bound">Open depends. An arrow into done or cancelled is left out. See the <a href="{{.DependsHref}}">depends graph</a>.</p>
+  {{if .Waiting}}
+  <table class="overview">
+    <thead><tr><th>ticket</th><th>waiting on</th></tr></thead>
+    <tbody>
+    {{range .Waiting}}
+      <tr>
+        <td><a href="{{.FromHref}}">{{.FromTitle}}</a> <span class="empty">{{.FromStatus}}</span></td>
+        <td><a href="{{.ToHref}}">{{.ToTitle}}</a> <span class="empty">{{.ToStatus}}</span></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{if .SVG}}<div class="graph-wrap">{{.SVG}}</div>{{end}}
+  {{else}}
+  <p class="empty">No open depends.</p>
+  {{end}}
+</section>
+
+<section aria-label="drafts">
+  <h2>Drafts</h2>
+  <p class="bound">Oldest first, by created.</p>
+  {{if .Drafts}}
+  <table class="overview">
+    <thead><tr><th>age</th><th>title</th></tr></thead>
+    <tbody>
+    {{range .Drafts}}
+      <tr>
+        <td>{{.Age}}</td>
+        <td><a href="{{.Href}}">{{.Title}}</a></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No drafts.</p>
+  {{end}}
+</section>
+
+{{if .BacklogTotal}}
+<section aria-label="backlog">
+  <h2>Backlog</h2>
+  <p class="bound">{{.BacklogTotal}} backlog{{if gt .BacklogTotal .BacklogShown}}, oldest {{.BacklogShown}}{{end}}. Off the path into todo.</p>
+  <table class="overview">
+    <thead><tr><th>age</th><th>title</th></tr></thead>
+    <tbody>
+    {{range .Backlog}}
+      <tr>
+        <td>{{.Age}}</td>
+        <td><a href="{{.Href}}">{{.Title}}</a></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
+
+<section aria-label="tags">
+  <h2>Tags</h2>
+  <p class="bound">Working tickets, archive left out.</p>
+  {{if .Tags}}
+  <ul class="tag-counts">
+    {{range .Tags}}<li>{{.Tag}}<span class="n">{{.N}}</span></li>{{end}}
+  </ul>
+  {{else}}
+  <p class="empty">No tags on working tickets.</p>
+  {{end}}
+</section>
+
+<section aria-label="designs">
+  <h2>Designs</h2>
+  <p class="bound">Draft and accepted designs that do not produce a ticket yet.</p>
+  {{if .Designs}}
+  <table class="overview">
+    <thead><tr><th>status</th><th>age</th><th>title</th></tr></thead>
+    <tbody>
+    {{range .Designs}}
+      <tr>
+        <td>{{.Status}}</td>
+        <td>{{.Age}}</td>
+        <td><a href="{{.Href}}">{{.Title}}</a></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">None.</p>
+  {{end}}
+</section>
+{{end}}
+</main>
+</body>
+</html>
+{{end}}

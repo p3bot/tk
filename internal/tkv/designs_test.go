@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/p3bot/tk/internal/frontmatter"
+	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/testgit"
 )
@@ -57,12 +58,18 @@ func TestDesignsListInspectAndWrites(t *testing.T) {
 		t.Fatalf("hidden statuses = %d %s", hidden.Code, hidden.Body.String())
 	}
 	hb := hidden.Body.String()
-	if !strings.Contains(hb, "No draft or accepted designs.") || strings.Contains(hb, "No designs.") {
-		t.Fatalf("hidden statuses claimed an empty scope: %s", hb)
+	if !strings.Contains(hb, "bb-cd3e") || strings.Contains(hb, "No draft or accepted designs.") || strings.Contains(hb, "No designs.") {
+		t.Fatalf("default list hid the only design: %s", hb)
 	}
-	shown := do(s, "/scope/bb/designs?all=1").Body.String()
-	if !strings.Contains(shown, "bb-cd3e") || strings.Contains(shown, "No draft or accepted designs.") {
-		t.Fatalf("all statuses still hid the design: %s", shown)
+	if !strings.Contains(hb, "Draft and accepted") || !strings.Contains(hb, `aria-checked="false"`) {
+		t.Fatalf("default switch: %s", hb)
+	}
+	narrow := do(s, "/scope/bb/designs?listed=1").Body.String()
+	if strings.Contains(narrow, "bb-cd3e") || !strings.Contains(narrow, "No draft or accepted designs.") || strings.Contains(narrow, "No designs.") {
+		t.Fatalf("draft and accepted filter: %s", narrow)
+	}
+	if !strings.Contains(narrow, `aria-checked="true"`) || !strings.Contains(narrow, `href="/scope/bb/designs"`) {
+		t.Fatalf("filter switch: %s", narrow)
 	}
 
 	onlyBroken := initScope(t, app, "zz")
@@ -96,8 +103,8 @@ func TestDesignsListInspectAndWrites(t *testing.T) {
 	if !strings.Contains(table, "wc-ab2c") || !strings.Contains(table, "Designfish draft") {
 		t.Fatalf("default list missing draft: %s", table)
 	}
-	if strings.Contains(table, "wc-cd3e") || strings.Contains(table, "Designfish old") {
-		t.Fatalf("default list showed decomposed: %s", table)
+	if !strings.Contains(table, "wc-cd3e") || !strings.Contains(table, "Designfish old") {
+		t.Fatalf("default list hid decomposed: %s", table)
 	}
 	if strings.Contains(table, "wc-k2mp") {
 		t.Fatalf("parse error mixed into the status table: %s", table)
@@ -105,23 +112,26 @@ func TestDesignsListInspectAndWrites(t *testing.T) {
 	if !strings.Contains(brokenSection, `href="/scope/wc/designs/wc-k2mp"`) {
 		t.Fatalf("broken file is not linked: %s", brokenSection)
 	}
-	if strings.Count(lb, `class="dwell"`) != 1 || !strings.Contains(lb, `title="2026-01-01T00:00:00Z"`) {
+	if strings.Count(lb, `class="dwell"`) != 2 || !strings.Contains(lb, `title="2026-01-01T00:00:00Z"`) || !strings.Contains(lb, `title="2026-01-02T00:00:00Z"`) {
 		t.Fatalf("dwell labels: %s", lb)
 	}
-	if strings.Contains(lb, `title="2026-01-02T00:00:00Z"`) {
-		t.Fatalf("hidden design still has a dwell label: %s", lb)
-	}
 
-	all := do(s, "/scope/wc/designs?all=1")
-	if all.Code != http.StatusOK {
-		t.Fatalf("all = %d %s", all.Code, all.Body.String())
+	narrowed := do(s, "/scope/wc/designs?listed=1")
+	if narrowed.Code != http.StatusOK {
+		t.Fatalf("listed = %d %s", narrowed.Code, narrowed.Body.String())
 	}
-	allTable, _, _ := strings.Cut(all.Body.String(), `<section class="broken">`)
-	if !strings.Contains(allTable, "wc-cd3e") || !strings.Contains(allTable, "decomposed") {
-		t.Fatalf("all statuses hid decomposed: %s", allTable)
+	narrowTable, _, _ := strings.Cut(narrowed.Body.String(), `<section class="broken">`)
+	if strings.Contains(narrowTable, "wc-cd3e") || strings.Contains(narrowTable, "Designfish old") {
+		t.Fatalf("draft and accepted filter showed decomposed: %s", narrowTable)
 	}
-	if strings.Contains(allTable, "wc-k2mp") {
-		t.Fatalf("all statuses mixed in the broken file: %s", allTable)
+	if !strings.Contains(narrowTable, "wc-ab2c") || !strings.Contains(narrowTable, "Designfish draft") {
+		t.Fatalf("draft and accepted filter hid a draft: %s", narrowTable)
+	}
+	if strings.Contains(narrowTable, "wc-k2mp") {
+		t.Fatalf("filter mixed in the broken file: %s", narrowTable)
+	}
+	if strings.Count(narrowed.Body.String(), `class="dwell"`) != 1 || strings.Contains(narrowed.Body.String(), `title="2026-01-02T00:00:00Z"`) {
+		t.Fatalf("filtered design still has a dwell label: %s", narrowed.Body.String())
 	}
 
 	ins := do(s, "/scope/wc/designs/ab2c")
@@ -386,7 +396,7 @@ func TestDesignBodyStaleBase(t *testing.T) {
 	}
 }
 
-func TestDesignListOrdersByCreated(t *testing.T) {
+func TestDesignListOrdersByIDWhenChangedIsAbsent(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
 	writeDesign(t, dir, "wc-ab2c", "newer", "draft", "2026-02-01T00:00:00Z", "# Newer\n")
@@ -396,8 +406,8 @@ func TestDesignListOrdersByCreated(t *testing.T) {
 	body := do(s, "/scope/wc/designs").Body.String()
 	olderAt := strings.Index(body, "wc-m4np")
 	newerAt := strings.Index(body, "wc-ab2c")
-	if olderAt < 0 || newerAt < 0 || olderAt > newerAt {
-		t.Fatalf("older design must be listed first:\n%s", body)
+	if olderAt < 0 || newerAt < 0 || newerAt > olderAt {
+		t.Fatalf("absent changed must tie-break by id, not created:\n%s", body)
 	}
 }
 
@@ -450,6 +460,60 @@ func TestDesignDrivenMarkAndBodyNotice(t *testing.T) {
 	}
 	if !strings.Contains(string(got), "# Renamed\n") {
 		t.Fatalf("body was not saved: %s", got)
+	}
+}
+
+func TestDesignListOrdersByStatusThenChanged(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "ds")
+	addDesign(t, dir, "ds-ab2c", "old-draft", "draft", "# Old draft\n", "changed: 2026-01-01T00:00:00Z\n")
+	addDesign(t, dir, "ds-cd3e", "new-draft", "draft", "# New draft\n", "changed: 2026-06-01T00:00:00Z\n")
+	addDesign(t, dir, "ds-ef4g", "accepted", "accepted", "# Accepted\n", "changed: 2026-12-01T00:00:00Z\n")
+	addDesign(t, dir, "ds-gh56", "split", "decomposed", "# Split\n", "changed: 2026-09-01T00:00:00Z\n")
+	addDesign(t, dir, "ds-jk78", "replaced", "superseded", "# Replaced\n", "changed: 2026-02-01T00:00:00Z\n")
+	addDesign(t, dir, "ds-mn9p", "hold", "hold", "# Hold\n", "changed: 2026-01-01T00:00:00Z\n")
+	addDesign(t, dir, "ds-qr2s", "parked", "parked", "# Parked\n", "changed: 2026-12-01T00:00:00Z\n")
+	s := mustServer(t, app)
+
+	body := do(s, "/scope/ds/designs").Body.String()
+	table, _, _ := strings.Cut(body, `<section class="broken">`)
+	want := []string{"ds-cd3e", "ds-ab2c", "ds-ef4g", "ds-gh56", "ds-jk78", "ds-mn9p", "ds-qr2s"}
+	prev := -1
+	for _, id := range want {
+		at := strings.Index(table, id)
+		if at < 0 || at < prev {
+			t.Fatalf("%s out of order in %s", id, table)
+		}
+		prev = at
+	}
+}
+
+func TestDesignLess(t *testing.T) {
+	newer := &index.Design{ID: "wc-cd3e", Status: "draft", Changed: "2026-06-01T00:00:00Z"}
+	older := &index.Design{ID: "wc-ab2c", Status: "draft", Changed: "2026-01-01T00:00:00Z"}
+	bare := &index.Design{ID: "wc-ef4g", Status: "draft"}
+	bad := &index.Design{ID: "wc-gh56", Status: "draft", Changed: "not-a-time"}
+	same := &index.Design{ID: "wc-jk78", Status: "draft", Changed: "2026-06-01T00:00:00Z"}
+	accepted := &index.Design{ID: "wc-mn9p", Status: "accepted", Changed: "2026-12-01T00:00:00Z"}
+	hold := &index.Design{ID: "wc-qr2s", Status: "hold", Changed: "2026-12-01T00:00:00Z"}
+	parked := &index.Design{ID: "wc-tu4v", Status: "parked", Changed: "2026-01-01T00:00:00Z"}
+	if !designLess(newer, older) || designLess(older, newer) {
+		t.Fatal("newer changed should lead the same status")
+	}
+	if !designLess(older, bare) || !designLess(older, bad) {
+		t.Fatal("a real changed instant should lead a missing or unparseable one")
+	}
+	if !designLess(newer, same) || designLess(same, newer) {
+		t.Fatal("equal changed should break ties by id")
+	}
+	if !designLess(older, accepted) || designLess(accepted, newer) {
+		t.Fatal("draft should lead accepted")
+	}
+	if !designLess(hold, parked) || designLess(parked, hold) {
+		t.Fatal("unknown statuses should clump by name after the catalogue")
+	}
+	if designLess(hold, accepted) {
+		t.Fatal("an unknown status should follow the catalogue")
 	}
 }
 

@@ -38,7 +38,7 @@ type designListPage struct {
 	Title  string
 	Chrome chrome
 	Name   string
-	All    bool
+	Listed bool
 	Hidden int
 	Rows   []designListRow
 	Broken []designListRow
@@ -53,12 +53,14 @@ type designListRow struct {
 	DwellStamp string
 }
 
-func (p designListPage) AllHref() string {
+// ListedHref toggles the draft-and-accepted filter. The bare list shows every
+// parsed design.
+func (p designListPage) ListedHref() string {
 	base := designsListHref(p.Name)
-	if p.All {
+	if p.Listed {
 		return base
 	}
-	return base + "?all=1"
+	return base + "?listed=1"
 }
 
 // EmptyNote is the sentence for an empty status table. Broken files have their
@@ -149,12 +151,12 @@ func (s *Server) designsList(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	all := r.URL.Query().Get("all") == "1"
+	onlyListed := r.URL.Query().Get("listed") == "1"
 	now := time.Now()
 	page := designListPage{
 		Title:  "designs",
 		Name:   name,
-		All:    all,
+		Listed: onlyListed,
 		Rows:   []designListRow{},
 		Broken: []designListRow{},
 	}
@@ -166,7 +168,7 @@ func (s *Server) designsList(w http.ResponseWriter, r *http.Request) error {
 			broken = append(broken, p)
 			continue
 		}
-		if !designListed(p.Status, all) {
+		if !designListed(p.Status, onlyListed) {
 			hidden++
 			continue
 		}
@@ -535,19 +537,46 @@ func mapDesignError(err error) error {
 	return err
 }
 
-func designListed(status string, all bool) bool {
-	if all {
-		return true
+func designListed(status string, listed bool) bool {
+	if listed {
+		return design.DefaultListed(status)
 	}
-	return design.DefaultListed(status)
+	return true
 }
 
+// designLess is the designs page order: catalogue status, then changed
+// descending, then id. A changed value that is not RFC3339 sorts after every
+// real instant. tk design list keeps created-then-id.
 func designLess(a, b *index.Design) bool {
-	if design.CreatedBefore(a.Created, b.Created) {
+	ra, rb := designStatusRank(a.Status), designStatusRank(b.Status)
+	if ra != rb {
+		return ra < rb
+	}
+	if ra == designStatusOther && a.Status != b.Status {
+		return a.Status < b.Status
+	}
+	if design.CreatedBefore(b.Changed, a.Changed) {
 		return true
 	}
-	if design.CreatedBefore(b.Created, a.Created) {
+	if design.CreatedBefore(a.Changed, b.Changed) {
 		return false
 	}
 	return a.ID < b.ID
+}
+
+const designStatusOther = 4
+
+func designStatusRank(status string) int {
+	switch status {
+	case design.StatusDraft:
+		return 0
+	case design.StatusAccepted:
+		return 1
+	case design.StatusDecomposed:
+		return 2
+	case design.StatusSuperseded:
+		return 3
+	default:
+		return designStatusOther
+	}
 }

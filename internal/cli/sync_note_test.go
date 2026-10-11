@@ -104,7 +104,7 @@ func TestSyncNoteDeleteEditThenAct(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("note delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
 	}
-	assertConfigDeleteEditHandoff(t, firstOut, "wc/notes/default.md", true)
+	assertConfigDeleteEditHandoff(t, firstOut, "wc/notes/default.md", "the fetched upstream", true)
 	if strings.Contains(firstOut, "conflicted note:") {
 		t.Errorf("delete/edit must use the generic line, got %q", firstOut)
 	}

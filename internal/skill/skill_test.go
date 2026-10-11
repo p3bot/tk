@@ -214,10 +214,18 @@ func TestSkillSyncScopedSnapshot(t *testing.T) {
 		"`tk sync` and `tk sync --scope S` commit that scope's allowlisted dirty files",
 		"`tk sync --all`, and a bare sync with no ambient scope, commits nothing",
 		"do not rebase when the checkout is already based on the fetched upstream",
+		"A strictly-behind checkout fast-forwards",
+		"Diverged history merges",
+		"A conflict is field-merged and may pause the merge",
+		"`tk sync` resumes that pause",
+		"A rebase already in progress is still resumed",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("skill missing %q", want)
 		}
+	}
+	if strings.Contains(text, "Diverged history rebases") || strings.Contains(text, "conflict aborts") {
+		t.Errorf("skill must not describe a diverged rebase or an aborting conflict")
 	}
 	count := 0
 	for _, line := range strings.Split(text, "\n") {
@@ -345,7 +353,6 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		"tk design create <title> [--scope S] [--edit]",
 		"tk design edit <id> [--scope S]",
 		"Agents use the printed path rather than `--edit`",
-		"tk design list [status...] [--scope S] [--all]",
 		"tk design get <id> [--content] [--scope S]",
 		"tk design mark <status> <id> [--scope S]",
 		"tk design meta add <id> produces <ticket-id> [--scope S]",
@@ -355,8 +362,12 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		"auto_commit_mismatch",
 		"drops a list entry even when it is not a full ticket id",
 		"draft, accepted, decomposed, superseded",
-		"--all` includes every parsed design",
+		"prints every parsed design",
+		"tk design list draft accepted",
+		"then changed descending, then id",
 		"A positional outside those four exits 2",
+		"tk design list [status...] [--scope S]                              #",
+		"TSV id, status, title; every parsed design",
 		`schema_error: <id> has unknown status "<status>" (<path>)`,
 		"design/<id>-<slug>.md",
 		"not a board item",

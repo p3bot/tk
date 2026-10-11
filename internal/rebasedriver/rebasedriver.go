@@ -48,13 +48,17 @@ func New(gitRoot string, load SchemaLoader) *Driver {
 }
 
 // Conflict names one conflicted ticket .md and the two side revs.
-// OursRev is stage :2 (HEAD/upstream); TheirsRev is stage :3 (REBASE_HEAD).
-// Mapping is inverted from everyday during-rebase "ours"/"theirs".
+// OursRev is stage :2. TheirsRev is stage :3.
+// During a rebase those are HEAD (upstream) and REBASE_HEAD (the replayed commit).
+// During a merge those are HEAD (this checkout) and MERGE_HEAD (fetched upstream).
+// PreImage, when set, is the tree searched for a missing rename base.
+// Empty keeps the rebase rule: the first parent of TheirsRev.
 type Conflict struct {
 	Path      string // repo-relative path to the conflicted ticket .md
 	ScopeDir  string // absolute scope dir holding tk.cue
 	OursRev   string // stage :2 side rev
 	TheirsRev string // stage :3 side rev
+	PreImage  string // rename-base tree; empty uses the first parent of TheirsRev
 }
 
 // Class is the resolution class of a conflicted file.
@@ -215,10 +219,13 @@ func (d *Driver) Resolve(ctx context.Context, c Conflict) (Outcome, error) {
 }
 
 // recoverRenameBase supplies the missing stage :1 when both sides deleted the
-// ticket's previous path. The parent of the replayed commit holds that blob.
-// A same-id file either side still has is a different file, so the add/add
-// stays a rename. ambiguousID is set when more than one deleted path matches,
-// which the caller pauses on instead of guessing a base or minting an id.
+// ticket's previous path. A rebase searches the parent of the replayed commit.
+// A merge searches the merge base of the two sides, passed in as PreImage:
+// the first parent of MERGE_HEAD is one commit before the upstream tip once
+// upstream has more than one new commit. A same-id file either side still has
+// is a different file, so the add/add stays a rename. ambiguousID is set when
+// more than one deleted path matches, which the caller pauses on instead of
+// guessing a base or minting an id.
 func (d *Driver) recoverRenameBase(ctx context.Context, c Conflict, ours, theirs fmmerge.Stage) (fmmerge.Stage, string, error) {
 	if c.TheirsRev == "" || c.OursRev == "" {
 		return fmmerge.Stage{}, "", nil
@@ -231,18 +238,22 @@ func (d *Driver) recoverRenameBase(ctx context.Context, c Conflict, ours, theirs
 	if !ok || idOurs != idTheirs {
 		return fmmerge.Stage{}, "", nil
 	}
-	parent, ok, err := git.FirstParent(ctx, d.gitRoot, c.TheirsRev)
-	if err != nil {
-		return fmmerge.Stage{}, "", fmt.Errorf("pre-image parent of %s: %w", c.Path, err)
-	}
-	if !ok {
-		return fmmerge.Stage{}, "", nil
+	rev := c.PreImage
+	if rev == "" {
+		parent, ok, err := git.FirstParent(ctx, d.gitRoot, c.TheirsRev)
+		if err != nil {
+			return fmmerge.Stage{}, "", fmt.Errorf("pre-image parent of %s: %w", c.Path, err)
+		}
+		if !ok {
+			return fmmerge.Stage{}, "", nil
+		}
+		rev = parent
 	}
 	scopeRel, err := filepath.Rel(d.gitRoot, c.ScopeDir)
 	if err != nil {
 		return fmmerge.Stage{}, "", fmt.Errorf("scope path for %s: %w", c.Path, err)
 	}
-	paths, err := git.ListTree(ctx, d.gitRoot, parent, scopeRel)
+	paths, err := git.ListTree(ctx, d.gitRoot, rev, scopeRel)
 	if err != nil {
 		return fmmerge.Stage{}, "", fmt.Errorf("pre-image tree of %s: %w", c.Path, err)
 	}
@@ -270,7 +281,7 @@ func (d *Driver) recoverRenameBase(ctx context.Context, c Conflict, ours, theirs
 	if match == "" {
 		return fmmerge.Stage{}, "", nil
 	}
-	data, err := git.ShowBlob(ctx, d.gitRoot, parent, match)
+	data, err := git.ShowBlob(ctx, d.gitRoot, rev, match)
 	if err != nil {
 		return fmmerge.Stage{}, "", fmt.Errorf("pre-image blob of %s: %w", c.Path, err)
 	}

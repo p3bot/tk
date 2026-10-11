@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/p3bot/tk/internal/syncengine"
 )
 
 func headRev(t *testing.T, clone string) string {
@@ -13,11 +15,23 @@ func headRev(t *testing.T, clone string) string {
 	return strings.TrimSpace(gitIn(t, clone, "rev-parse", "HEAD"))
 }
 
+func assertMergeParents(t *testing.T, clone string) {
+	t.Helper()
+	merge := strings.TrimSpace(gitIn(t, clone, "log", "--merges", "-1", "--format=%H"))
+	if merge == "" {
+		t.Fatal("diverged integrate must record a merge commit")
+	}
+	gitIn(t, clone, "rev-parse", "--verify", merge+"^2")
+	if strings.TrimSpace(gitIn(t, clone, "merge-base", "--is-ancestor", merge+"^2", "HEAD")) != "" {
+		t.Fatal("merge-base --is-ancestor must be silent when the upstream side is an ancestor")
+	}
+}
+
 func assertNotMidRebase(t *testing.T, clone string) {
 	t.Helper()
-	for _, name := range []string{"rebase-merge", "rebase-apply"} {
+	for _, name := range []string{"rebase-merge", "rebase-apply", "MERGE_HEAD"} {
 		if _, err := os.Stat(filepath.Join(clone, ".git", name)); err == nil {
-			t.Fatalf("checkout is mid-rebase (%s)", name)
+			t.Fatalf("checkout is mid-integrate (%s)", name)
 		}
 	}
 }
@@ -45,10 +59,20 @@ func TestSyncHelpDescribesScopedSnapshot(t *testing.T) {
 		"allowlisted dirty files",
 		"commits nothing",
 		"fast-forward",
+		"A strictly-behind checkout fast-forwards",
+		"Diverged history merges",
+		"field-merged and may pause the merge",
+		"`tk sync` resumes that pause",
+		"A rebase already in progress is still resumed",
+		"on its own when the",
+		"checkout is already based on upstream",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("sync help missing %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "rebases in place") || strings.Contains(out, "instead of a rebase") || strings.Contains(out, "conflict aborts") {
+		t.Errorf("sync help must not describe a diverged rebase or an aborting conflict:\n%s", out)
 	}
 }
 
@@ -360,12 +384,13 @@ exit 1
 	}
 	log := gitIn(t, remote, "log", "--format=%s", "main")
 	if !strings.Contains(log, "local only") || !strings.Contains(log, "upstream moves") {
-		t.Fatalf("retry must rebase the local commit onto the moved upstream, log:\n%s", log)
+		t.Fatalf("retry must merge the local commit with the moved upstream, log:\n%s", log)
 	}
+	assertMergeParents(t, local.clone)
 	assertNotMidRebase(t, local.clone)
 }
 
-func TestSyncDivergedDirtySiblingBlocksRebaseThenRetries(t *testing.T) {
+func TestSyncDivergedDirtySiblingMergesAndPushes(t *testing.T) {
 	requireGit(t)
 	remote := newBareRemote(t)
 	local := cloneMachine(t, remote)
@@ -390,36 +415,30 @@ func TestSyncDivergedDirtySiblingBlocksRebaseThenRetries(t *testing.T) {
 		t.Fatalf("upstream advance: %v", err)
 	}
 
-	editBody(t, filepath.Join(xy, "xy-cd3e-beta.md"), "blocks rebase")
+	sibling := filepath.Join(xy, "xy-cd3e-beta.md")
+	editBody(t, sibling, "stays unstaged")
+	siblingBytes := readFile(t, sibling)
 	wcPath := filepath.Join(wc, "wc-ab2c-alpha.md")
 	if err := os.WriteFile(wcPath, []byte(strings.Replace(readFile(t, wcPath), "local commit", "snapshot me", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, errOut, err := local.sync(t, "--scope", "wc")
-	if ExitCodeFromError(err) != exitFailure {
-		t.Fatalf("blocked rebase must fail, got %v (stderr %q)", err, errOut)
-	}
-	if !strings.Contains(errOut, "xy/xy-cd3e-beta.md") {
-		t.Errorf("refusal must print the blocking path, got %q", errOut)
-	}
-	assertNotMidRebase(t, local.clone)
-	if log := gitIn(t, local.clone, "log", "--format=%s"); !strings.Contains(log, "tk: edit wc-ab2c") {
-		t.Fatalf("the named-scope snapshot commit must stay on the local branch\nlog:\n%s", log)
-	}
-	if strings.Contains(gitIn(t, remote, "log", "--format=%s", "main"), "tk: edit wc-ab2c") {
-		t.Fatal("blocked rebase must not push")
-	}
-
-	gitIn(t, local.clone, "checkout", "--", "xy/xy-cd3e-beta.md")
 	if _, errOut, err := local.sync(t, "--scope", "wc"); err != nil {
-		t.Fatalf("retry after the blocker is gone: %v (stderr %q)", err, errOut)
+		t.Fatalf("dirty sibling must not block the merge: %v (stderr %q)", err, errOut)
 	}
 	assertNotMidRebase(t, local.clone)
-	if !strings.Contains(gitIn(t, remote, "log", "--format=%s", "main"), "tk: edit wc-ab2c") {
-		t.Fatal("the later sync must rebase and push the snapshot commit")
+	assertMergeParents(t, local.clone)
+	if readFile(t, sibling) != siblingBytes {
+		t.Fatal("the sibling file must keep its bytes")
 	}
-	if strings.Contains(gitIn(t, local.clone, "status", "--porcelain"), "xy-cd3e-beta.md") {
-		t.Fatal("the cleared sibling file must not be recommitted")
+	if !strings.Contains(gitIn(t, local.clone, "status", "--porcelain"), "xy-cd3e-beta.md") {
+		t.Fatal("the sibling file must stay unstaged")
+	}
+	if strings.Contains(gitIn(t, local.clone, "show", "--name-only", "--pretty=format:", "HEAD"), "xy-cd3e-beta.md") {
+		t.Fatal("the sibling file must not be in the merge commit")
+	}
+	log := gitIn(t, remote, "log", "--format=%s", "main")
+	if !strings.Contains(log, "tk: edit wc-ab2c") || !strings.Contains(log, "wc-zz99") {
+		t.Fatalf("the pushed history must contain the snapshot and the upstream commit\nlog:\n%s", log)
 	}
 }
 
@@ -448,6 +467,8 @@ func TestSyncDivergedCleanSiblingRebasesAndPushes(t *testing.T) {
 	if n := gitIn(t, local.clone, "rev-list", "--count", "@{u}..HEAD"); strings.TrimSpace(n) != "0" {
 		t.Errorf("clean diverged sync must push, unpushed=%s", n)
 	}
+	assertNotMidRebase(t, local.clone)
+	assertMergeParents(t, local.clone)
 }
 
 func TestSyncAllCommitsNothingAndPushesExisting(t *testing.T) {
@@ -587,7 +608,7 @@ func TestClaimRefreshRefusesWhenFastForwardWouldOverwrite(t *testing.T) {
 	}
 }
 
-func TestClaimRefreshRefusesWhenDirtyPathBlocksRebase(t *testing.T) {
+func TestClaimDivergedMergesPastUnrelatedDirty(t *testing.T) {
 	requireGit(t)
 	remote := newBareRemote(t)
 	local := cloneMachine(t, remote)
@@ -610,21 +631,118 @@ func TestClaimRefreshRefusesWhenDirtyPathBlocksRebase(t *testing.T) {
 	if _, _, err := ahead.sync(t, "--scope", "wc"); err != nil {
 		t.Fatalf("upstream advance: %v", err)
 	}
-	editBody(t, filepath.Join(xy, "xy-cd3e-beta.md"), "blocks rebase")
-	before := fmStatus(t, filepath.Join(wc, "wc-ab2c-alpha.md"))
+	sibling := filepath.Join(xy, "xy-cd3e-beta.md")
+	editBody(t, sibling, "stays unstaged")
+	siblingBytes := readFile(t, sibling)
+	out, errOut, err := run(t, local.app, "next", "--claim", "--scope", "wc")
+	if err != nil {
+		t.Fatalf("claim must merge past an unrelated dirty file: %v (stderr %q)", err, errOut)
+	}
+	if st := fmStatus(t, strings.TrimSpace(out)); st != "in-progress" {
+		t.Fatalf("status: got %q", st)
+	}
+	assertNotMidRebase(t, local.clone)
+	assertMergeParents(t, local.clone)
+	names := gitIn(t, local.clone, "show", "--name-only", "--pretty=format:", "HEAD")
+	if !strings.Contains(names, "wc-ab2c-alpha.md") {
+		t.Errorf("claim commit must contain the marked path, names:\n%s", names)
+	}
+	if strings.Contains(names, "xy-cd3e-beta.md") {
+		t.Errorf("claim commit must not contain the sibling, names:\n%s", names)
+	}
+	if readFile(t, sibling) != siblingBytes {
+		t.Fatal("the sibling file must keep its bytes")
+	}
+	if !strings.Contains(gitIn(t, local.clone, "status", "--porcelain"), "xy-cd3e-beta.md") {
+		t.Fatal("the sibling file must stay unstaged")
+	}
+}
+
+func TestClaimDivergedOverlapRefusesLeavesStatus(t *testing.T) {
+	requireGit(t)
+	remote := newBareRemote(t)
+	local := cloneMachine(t, remote)
+	wc := local.initScopeAutoCommit(t)
+	xy := initSiblingScope(t, local)
+	addTicket(t, wc, "wc-ab2c", "alpha", "todo", "a0", "# Alpha\n\nbody line\n", false, "")
+	addTicket(t, xy, "xy-cd3e", "beta", "todo", "a0", "# Beta\n\nbody line\n", false, "")
+	if _, _, err := local.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("wc publish: %v", err)
+	}
+	if _, _, err := local.sync(t, "--scope", "xy"); err != nil {
+		t.Fatalf("xy publish: %v", err)
+	}
+	editBody(t, filepath.Join(wc, "wc-ab2c-alpha.md"), "local commit")
+	commitLocal(t, local.clone, "local only")
+
+	ahead := cloneMachine(t, remote)
+	editBody(t, filepath.Join(ahead.clone, "xy", "xy-cd3e-beta.md"), "upstream text")
+	commitLocal(t, ahead.clone, "upstream moves sibling")
+	gitIn(t, ahead.clone, "push")
+
+	sibling := filepath.Join(xy, "xy-cd3e-beta.md")
+	editBody(t, sibling, "local dirty")
+	beforeBytes := readFile(t, sibling)
+	before := headRev(t, local.clone)
+	ticket := filepath.Join(wc, "wc-ab2c-alpha.md")
 	out, errOut, err := run(t, local.app, "next", "--claim", "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
-		t.Fatalf("claim must fail when rebase cannot start, got %v (stderr %q)", err, errOut)
+		t.Fatalf("claim must refuse the overlapping merge, got %v (stderr %q)", err, errOut)
 	}
 	if strings.TrimSpace(out) != "" {
 		t.Errorf("failed claim must not print a path, got %q", out)
 	}
-	if st := fmStatus(t, filepath.Join(wc, "wc-ab2c-alpha.md")); st != before {
-		t.Errorf("status must stay %s, got %q", before, st)
-	}
-	assertNotMidRebase(t, local.clone)
 	if !strings.Contains(errOut, "xy/xy-cd3e-beta.md") {
-		t.Errorf("refusal must print the blocking path, got %q", errOut)
+		t.Errorf("refusal must print the path, got %q", errOut)
+	}
+	if st := fmStatus(t, ticket); st != "todo" {
+		t.Errorf("status must stay todo, got %q", st)
+	}
+	if headRev(t, local.clone) != before {
+		t.Fatal("HEAD must stay unmoved")
+	}
+	if readFile(t, sibling) != beforeBytes {
+		t.Fatal("the dirty file must keep its bytes")
+	}
+	if _, err := os.Stat(filepath.Join(local.clone, ".git", "MERGE_HEAD")); err == nil {
+		t.Fatal("refusal must not leave MERGE_HEAD")
+	}
+	if strings.Contains(gitIn(t, remote, "log", "--format=%s", "main"), "local only") {
+		t.Fatal("refusal must not push")
+	}
+}
+
+func TestClaimDivergedBodyConflictLeavesStatus(t *testing.T) {
+	requireGit(t)
+	a, b, remote := twoMachines(t)
+	editBody(t, mustSeedTicket(t, a.scopeDir()), "A version of the body")
+	if _, _, err := a.sync(t, "--scope", "wc"); err != nil {
+		t.Fatalf("A sync: %v", err)
+	}
+	pB := mustSeedTicket(t, b.scopeDir())
+	editBody(t, pB, "B version of the body")
+	commitLocal(t, b.clone, "B body")
+	out, errOut, err := run(t, b.app, "mark", "in-progress", "wc-ab2c", "--scope", "wc")
+	if ExitCodeFromError(err) != exitFailure {
+		t.Fatalf("claim must pause, got %v (stderr %q)", err, errOut)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("failed claim must not print a path, got %q", out)
+	}
+	if !strings.Contains(errOut, "merge paused") {
+		t.Errorf("pause must name the merge, got %q", errOut)
+	}
+	if st := fmStatus(t, pB); st != "todo" {
+		t.Errorf("status must stay todo, got %q", st)
+	}
+	if !syncengine.HasConflictMarker([]byte(readFile(t, pB))) {
+		t.Errorf("the body should carry conflict markers:\n%s", readFile(t, pB))
+	}
+	if _, err := os.Stat(filepath.Join(b.clone, ".git", "MERGE_HEAD")); err != nil {
+		t.Fatal("the merge must stay paused")
+	}
+	if strings.Contains(gitIn(t, remote, "log", "--format=%s", "main"), "B body") {
+		t.Fatal("a paused claim must not push")
 	}
 }
 

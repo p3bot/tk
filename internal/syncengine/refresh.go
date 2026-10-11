@@ -17,7 +17,7 @@ func RootTarget(deps Deps, root string) Target {
 }
 
 // RefreshRoot fetches and integrates one git-root, then runs integrity.
-// It commits nothing, does not resume a mid-rebase, and does not push.
+// It commits nothing, does not resume a mid-rebase or a mid-merge, and does not push.
 // Caller must not hold a write-path flock or the git-root commit lock.
 func RefreshRoot(deps Deps, r Reporter, t Target) error {
 	return withSyncLocks(deps, r, t, func(rep *syncReport) error {
@@ -28,6 +28,10 @@ func RefreshRoot(deps Deps, r Reporter, t Target) error {
 		}()
 		if git.MidRebase(deps.Ctx, t.Root) {
 			r.Err(fmt.Sprintf("%s: git-root is mid-rebase; refresh will not resume it", rep.label))
+			return ErrRootFailed
+		}
+		if git.MidMerge(deps.Ctx, t.Root) {
+			r.Err(fmt.Sprintf("%s: git-root is mid-merge; refresh will not resume it", rep.label))
 			return ErrRootFailed
 		}
 		if !git.HasUpstream(deps.Ctx, t.Root) {

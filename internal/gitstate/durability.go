@@ -9,18 +9,24 @@ import (
 	"github.com/p3bot/tk/internal/scopefile"
 )
 
-// MidRebaseError refuses auto-commit writes on a mid-rebase git-root.
+// MidRebaseError refuses auto-commit writes on a mid-rebase or mid-merge git-root.
+// Merge is set when the checkout is mid-merge rather than mid-rebase.
 type MidRebaseError struct {
 	Scope, Root, Where string
+	Merge              bool
 }
 
 func (e *MidRebaseError) Error() string {
+	if e.Merge {
+		return fmt.Sprintf("%s checkout is mid-merge in shared repo %s — resolve %s then run tk sync",
+			e.Scope, e.Root, e.Where)
+	}
 	return fmt.Sprintf("%s is mid-sync-conflict in shared repo %s — resolve %s then run tk sync",
 		e.Scope, e.Root, e.Where)
 }
 
-// CheckMidRebase refuses auto-commit writes on a mid-rebase git-root (repo-granular).
-// Repo-driven mutators stay allowed: autoCommit false is a quiet no-op.
+// CheckMidRebase refuses auto-commit writes on a mid-rebase or mid-merge git-root
+// (repo-granular). Repo-driven mutators stay allowed: autoCommit false is a quiet no-op.
 func CheckMidRebase(ctx context.Context, scope string, autoCommit bool, root string, hasRoot bool) error {
 	if !autoCommit {
 		return nil
@@ -28,21 +34,26 @@ func CheckMidRebase(ctx context.Context, scope string, autoCommit bool, root str
 	return CheckGitRootMidRebase(ctx, scope, root, hasRoot)
 }
 
-// CheckGitRootMidRebase refuses when the git-root is mid-rebase, regardless of
-// autoCommit. Callers that must not become tk-driven onto a paused rebase use
-// this instead of passing a fake true into CheckMidRebase.
+// CheckGitRootMidRebase refuses when the git-root is mid-rebase or mid-merge,
+// regardless of autoCommit. Callers that must not become tk-driven onto a
+// paused integrate use this instead of passing a fake true into CheckMidRebase.
 func CheckGitRootMidRebase(ctx context.Context, scope, root string, hasRoot bool) error {
 	if !hasRoot {
 		return nil
 	}
-	if !git.MidRebase(ctx, root) {
+	merging := git.MidMerge(ctx, root)
+	if !git.MidRebase(ctx, root) && !merging {
 		return nil
 	}
 	where := "the conflicted file"
 	if files := git.UnmergedFiles(ctx, root); len(files) > 0 {
 		where = strings.Join(files, ", ")
 	}
-	return &MidRebaseError{Scope: scope, Root: root, Where: where}
+	// A rebase wins when both markers are set. The resume path keeps that rebase.
+	if git.MidRebase(ctx, root) {
+		merging = false
+	}
+	return &MidRebaseError{Scope: scope, Root: root, Where: where, Merge: merging}
 }
 
 // SyncNeededReason is at most one catalogue reason after a tk-driven write.

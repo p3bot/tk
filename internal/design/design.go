@@ -16,7 +16,7 @@ import (
 const (
 	// StatusDraft is the scaffold status.
 	StatusDraft = "draft"
-	// StatusAccepted is an accepted design still on the default list.
+	// StatusAccepted is an accepted design.
 	StatusAccepted = "accepted"
 	// StatusDecomposed is a design that has been split into tickets.
 	StatusDecomposed = "decomposed"
@@ -39,7 +39,9 @@ func KnownStatus(s string) bool {
 	}
 }
 
-// DefaultListed reports whether s is shown by list without --all or a positional filter.
+// DefaultListed reports whether s is draft or accepted.
+// The brief and the tkv listed switch use it. tk design list shows every
+// parsed design unless status positionals narrow the set.
 func DefaultListed(s string) bool {
 	return s == StatusDraft || s == StatusAccepted
 }
@@ -104,13 +106,11 @@ func (e *UnresolvedError) Error() string {
 	return fmt.Sprintf("produces target %q does not resolve to a ticket", e.Target)
 }
 
-// Row is one design list line.
+// Row is one design list line: id, status, title.
 type Row struct {
-	ID      string
-	Status  string
-	Title   string
-	Path    string
-	Created string
+	ID     string
+	Status string
+	Title  string
 }
 
 // Result is a design command outcome. Adapters print Path and tokens.

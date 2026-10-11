@@ -159,7 +159,7 @@ func TestSyncDeleteEditPausesThenResumes(t *testing.T) {
 	if !strings.Contains(errOut, "delete/edit") || !strings.Contains(errOut, "review") {
 		t.Errorf("delete/edit should report the surviving status, got %q", errOut)
 	}
-	assertDeleteEditHandoff(t, errOut, "wc/wc-ab2c-alpha.md", "review")
+	assertDeleteEditHandoff(t, errOut, "wc/wc-ab2c-alpha.md", "review", "the fetched upstream")
 
 	pB, _ := findTicket(t, b.scopeDir(), "wc-ab2c-alpha.md")
 	if pB != "" {
@@ -192,14 +192,14 @@ func TestSyncDeleteEditUnactionedRerunPauses(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
 	}
-	assertDeleteEditHandoff(t, firstOut, "wc/wc-ab2c-alpha.md", "review")
+	assertDeleteEditHandoff(t, firstOut, "wc/wc-ab2c-alpha.md", "review", "the fetched upstream")
 
 	// Nothing touched — the next tk sync must re-pause, not silently resurrect the file.
 	_, secondOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("unactioned re-run must stay paused, got %v (stderr %q)", err, secondOut)
 	}
-	assertDeleteEditHandoff(t, secondOut, "wc/wc-ab2c-alpha.md", "review")
+	assertDeleteEditHandoff(t, secondOut, "wc/wc-ab2c-alpha.md", "review", "the fetched upstream")
 	assertSameDeleteEditLine(t, firstOut, secondOut)
 	if remoteHas(t, remote, "wc/wc-ab2c-alpha.md") {
 		t.Errorf("unactioned re-run must not push the resurrected survivor; remote still carries the deletion")
@@ -285,16 +285,13 @@ func TestSyncDeleteEditMirroredUnactionedRerunPauses(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("mirrored delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
 	}
-	assertDeleteEditHandoff(t, firstOut, "wc/wc-ab2c-alpha.md", "review")
-	if !strings.Contains(firstOut, "this machine's replayed commit") {
-		t.Errorf("mirrored case should name this machine as the deleting side, got %q", firstOut)
-	}
+	assertDeleteEditHandoff(t, firstOut, "wc/wc-ab2c-alpha.md", "review", "this checkout")
 
 	_, secondOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("unactioned mirrored re-run must stay paused, got %v (stderr %q)", err, secondOut)
 	}
-	assertDeleteEditHandoff(t, secondOut, "wc/wc-ab2c-alpha.md", "review")
+	assertDeleteEditHandoff(t, secondOut, "wc/wc-ab2c-alpha.md", "review", "this checkout")
 	assertSameDeleteEditLine(t, firstOut, secondOut)
 	// Remote still has A's edit (the survivor was never pushed from B's resurrection path).
 	if !remoteHas(t, remote, "wc/wc-ab2c-alpha.md") {
@@ -344,7 +341,27 @@ func TestSyncDeleteEditUnparseableSurvivorFailClosed(t *testing.T) {
 	}
 }
 
-func assertDeleteEditHandoff(t *testing.T, errOut, path, survivingStatus string) {
+func assertDeletingSide(t *testing.T, errOut, side string) {
+	t.Helper()
+	if !strings.Contains(errOut, "deleted on "+side) {
+		t.Errorf("handoff must say deleted on %s, got %q", side, errOut)
+	}
+	for _, wrong := range []string{
+		"incoming side",
+		"this machine's replayed commit",
+		"this checkout",
+		"the fetched upstream",
+	} {
+		if wrong == side {
+			continue
+		}
+		if strings.Contains(errOut, wrong) {
+			t.Errorf("handoff must not name %q, got %q", wrong, errOut)
+		}
+	}
+}
+
+func assertDeleteEditHandoff(t *testing.T, errOut, path, survivingStatus, deletedOn string) {
 	t.Helper()
 	if !strings.Contains(errOut, "delete/edit") {
 		t.Errorf("expected delete/edit handoff, got %q", errOut)
@@ -359,9 +376,7 @@ func assertDeleteEditHandoff(t *testing.T, errOut, path, survivingStatus string)
 		strings.Contains(errOut, "the ours") || strings.Contains(errOut, "the theirs") {
 		t.Errorf("handoff must not name sides as ours/theirs, got %q", errOut)
 	}
-	if !strings.Contains(errOut, "incoming side") && !strings.Contains(errOut, "this machine's replayed commit") {
-		t.Errorf("handoff must name the deleting side in reader terms, got %q", errOut)
-	}
+	assertDeletingSide(t, errOut, deletedOn)
 	for _, way := range []string{"remove " + path, "edit it", "git add"} {
 		if !strings.Contains(errOut, way) {
 			t.Errorf("handoff must name %q as a way out, got %q", way, errOut)

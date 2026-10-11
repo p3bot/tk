@@ -711,3 +711,96 @@ func TestOperationalErrorDistinctFromFailClosed(t *testing.T) {
 		t.Fatal("an unreadable schema must be an operational error, not a fail-closed outcome")
 	}
 }
+
+// Upstream archives in one commit and edits the archive in a later commit.
+// The first parent of MERGE_HEAD already lacks the original path, so a rename
+// base taken from that parent misses the pre-image. The merge base still has it.
+func TestMergePreImageUsesMergeBaseNotUpstreamParent(t *testing.T) {
+	requireGit(t)
+	build := func(t *testing.T) (repo, scopeDir, archRel, head, mergeHead, base string) {
+		t.Helper()
+		repo = newRepo(t)
+		scopeDir = filepath.Join(repo, "wc")
+		writeF(t, filepath.Join(scopeDir, "tk.cue"), tkcue(""))
+		rootRel := "wc/wc-ab2c-alpha.md"
+		archRel = "wc/archive/wc-ab2c-alpha.md"
+		writeF(t, filepath.Join(repo, rootRel), proj(
+			"id: wc-ab2c\nstatus: todo\nchanged: 2026-01-02T00:00:00Z\norder: \"a0\"\ncreated: 2026-01-01T00:00:00Z\n",
+			"# alpha\n"))
+		commitAll(t, repo, "base", "2026-01-01T00:00:00Z")
+		mainBranch := gitCapture(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+		gitRun(t, repo, nil, "checkout", "-b", "feature")
+		if err := os.Remove(filepath.Join(repo, rootRel)); err != nil {
+			t.Fatal(err)
+		}
+		writeF(t, filepath.Join(repo, archRel), proj(
+			"id: wc-ab2c\nstatus: cancelled\nchanged: \"2026-06-01T00:00:00Z\"\norder: \"a0\"\ncreated: \"2026-01-01T00:00:00Z\"\n",
+			strings.Repeat("cancel side\n", 40)))
+		commitAll(t, repo, "feature cancel", "2026-06-01T00:00:00Z")
+
+		gitRun(t, repo, nil, "checkout", mainBranch)
+		if err := os.Remove(filepath.Join(repo, rootRel)); err != nil {
+			t.Fatal(err)
+		}
+		writeF(t, filepath.Join(repo, archRel), proj(
+			"id: wc-ab2c\nstatus: done\nchanged: \"2026-05-01T00:00:00Z\"\norder: \"a0\"\ncreated: \"2026-01-01T00:00:00Z\"\n",
+			strings.Repeat("done side\n", 40)))
+		commitAll(t, repo, "main archive", "2026-05-01T00:00:00Z")
+		writeF(t, filepath.Join(repo, archRel), proj(
+			"id: wc-ab2c\nstatus: done\nchanged: \"2026-05-02T00:00:00Z\"\norder: \"a0\"\ncreated: \"2026-01-01T00:00:00Z\"\n",
+			strings.Repeat("done side later\n", 40)))
+		commitAll(t, repo, "main edit", "2026-05-02T00:00:00Z")
+
+		gitRun(t, repo, nil, "checkout", "feature")
+		paused, err := git.Merge(context.Background(), repo, mainBranch)
+		if err != nil || !paused {
+			t.Fatalf("merge must pause, paused=%v err=%v", paused, err)
+		}
+		stages, err := git.ConflictStages(context.Background(), repo, archRel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stages.Base || !stages.Ours || !stages.Theirs {
+			t.Fatalf("want add/add stages, got %+v", stages)
+		}
+		head, mergeHead, err = git.MergeSides(context.Background(), repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		base, err = git.MergeBase(context.Background(), repo, head, mergeHead)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return repo, scopeDir, archRel, head, mergeHead, base
+	}
+
+	t.Run("first parent misses the pre-image", func(t *testing.T) {
+		repo, scopeDir, archRel, head, mergeHead, _ := build(t)
+		out, err := New(repo, freshLoader()).Resolve(context.Background(), Conflict{
+			Path: archRel, ScopeDir: scopeDir, OursRev: head, TheirsRev: mergeHead,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out.Class != ClassRename {
+			t.Fatalf("without the merge base the add/add mints an id, got class=%v", out.Class)
+		}
+	})
+	t.Run("merge base keeps the dispute", func(t *testing.T) {
+		repo, scopeDir, archRel, head, mergeHead, base := build(t)
+		out, err := New(repo, freshLoader()).Resolve(context.Background(), Conflict{
+			Path: archRel, ScopeDir: scopeDir, OursRev: head, TheirsRev: mergeHead, PreImage: base,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out.Class != ClassStatusDispute || out.Staged {
+			t.Fatalf("want status dispute unstaged, got class=%v staged=%v rename=%+v", out.Class, out.Staged, out.Rename)
+		}
+		m := parseFile(t, filepath.Join(repo, archRel))
+		if m.Status != "todo" {
+			t.Errorf("status = %q, want base todo", m.Status)
+		}
+	})
+}

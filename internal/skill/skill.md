@@ -51,7 +51,7 @@ tk order <id> (--before <id> | --after <id> | --first | --last) [--scope S]    #
 tk next [--scope S] [--no-lens] [--claim]                           # First runnable path (todo); --claim sets in-progress
 tk rehome <id> <dest-scope> [--scope S]                             # Prefix-rewrite ticket into dest scope; print dest path
 tk design create <title> [--scope S] [--edit]                       # Scaffold design/<id>-<slug>.md; print path; no self-commit; --edit opens $EDITOR
-tk design list [status...] [--scope S] [--all]                      # Index read; TSV id, status, title, path; default draft and accepted; --all is every parsed design (ls aliases list)
+tk design list [status...] [--scope S]                              # Index read; TSV id, status, title; every parsed design; status positionals narrow it (ls aliases list)
 tk design get <id> [--content] [--scope S]                          # Index read; path or file; refuses a short id held by two design files
 tk design edit <id> [--scope S]                                     # Open that path in $EDITOR; no stdout; no self-commit
 tk design search <terms> [--scope S]                                # Design-only FTS; TSV id, status, title, path
@@ -100,7 +100,7 @@ tk reindex                                                          # Rebuild th
 - `tk design search <terms> [--scope S]` searches design titles and bodies (bm25, tie-broken by full id). Empty scope is machine-wide. TSV is id, status, title, path. A parse-error hit has an empty status and a filled path. No lens, no status filter, empty result exits 0. `find` is not an alias. `tk search` still searches tickets only
 - `tk depends` on a ticket keeps its three sections and appends `produced by` (design id, status, and title; an empty side prints `(none)`; several design files on one id print `(ambiguous)`). When that id is also one design, a `produces` section is appended. When several designs share it, the ticket report stays and stderr gets `design_id`. `tk depends` on a design id with no ticket prints one section, `produces`, with the ticket neighbour lines, and does not print depends or related. A shared design short id with no ticket refuses and prints no path. `--transitive` does not walk produces. `--tree` does not include designs
 - Statuses: draft, accepted, decomposed, superseded. The file stays in `design/`
-- `tk design list` defaults to draft and accepted. `--all` includes every parsed design, including a status outside those four. A positional outside those four exits 2. Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)`
+- `tk design list` prints every parsed design, including a status outside the four names. Order is catalogue status (draft, accepted, decomposed, superseded, then any other status by name), then changed descending, then id. A changed value that is not RFC3339 sorts after every real instant. Status positionals replace that set: `tk design list draft accepted` is draft and accepted. A positional outside those four exits 2. Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)`
 - Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`. `tk design rehome` rewrites the id prefix and leaves status, created, produces, and changed
 - `changed` is the time the design entered its current status. `tk design create` sets `changed` to the same RFC3339 instant as `created`. `tk design mark` updates it only on a status change. A same-status mark does not add the key. `tk design meta`, `tk design rehome`, and `tk scope rename` leave it alone. Ticket stale clocks do not apply to a design. A design written before the field has no key
 - `produces` stores full ticket ids, design to tickets only. There is no back-link on the ticket. `tk design meta remove` drops a list entry even when it is not a full ticket id
@@ -150,7 +150,8 @@ Durability (`tk pulse mode`):
   - Create, design create, and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
   - `tk sync` and `tk sync --scope S` commit that scope's allowlisted dirty files. `tk sync --all`, and a bare sync with no ambient scope, commits nothing
-  - Sync and claim refresh do not rebase when the checkout is already based on the fetched upstream
+  - Sync and claim refresh do not rebase when the checkout is already based on the fetched upstream. A strictly-behind checkout fast-forwards
+  - Diverged history merges. A conflict is field-merged and may pause the merge. `tk sync` resumes that pause. A rebase already in progress is still resumed
 - repo-driven: host git commit/push (no `tk sync`)
 - plain-files: no git step
 

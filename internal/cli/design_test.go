@@ -55,7 +55,7 @@ func TestDesignCreateListMarkMetaAndBoardIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if !strings.Contains(list, fullID+"\tdraft\tShape the queue\t"+path) {
+	if !strings.Contains(list, fullID+"\tdraft\tShape the queue\n") || strings.Contains(list, path) {
 		t.Fatalf("list = %q", list)
 	}
 	if _, _, err := run(t, app, "design", "ls"); err != nil {
@@ -80,15 +80,8 @@ func TestDesignCreateListMarkMetaAndBoardIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(def, fullID) {
-		t.Fatalf("default list must hide decomposed: %q", def)
-	}
-	all, _, err := run(t, app, "design", "list", "--all")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(all, fullID+"\tdecomposed\t") {
-		t.Fatalf("--all = %q", all)
+	if !strings.Contains(def, fullID+"\tdecomposed\t") {
+		t.Fatalf("list = %q", def)
 	}
 
 	_, _, err = run(t, app, "design", "mark", "todo", fullID)
@@ -178,11 +171,14 @@ func TestDesignListSortAndMissingDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := lines(list)
-	if len(rows) != 3 {
+	if len(rows) != 4 {
 		t.Fatalf("default rows = %q", list)
 	}
-	if !strings.HasPrefix(rows[0], "wc-de34\t") || !strings.HasPrefix(rows[1], "wc-gh56\t") || !strings.HasPrefix(rows[2], "wc-ab2c\t") {
-		t.Fatalf("sort = %q", list)
+	want := []string{"wc-de34\t", "wc-gh56\t", "wc-ab2c\t", "wc-jk89\t"}
+	for i, prefix := range want {
+		if !strings.HasPrefix(rows[i], prefix) {
+			t.Fatalf("row %d = %q, list %q", i, rows[i], list)
+		}
 	}
 	filtered, _, err := run(t, app, "design", "list", "superseded")
 	if err != nil {
@@ -193,7 +189,7 @@ func TestDesignListSortAndMissingDir(t *testing.T) {
 	}
 }
 
-func TestDesignUnknownStatusOnAllAndDoctor(t *testing.T) {
+func TestDesignListShowsUnknownStatusAndDoctor(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	t.Setenv("TK_SCOPE", "wc")
@@ -205,20 +201,12 @@ func TestDesignUnknownStatusOnAllAndDoctor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(def, "wc-de34") || strings.Contains(def, "wc-ab2c") || strings.Contains(def, "wc-gh56") {
-		t.Fatalf("default list = %q", def)
-	}
-
-	all, _, err := run(t, app, "design", "list", "--all")
-	if err != nil {
-		t.Fatal(err)
-	}
-	rows := lines(all)
+	rows := lines(def)
 	if len(rows) != 3 ||
-		!strings.HasPrefix(rows[0], "wc-ab2c\tpublished\t") ||
-		!strings.HasPrefix(rows[1], "wc-de34\tdraft\t") ||
-		!strings.HasPrefix(rows[2], "wc-gh56\tsuperseded\t") {
-		t.Fatalf("--all = %q", all)
+		!strings.HasPrefix(rows[0], "wc-de34\tdraft\t") ||
+		!strings.HasPrefix(rows[1], "wc-gh56\tsuperseded\t") ||
+		!strings.HasPrefix(rows[2], "wc-ab2c\tpublished\t") {
+		t.Fatalf("list = %q", def)
 	}
 
 	doc, errOut, err := run(t, app, "doctor")
@@ -264,7 +252,7 @@ func TestDesignListUnknownStatusExitsUsage(t *testing.T) {
 	}{
 		{[]string{"design", "list", "bogus"}, "bogus"},
 		{[]string{"design", "list", "draft", "nosuch"}, "nosuch"},
-		{[]string{"design", "list", "--all", "published"}, "published"},
+		{[]string{"design", "list", "published"}, "published"},
 	}
 	for _, c := range cases {
 		out, _, err := run(t, app, c.args...)
@@ -286,27 +274,48 @@ func TestDesignListUnknownStatusExitsUsage(t *testing.T) {
 	}
 }
 
-func TestDesignListSortsCreatedByInstant(t *testing.T) {
+func TestDesignListSortsByStatusThenChanged(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	t.Setenv("TK_SCOPE", "wc")
-	writeDesign(t, dir, "wc-ab2c", "utc", "draft", "2026-01-01T00:00:00Z", "UTC")
-	writeDesign(t, dir, "wc-de34", "offset", "draft", "2026-01-01T08:00:00+10:00", "Offset")
-	writeDesign(t, dir, "wc-gh56", "same", "draft", "2026-01-01T10:00:00+10:00", "Same")
-	writeDesign(t, dir, "wc-jk89", "bad", "draft", "yesterday", "Bad")
+	writeDesignChanged(t, dir, "wc-ab2c", "utc", "draft", "2026-01-01T00:00:00Z", "UTC")
+	writeDesignChanged(t, dir, "wc-de34", "offset", "draft", "2026-01-01T08:00:00+10:00", "Offset")
+	writeDesignChanged(t, dir, "wc-gh56", "same", "draft", "2026-01-01T10:00:00+10:00", "Same")
+	writeDesignChanged(t, dir, "wc-jk89", "bad", "draft", "yesterday", "Bad")
+	writeDesignChanged(t, dir, "wc-mn9p", "bare", "draft", "", "Bare")
+	writeDesignChanged(t, dir, "wc-qr2s", "accepted", "accepted", "2026-12-01T00:00:00Z", "Accepted")
+	writeDesignChanged(t, dir, "wc-st67", "hold", "hold", "2026-12-01T00:00:00Z", "Hold")
+	writeDesignChanged(t, dir, "wc-uv4w", "parked", "parked", "2026-01-01T00:00:00Z", "Parked")
 
 	list, _, err := run(t, app, "design", "list")
 	if err != nil {
 		t.Fatal(err)
 	}
 	rows := lines(list)
-	if len(rows) != 4 {
+	want := []string{"wc-ab2c\t", "wc-gh56\t", "wc-de34\t", "wc-jk89\t", "wc-mn9p\t", "wc-qr2s\t", "wc-st67\t", "wc-uv4w\t"}
+	if len(rows) != len(want) {
 		t.Fatalf("rows = %q", list)
 	}
-	want := []string{"wc-jk89\t", "wc-de34\t", "wc-ab2c\t", "wc-gh56\t"}
 	for i, prefix := range want {
 		if !strings.HasPrefix(rows[i], prefix) {
 			t.Fatalf("row %d = %q, list %q", i, rows[i], list)
+		}
+	}
+
+	narrow, _, err := run(t, app, "design", "list", "draft", "accepted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(narrow, "wc-st67") || strings.Contains(narrow, "wc-uv4w") {
+		t.Fatalf("positionals = %q", narrow)
+	}
+	narrowRows := lines(narrow)
+	if len(narrowRows) != 6 {
+		t.Fatalf("positionals = %q", narrow)
+	}
+	for i, prefix := range want[:6] {
+		if !strings.HasPrefix(narrowRows[i], prefix) {
+			t.Fatalf("narrow row %d = %q, list %q", i, narrowRows[i], narrow)
 		}
 	}
 }
@@ -1085,11 +1094,25 @@ func designIDFromPath(t *testing.T, path string) string {
 
 func writeDesign(t *testing.T, dir, id, slug, status, created, heading string) {
 	t.Helper()
+	writeDesignFile(t, dir, id, slug, status, "", created, heading)
+}
+
+func writeDesignChanged(t *testing.T, dir, id, slug, status, changed, heading string) {
+	t.Helper()
+	writeDesignFile(t, dir, id, slug, status, changed, "2026-01-01T00:00:00Z", heading)
+}
+
+func writeDesignFile(t *testing.T, dir, id, slug, status, changed, created, heading string) {
+	t.Helper()
 	target := filepath.Join(dir, "design")
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "---\nid: " + id + "\nstatus: " + status + "\ncreated: " + created + "\n---\n# " + heading + "\n"
+	changedLine := ""
+	if changed != "" {
+		changedLine = "changed: " + changed + "\n"
+	}
+	body := "---\nid: " + id + "\nstatus: " + status + "\n" + changedLine + "created: " + created + "\n---\n# " + heading + "\n"
 	if err := os.WriteFile(filepath.Join(target, id+"-"+slug+".md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -198,6 +198,33 @@ func AuthorDate(ctx context.Context, gitRoot, rev, path string) (time.Time, erro
 	return t, nil
 }
 
+// MergeSides resolves the two side revs of a paused merge: HEAD (stage :2) and
+// MERGE_HEAD (stage :3). Stage :2 is this checkout. Stage :3 is the fetched upstream.
+func MergeSides(ctx context.Context, gitRoot string) (head, mergeHead string, err error) {
+	h, err := run(ctx, gitRoot, "rev-parse", "HEAD")
+	if err != nil {
+		return "", "", err
+	}
+	mh, err := run(ctx, gitRoot, "rev-parse", "MERGE_HEAD")
+	if err != nil {
+		return "", "", err
+	}
+	return strings.TrimSpace(string(h)), strings.TrimSpace(string(mh)), nil
+}
+
+// MergeBase returns the merge base of a and b.
+func MergeBase(ctx context.Context, gitRoot, a, b string) (string, error) {
+	out, err := run(ctx, gitRoot, "merge-base", a, b)
+	if err != nil {
+		return "", err
+	}
+	s := strings.TrimSpace(string(out))
+	if s == "" {
+		return "", fmt.Errorf("git merge-base: empty")
+	}
+	return s, nil
+}
+
 // RebaseSides resolves the two side revs of a paused rebase: HEAD (stage :2) and
 // REBASE_HEAD (stage :3). Mapping is inverted from everyday "ours"/"theirs" during rebase.
 func RebaseSides(ctx context.Context, gitRoot string) (head, rebaseHead string, err error) {
@@ -263,6 +290,27 @@ func CompareUpstream(ctx context.Context, gitRoot string) (UpstreamRelation, err
 // a fast-forward, or when local changes would be overwritten, and then leaves HEAD unmoved.
 func MergeFFOnly(ctx context.Context, gitRoot, upstream string) error {
 	return runEnv(ctx, gitRoot, nil, "merge", "--ff-only", upstream)
+}
+
+// Merge starts git merge --no-ff --no-edit <upstream>. paused is true when the
+// merge stopped with unmerged paths. A refusal before the merge starts returns
+// an error and leaves no MERGE_HEAD. --no-ff keeps a diverged merge from being
+// refused by merge.ff=only or by branch.<name>.mergeoptions --ff-only.
+func Merge(ctx context.Context, gitRoot, upstream string) (paused bool, err error) {
+	err = runEnv(ctx, gitRoot, editorEnv(), "merge", "--no-ff", "--no-edit", upstream)
+	if err == nil {
+		return false, nil
+	}
+	if MidMerge(ctx, gitRoot) && len(UnmergedFiles(ctx, gitRoot)) > 0 {
+		return true, nil
+	}
+	return false, err
+}
+
+// MergeCommit completes an in-progress merge by committing the index.
+// Unstaged paths stay out. It does not stage the worktree.
+func MergeCommit(ctx context.Context, gitRoot string) error {
+	return runEnv(ctx, gitRoot, editorEnv(), "commit", "--no-edit")
 }
 
 // Fetch updates remote-tracking refs (git fetch).

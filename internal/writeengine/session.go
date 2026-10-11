@@ -76,7 +76,7 @@ func (s *Session) Warnings() []string {
 	return s.Res.Warnings
 }
 
-// CheckMidRebase refuses auto-commit writes on a mid-rebase git-root.
+// CheckMidRebase refuses auto-commit writes on a mid-rebase or mid-merge git-root.
 func (s *Session) CheckMidRebase() error {
 	return gitstate.CheckMidRebase(ctxOf(s.deps), s.Scope, s.AutoCommit, s.Root, s.HasRoot)
 }

@@ -20,9 +20,11 @@ func newSyncCmd(app *App) *cobra.Command {
 		Long: "Sync fetches, then classifies the checkout against that upstream. When\n" +
 			"the checkout is already based on it, including equal, sync does not rebase.\n" +
 			"A strictly-behind checkout fast-forwards, keeping unrelated local edits.\n" +
-			"Diverged history rebases in place. `tk sync` and `tk sync --scope S` commit\n" +
-			"that scope's allowlisted dirty files: after the fast-forward, before a\n" +
-			"diverged rebase, or instead of a rebase when already based on upstream.\n" +
+			"Diverged history merges. A conflict is field-merged and may pause the merge;\n" +
+			"`tk sync` resumes that pause. A rebase already in progress is still resumed.\n" +
+			"`tk sync` and `tk sync --scope S` commit that scope's allowlisted dirty files:\n" +
+			"after the fast-forward, before a diverged merge, or on its own when the\n" +
+			"checkout is already based on upstream.\n" +
 			"`tk sync --all`, and a bare sync with no ambient scope, commits nothing and\n" +
 			"still integrates and pushes each auto-commit root. --all wins over\n" +
 			"--scope/TK_SCOPE. Each root is an independent unit. It applies only to\n" +

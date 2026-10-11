@@ -17,13 +17,35 @@ func (c *capture) Out(string) {}
 
 func (c *capture) Err(line string) { c.err = append(c.err, line) }
 
+func TestOverwrittenPathsStopsBeforeTrailer(t *testing.T) {
+	merge := strings.Join([]string{
+		"git merge: error: Your local changes to the following files would be overwritten by merge:",
+		"\tmy file.txt",
+		"\to.txt",
+		"Merge with strategy ort failed.",
+	}, "\n")
+	if got, want := strings.Join(overwrittenPaths(merge), "\n"), "my file.txt\no.txt"; got != want {
+		t.Fatalf("merge paths =\n%s\nwant\n%s", got, want)
+	}
+
+	ff := strings.Join([]string{
+		"error: Your local changes to the following files would be overwritten by merge:",
+		"\twc/a.md",
+		"Please commit your changes or stash them before you merge.",
+		"Aborting",
+	}, "\n")
+	if got := overwrittenPaths(ff); len(got) != 1 || got[0] != "wc/a.md" {
+		t.Fatalf("fast-forward paths = %q", got)
+	}
+}
+
 func TestAmbiguousBasePausesInProse(t *testing.T) {
 	var rep capture
 	cont := applyDriverOutcome(&rep, rebasedriver.Outcome{
 		Path:          "wc/wc-ab2c-gamma.md",
 		Class:         rebasedriver.ClassAmbiguousBase,
 		AmbiguousBase: &rebasedriver.AmbiguousBase{ID: "wc-ab2c"},
-	}, &syncReport{})
+	}, &syncReport{}, pauseRebase)
 	if cont {
 		t.Fatal("ambiguous base must pause the sync")
 	}

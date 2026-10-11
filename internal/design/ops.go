@@ -56,12 +56,11 @@ type IDInput struct {
 	Content bool
 }
 
-// ListInput is one design list.
+// ListInput is one design list. Empty Statuses keeps every parsed design.
 type ListInput struct {
 	Scope    string
 	Dir      string
 	Statuses []string
-	All      bool
 }
 
 // MarkInput sets one design status. Now is the status-entry instant.
@@ -136,7 +135,7 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 
 // List prints design rows from the index after reconcile. A missing design/
 // directory is an empty result. A positional outside the closed status set is
-// a usage error before any row.
+// a usage error before any row. Empty statuses keep every parsed design.
 func List(deps Deps, in ListInput) (Result, error) {
 	for _, status := range in.Statuses {
 		if !KnownStatus(status) {
@@ -150,42 +149,66 @@ func List(deps Deps, in ListInput) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	var rows []Row
+	var kept []*index.Design
 	n := 0
 	for _, p := range indexed {
 		if p.ParseError {
 			n++
 			continue
 		}
-		if !listKeeps(p.Status, in.Statuses, in.All) {
+		if !listKeeps(p.Status, in.Statuses) {
 			continue
 		}
-		abs, err := absPath(p.Path)
-		if err != nil {
-			return Result{}, err
-		}
-		rows = append(rows, Row{
-			ID:      p.ID,
-			Status:  p.Status,
-			Title:   p.Title,
-			Path:    abs,
-			Created: p.Created,
-		})
+		kept = append(kept, p)
 	}
-	sort.Slice(rows, func(i, j int) bool {
-		if CreatedBefore(rows[i].Created, rows[j].Created) {
-			return true
-		}
-		if CreatedBefore(rows[j].Created, rows[i].Created) {
-			return false
-		}
-		return rows[i].ID < rows[j].ID
-	})
+	sort.Slice(kept, func(i, j int) bool { return ListBefore(kept[i], kept[j]) })
+	rows := make([]Row, 0, len(kept))
+	for _, p := range kept {
+		rows = append(rows, Row{ID: p.ID, Status: p.Status, Title: p.Title})
+	}
 	return Result{Rows: rows, Unparseable: n}, nil
 }
 
+// ListBefore reports whether a is listed before b. Order is catalogue status
+// (draft, accepted, decomposed, superseded, then any other status by name),
+// then changed descending, then id. A changed value that is not RFC3339 sorts
+// after every real instant.
+func ListBefore(a, b *index.Design) bool {
+	ra, rb := statusRank(a.Status), statusRank(b.Status)
+	if ra != rb {
+		return ra < rb
+	}
+	if ra == statusRankOther && a.Status != b.Status {
+		return a.Status < b.Status
+	}
+	if CreatedBefore(b.Changed, a.Changed) {
+		return true
+	}
+	if CreatedBefore(a.Changed, b.Changed) {
+		return false
+	}
+	return a.ID < b.ID
+}
+
+const statusRankOther = 4
+
+func statusRank(status string) int {
+	switch status {
+	case StatusDraft:
+		return 0
+	case StatusAccepted:
+		return 1
+	case StatusDecomposed:
+		return 2
+	case StatusSuperseded:
+		return 3
+	default:
+		return statusRankOther
+	}
+}
+
 // CreatedBefore reports whether a is older than b. A value that is not RFC3339
-// sorts first: not-newer-than-any, the same rule as collision keeper order.
+// is not newer than any instant, the same rule as collision keeper order.
 func CreatedBefore(a, b string) bool {
 	ta, aok := parseCreated(a)
 	tb, bok := parseCreated(b)
@@ -383,22 +406,18 @@ func MetaAddRemove(deps Deps, in MetaInput) (Result, error) {
 	return Result{ID: f.ID, Path: abs, SyncDisabled: disabled, SyncNeeded: needed}, nil
 }
 
-// listKeeps: positionals match the status string exactly. With none, draft and
-// accepted are the default, and --all keeps every other parsed status,
-// including one outside the closed set.
-func listKeeps(status string, filters []string, all bool) bool {
-	if len(filters) > 0 {
-		for _, f := range filters {
-			if f == status {
-				return true
-			}
-		}
-		return false
-	}
-	if all {
+// listKeeps: positionals match the status string exactly. With none, every
+// parsed status is kept, including one outside the closed set.
+func listKeeps(status string, filters []string) bool {
+	if len(filters) == 0 {
 		return true
 	}
-	return DefaultListed(status)
+	for _, f := range filters {
+		if f == status {
+			return true
+		}
+	}
+	return false
 }
 
 func mintUnused(taken map[string]struct{}, r io.Reader) (string, error) {

@@ -315,15 +315,16 @@ func TestClaimMidRebaseRefusesWithoutResume(t *testing.T) {
 		if strings.TrimSpace(out) != "" {
 			t.Errorf("%v: failed claim must not print a path, got %q", args, out)
 		}
-		if !strings.Contains(err.Error()+errOut, "mid-sync-conflict") {
-			t.Errorf("%v: want mid-sync-conflict, got err=%v stderr=%q", args, err, errOut)
+		msg := err.Error() + errOut
+		if !strings.Contains(msg, "checkout is mid-merge") || !strings.Contains(msg, b.clone) || !strings.Contains(msg, "wc/wc-ab2c-alpha.md") {
+			t.Errorf("%v: want mid-merge refusal naming scope, root, and file, got err=%v stderr=%q", args, err, errOut)
 		}
 		if st := fmStatus(t, mustSeedTicket(t, b.scopeDir())); st == "in-progress" {
 			t.Errorf("%v: must not write in-progress", args)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(b.clone, ".git", "rebase-merge")); err != nil {
-		t.Errorf("claim must not resume the rebase: %v", err)
+	if _, err := os.Stat(filepath.Join(b.clone, ".git", "MERGE_HEAD")); err != nil {
+		t.Errorf("claim must not resume the merge: %v", err)
 	}
 }
 

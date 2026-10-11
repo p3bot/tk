@@ -105,6 +105,35 @@ func TestCreateAndMarkStampChangedFromNow(t *testing.T) {
 	}
 }
 
+func TestListBefore(t *testing.T) {
+	newer := &index.Design{ID: "wc-cd3e", Status: "draft", Changed: "2026-06-01T00:00:00Z"}
+	older := &index.Design{ID: "wc-ab2c", Status: "draft", Changed: "2026-01-01T00:00:00Z"}
+	bare := &index.Design{ID: "wc-ef4g", Status: "draft"}
+	bad := &index.Design{ID: "wc-gh56", Status: "draft", Changed: "not-a-time"}
+	same := &index.Design{ID: "wc-jk78", Status: "draft", Changed: "2026-06-01T00:00:00Z"}
+	accepted := &index.Design{ID: "wc-mn9p", Status: "accepted", Changed: "2026-12-01T00:00:00Z"}
+	hold := &index.Design{ID: "wc-qr2s", Status: "hold", Changed: "2026-12-01T00:00:00Z"}
+	parked := &index.Design{ID: "wc-tu4v", Status: "parked", Changed: "2026-01-01T00:00:00Z"}
+	if !ListBefore(newer, older) || ListBefore(older, newer) {
+		t.Fatal("newer changed should lead the same status")
+	}
+	if !ListBefore(older, bare) || !ListBefore(older, bad) {
+		t.Fatal("a real changed instant should lead a missing or unparseable one")
+	}
+	if !ListBefore(newer, same) || ListBefore(same, newer) {
+		t.Fatal("equal changed should break ties by id")
+	}
+	if !ListBefore(older, accepted) || ListBefore(accepted, newer) {
+		t.Fatal("draft should lead accepted")
+	}
+	if !ListBefore(hold, parked) || ListBefore(parked, hold) {
+		t.Fatal("unknown statuses should clump by name after the catalogue")
+	}
+	if ListBefore(hold, accepted) {
+		t.Fatal("an unknown status should follow the catalogue")
+	}
+}
+
 func plainDeps(t *testing.T) (Deps, string) {
 	t.Helper()
 	db, err := index.Open(t.TempDir())

@@ -96,25 +96,24 @@ func newDesignEditCmd(app *App) *cobra.Command {
 
 func newDesignListCmd(app *App) *cobra.Command {
 	var scope string
-	var all bool
 	cmd := &cobra.Command{
-		Use:     "list [status...] [--scope S] [--all]",
+		Use:     "list [status...] [--scope S]",
 		Aliases: []string{"ls"},
 		Short:   "List design documents",
-		Long: "Print headerless TSV: id, status, title, path. Reads the design index after\n" +
-			"reconcile. Default rows are draft and accepted, sorted by created as an\n" +
-			"RFC3339 instant, then id. A created value that is not RFC3339 sorts first.\n" +
-			"--all includes every parsed design, including decomposed, superseded, and a\n" +
-			"status outside those four names. Status positionals replace that filter. A\n" +
-			"positional outside the four names exits 2. A missing design/ directory prints\n" +
-			"nothing and exits 0.",
+		Long: "Print headerless TSV: id, status, title. Reads the design index after\n" +
+			"reconcile. Rows are every parsed design, including decomposed, superseded,\n" +
+			"and a status outside those four names. Order is catalogue status (draft,\n" +
+			"accepted, decomposed, superseded, then any other status by name), then\n" +
+			"changed descending, then id. A changed value that is not RFC3339 sorts\n" +
+			"after every real instant. Status positionals replace that set. A positional\n" +
+			"outside the four names exits 2. A missing design/ directory prints nothing\n" +
+			"and exits 0.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			return runDesignList(app, c, scope, all, args)
+			return runDesignList(app, c, scope, args)
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", "", "scope (defaults to ambient)")
-	cmd.Flags().BoolVar(&all, "all", false, "every parsed design, including a status outside the four names")
 	return cmd
 }
 
@@ -307,7 +306,7 @@ func runDesignEdit(app *App, c *cobra.Command, idArg, scopeFlag string) error {
 	return runEditor(fields, res.Path)
 }
 
-func runDesignList(app *App, c *cobra.Command, scopeFlag string, all bool, statuses []string) error {
+func runDesignList(app *App, c *cobra.Command, scopeFlag string, statuses []string) error {
 	e, err := app.openEngine(c)
 	if err != nil {
 		return err
@@ -318,14 +317,14 @@ func runDesignList(app *App, c *cobra.Command, scopeFlag string, all bool, statu
 		return err
 	}
 	res, err := design.List(e.designDeps(c), design.ListInput{
-		Scope: resolved.Name, Dir: resolved.Entry.Dir, Statuses: statuses, All: all,
+		Scope: resolved.Name, Dir: resolved.Entry.Dir, Statuses: statuses,
 	})
 	if err != nil {
 		return mapDesignErr(err)
 	}
 	writeDesignParseCount(c, res.Unparseable)
 	for _, row := range res.Rows {
-		stdoutln(c, strings.Join([]string{row.ID, row.Status, row.Title, row.Path}, "\t"))
+		stdoutln(c, strings.Join([]string{row.ID, row.Status, row.Title}, "\t"))
 	}
 	return nil
 }

@@ -116,22 +116,33 @@ func HasUpstream(ctx context.Context, gitRoot string) bool {
 // probe errors return false so callers refuse only on affirmative true.
 func MidRebase(ctx context.Context, gitRoot string) bool {
 	for _, marker := range []string{"rebase-merge", "rebase-apply"} {
-		out, err := run(ctx, gitRoot, "rev-parse", "--git-path", marker)
-		if err != nil {
-			continue
-		}
-		p := strings.TrimSpace(string(out))
-		if p == "" {
-			continue
-		}
-		if !filepath.IsAbs(p) {
-			p = filepath.Join(gitRoot, p)
-		}
-		if _, err := os.Stat(p); err == nil {
+		if gitPathExists(ctx, gitRoot, marker) {
 			return true
 		}
 	}
 	return false
+}
+
+// MidMerge reports whether gitRoot has MERGE_HEAD set.
+// Probe errors return false so callers refuse only on affirmative true.
+func MidMerge(ctx context.Context, gitRoot string) bool {
+	return gitPathExists(ctx, gitRoot, "MERGE_HEAD")
+}
+
+func gitPathExists(ctx context.Context, gitRoot, name string) bool {
+	out, err := run(ctx, gitRoot, "rev-parse", "--git-path", name)
+	if err != nil {
+		return false
+	}
+	p := strings.TrimSpace(string(out))
+	if p == "" {
+		return false
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(gitRoot, p)
+	}
+	_, err = os.Stat(p)
+	return err == nil
 }
 
 // UnmergedFiles lists repo-relative paths currently unmerged (diff-filter=U).

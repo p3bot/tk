@@ -13,7 +13,7 @@ func newRepairCmd(app *App) *cobra.Command {
 		Short: "Repair integrity issues across scopes",
 		Long: "Repair id collisions, mismatched id prefixes, equal order keys, and archive\n" +
 			"layout drift. Needs a scope (ambient, TK_SCOPE, or --all) and never mutates\n" +
-			"silently machine-wide. Refuses on a mid-rebase auto-commit git-root unless\n" +
+			"silently machine-wide. Refuses on a mid-rebase or mid-merge auto-commit git-root unless\n" +
 			"--all, which skips that root. --re-space-order also shortens a band of\n" +
 			"over-long order keys (additive; default classes still run). There is no\n" +
 			"--scope flag. Does not diagnose — run tk doctor afterwards for remaining issues.",

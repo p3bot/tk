@@ -175,7 +175,7 @@ func (s *Server) designsList(w http.ResponseWriter, r *http.Request) error {
 		listed = append(listed, p)
 	}
 	page.Hidden = hidden
-	sort.Slice(listed, func(i, j int) bool { return designLess(listed[i], listed[j]) })
+	sort.Slice(listed, func(i, j int) bool { return design.ListBefore(listed[i], listed[j]) })
 	sort.Slice(broken, func(i, j int) bool { return broken[i].ID < broken[j].ID })
 	for _, p := range listed {
 		row := designListRow{ID: p.ID, Status: p.Status, Title: p.Title, Href: designHref(p.ID)}
@@ -542,41 +542,4 @@ func designListed(status string, listed bool) bool {
 		return design.DefaultListed(status)
 	}
 	return true
-}
-
-// designLess is the designs page order: catalogue status, then changed
-// descending, then id. A changed value that is not RFC3339 sorts after every
-// real instant. tk design list keeps created-then-id.
-func designLess(a, b *index.Design) bool {
-	ra, rb := designStatusRank(a.Status), designStatusRank(b.Status)
-	if ra != rb {
-		return ra < rb
-	}
-	if ra == designStatusOther && a.Status != b.Status {
-		return a.Status < b.Status
-	}
-	if design.CreatedBefore(b.Changed, a.Changed) {
-		return true
-	}
-	if design.CreatedBefore(a.Changed, b.Changed) {
-		return false
-	}
-	return a.ID < b.ID
-}
-
-const designStatusOther = 4
-
-func designStatusRank(status string) int {
-	switch status {
-	case design.StatusDraft:
-		return 0
-	case design.StatusAccepted:
-		return 1
-	case design.StatusDecomposed:
-		return 2
-	case design.StatusSuperseded:
-		return 3
-	default:
-		return designStatusOther
-	}
 }

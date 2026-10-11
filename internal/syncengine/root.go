@@ -28,6 +28,7 @@ type syncReport struct {
 	collidedIDs []string // add/add collided ids awaiting an edge_verify sweep
 	pushed      bool
 	unpushed    int
+	pause       pauseMode
 }
 
 // syncRoot isolates one git-root so --all continues past a bad sibling.
@@ -53,8 +54,24 @@ func syncRoot(deps Deps, r Reporter, t Target) rootOutcome {
 	}()
 
 	// A paused rebase is resumed before any scoped commit, so the commit does not land on the temporary HEAD.
+	// A paused merge is the same shape and is not converted into a rebase.
 	if git.MidRebase(ctx, t.Root) {
 		switch resumeRebase(deps, r, t, rep) {
+		case integrateCompleted:
+			if err := snapshot(deps, r, t, rep); err != nil {
+				r.Err(fmt.Sprintf("%s: snapshot failed: %v", rep.label, err))
+				return outcomeNeedsAttention
+			}
+			return finishSynced(deps, r, t, rep)
+		case integratePaused:
+			reportPaused(r, rep)
+			return outcomeNeedsAttention
+		default:
+			return outcomeNeedsAttention
+		}
+	}
+	if git.MidMerge(ctx, t.Root) {
+		switch resumeMerge(deps, r, t, rep) {
 		case integrateCompleted:
 			if err := snapshot(deps, r, t, rep); err != nil {
 				r.Err(fmt.Sprintf("%s: snapshot failed: %v", rep.label, err))
@@ -180,7 +197,11 @@ func drainEdgeVerify(deps Deps, r Reporter, rep *syncReport) error {
 }
 
 func reportPaused(r Reporter, rep *syncReport) {
-	r.Err(fmt.Sprintf("%s: rebase paused for a human — resolve the file(s) above in place, then run tk sync again", rep.label))
+	what := "rebase"
+	if rep.pause == pauseMerge {
+		what = "merge"
+	}
+	r.Err(fmt.Sprintf("%s: %s paused for a human — resolve the file(s) above in place, then run tk sync again", rep.label, what))
 }
 
 func reportSuccess(r Reporter, rep *syncReport) {

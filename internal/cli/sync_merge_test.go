@@ -188,7 +188,7 @@ func TestSyncGitignoreDeleteEditUnactionedThenRemove(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf(".gitignore delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
 	}
-	assertConfigDeleteEditHandoff(t, firstOut, "wc/.gitignore", true)
+	assertConfigDeleteEditHandoff(t, firstOut, "wc/.gitignore", "the fetched upstream", true)
 	if strings.Contains(firstOut, "resolve the conflict markers") {
 		t.Errorf("first pause must not use the markers line for a delete/edit, got %q", firstOut)
 	}
@@ -197,7 +197,7 @@ func TestSyncGitignoreDeleteEditUnactionedThenRemove(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("unactioned .gitignore re-run must stay paused, got %v (stderr %q)", err, secondOut)
 	}
-	assertConfigDeleteEditHandoff(t, secondOut, "wc/.gitignore", true)
+	assertConfigDeleteEditHandoff(t, secondOut, "wc/.gitignore", "the fetched upstream", true)
 	assertSameDeleteEditLine(t, firstOut, secondOut)
 	if remoteHas(t, remote, "wc/.gitignore") {
 		t.Errorf("unactioned re-run must not resurrect .gitignore on the remote")
@@ -299,7 +299,7 @@ func TestSyncCueDeleteEditKeepsTicketFailClosed(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("tk.cue delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
 	}
-	assertConfigDeleteEditHandoff(t, firstOut, "wc/tk.cue", false)
+	assertConfigDeleteEditHandoff(t, firstOut, "wc/tk.cue", "the fetched upstream", false)
 	if !strings.Contains(firstOut, "config_unparseable:") {
 		t.Errorf("tk.cue delete/edit should ride config_unparseable, got %q", firstOut)
 	}
@@ -311,7 +311,7 @@ func TestSyncCueDeleteEditKeepsTicketFailClosed(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("unactioned tk.cue re-run must stay paused, got %v (stderr %q)", err, secondOut)
 	}
-	assertConfigDeleteEditHandoff(t, secondOut, "wc/tk.cue", false)
+	assertConfigDeleteEditHandoff(t, secondOut, "wc/tk.cue", "the fetched upstream", false)
 	assertSameDeleteEditLine(t, firstOut, secondOut)
 	if !strings.Contains(secondOut, "not merged") || !strings.Contains(secondOut, "tk.cue is conflicted") {
 		t.Errorf("ticket pass must report schema fail-closed, got %q", secondOut)
@@ -322,7 +322,7 @@ func TestSyncCueDeleteEditKeepsTicketFailClosed(t *testing.T) {
 }
 
 // assertConfigDeleteEditHandoff checks a config-file delete/edit line: path, reader-term
-func assertConfigDeleteEditHandoff(t *testing.T, errOut, path string, threeWays bool) {
+func assertConfigDeleteEditHandoff(t *testing.T, errOut, path, deletedOn string, threeWays bool) {
 	t.Helper()
 	if !strings.Contains(errOut, "delete/edit") {
 		t.Errorf("expected delete/edit handoff, got %q", errOut)
@@ -333,9 +333,7 @@ func assertConfigDeleteEditHandoff(t *testing.T, errOut, path string, threeWays 
 	if strings.Contains(errOut, "resolve the conflict markers") {
 		t.Errorf("delete/edit must not use the markers line, got %q", errOut)
 	}
-	if !strings.Contains(errOut, "incoming side") && !strings.Contains(errOut, "this machine's replayed commit") {
-		t.Errorf("handoff must name the deleting side in reader terms, got %q", errOut)
-	}
+	assertDeletingSide(t, errOut, deletedOn)
 	if !strings.Contains(errOut, "git add") {
 		t.Errorf("handoff must name git add as a way out, got %q", errOut)
 	}

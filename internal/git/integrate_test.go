@@ -286,6 +286,156 @@ func TestRebaseAbortRestores(t *testing.T) {
 	}
 }
 
+func TestMergeKeepsUnrelatedDirty(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	repo := newRepo(t)
+	write(t, filepath.Join(repo, "f.txt"), "base\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCmd(t, repo, "commit", "-m", "base")
+	main := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+	gitCmd(t, repo, "checkout", "-b", "feature")
+	write(t, filepath.Join(repo, "f.txt"), "feature\n")
+	gitCmd(t, repo, "commit", "-am", "feature")
+	gitCmd(t, repo, "checkout", main)
+	write(t, filepath.Join(repo, "g.txt"), "main\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCmd(t, repo, "commit", "-m", "main")
+	gitCmd(t, repo, "checkout", "feature")
+	write(t, filepath.Join(repo, "other.txt"), "dirty\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCmd(t, repo, "commit", "-m", "other")
+	write(t, filepath.Join(repo, "other.txt"), "still dirty\n")
+
+	paused, err := Merge(ctx, repo, main)
+	if err != nil || paused {
+		t.Fatalf("clean merge must finish, paused=%v err=%v", paused, err)
+	}
+	if MidMerge(ctx, repo) || MidRebase(ctx, repo) {
+		t.Fatal("a finished merge must not stay mid-integrate")
+	}
+	got, err := os.ReadFile(filepath.Join(repo, "other.txt"))
+	if err != nil || string(got) != "still dirty\n" {
+		t.Fatalf("unrelated dirty bytes = %q err=%v", got, err)
+	}
+	st := gitOut(t, repo, "status", "--porcelain")
+	if !strings.Contains(st, "other.txt") {
+		t.Fatalf("unrelated file must stay unstaged, status %q", st)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git", "HEAD")); err != nil {
+		t.Fatal(err)
+	}
+	second := gitOut(t, repo, "rev-parse", "--verify", "HEAD^2")
+	if second == "" {
+		t.Fatal("merge commit must have two parents")
+	}
+}
+
+func TestMergeOverridesFastForwardOnly(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	repo := newRepo(t)
+	write(t, filepath.Join(repo, "base.txt"), "base\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCmd(t, repo, "commit", "-m", "base")
+	main := strings.TrimSpace(gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD"))
+	gitCmd(t, repo, "checkout", "-b", "feature")
+	write(t, filepath.Join(repo, "feature.txt"), "feature\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCmd(t, repo, "commit", "-m", "feature")
+	gitCmd(t, repo, "checkout", main)
+	write(t, filepath.Join(repo, "main.txt"), "main\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCmd(t, repo, "commit", "-m", "main")
+	gitCmd(t, repo, "checkout", "feature")
+	gitCmd(t, repo, "config", "merge.ff", "only")
+	gitCmd(t, repo, "config", "branch.feature.mergeoptions", "--ff-only")
+
+	paused, err := Merge(ctx, repo, main)
+	if err != nil || paused {
+		t.Fatalf("ff-only config must not block a diverged merge, paused=%v err=%v", paused, err)
+	}
+	if MidMerge(ctx, repo) {
+		t.Fatal("a finished merge must not leave MERGE_HEAD")
+	}
+	if strings.TrimSpace(gitOut(t, repo, "rev-parse", "--verify", "HEAD^2")) == "" {
+		t.Fatal("merge commit must have two parents")
+	}
+}
+
+func TestMergeRefusesOverlapBeforeStart(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	repo := newRepo(t)
+	path := filepath.Join(repo, "f.txt")
+	write(t, path, "base\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCmd(t, repo, "commit", "-m", "base")
+	main := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+	gitCmd(t, repo, "checkout", "-b", "feature")
+	write(t, path, "feature\n")
+	gitCmd(t, repo, "commit", "-am", "feature")
+	gitCmd(t, repo, "checkout", main)
+	write(t, path, "main\n")
+	gitCmd(t, repo, "commit", "-am", "main")
+	gitCmd(t, repo, "checkout", "feature")
+	write(t, path, "dirty\n")
+
+	paused, err := Merge(ctx, repo, main)
+	if err == nil || paused {
+		t.Fatalf("overlap must refuse before start, paused=%v err=%v", paused, err)
+	}
+	if MidMerge(ctx, repo) {
+		t.Fatal("refusal must not leave MERGE_HEAD")
+	}
+	got, errRead := os.ReadFile(path)
+	if errRead != nil || string(got) != "dirty\n" {
+		t.Fatalf("bytes = %q err=%v", got, errRead)
+	}
+}
+
+func TestMergeCommitLeavesUnstagedPathsOut(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	repo := newRepo(t)
+	path := filepath.Join(repo, "f.txt")
+	write(t, path, "base\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCmd(t, repo, "commit", "-m", "base")
+	main := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+	gitCmd(t, repo, "checkout", "-b", "feature")
+	write(t, path, "feature\n")
+	gitCmd(t, repo, "commit", "-am", "feature")
+	gitCmd(t, repo, "checkout", main)
+	write(t, path, "main\n")
+	gitCmd(t, repo, "commit", "-am", "main")
+	gitCmd(t, repo, "checkout", "feature")
+
+	paused, err := Merge(ctx, repo, main)
+	if err != nil || !paused {
+		t.Fatalf("merge must pause, paused=%v err=%v", paused, err)
+	}
+	write(t, filepath.Join(repo, "other.txt"), "side\n")
+	gitCmd(t, repo, "add", "other.txt")
+	gitCmd(t, repo, "reset", "HEAD", "--", "other.txt")
+	write(t, path, "resolved\n")
+	gitCmd(t, repo, "add", "f.txt")
+	if err := MergeCommit(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
+	if MidMerge(ctx, repo) {
+		t.Fatal("commit must finish the merge")
+	}
+	names := gitOut(t, repo, "show", "--name-only", "--pretty=format:", "HEAD")
+	if strings.Contains(names, "other.txt") {
+		t.Fatalf("unstaged path must stay out of the merge commit:\n%s", names)
+	}
+	if !strings.Contains(gitOut(t, repo, "status", "--porcelain"), "other.txt") {
+		t.Fatal("unstaged path must remain dirty")
+	}
+}
+
 func TestRebasePausesOnConflict(t *testing.T) {
 	requireGit(t)
 	ctx := context.Background()

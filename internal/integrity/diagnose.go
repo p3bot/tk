@@ -252,7 +252,7 @@ func (d *diagnoser) stale(p *index.Ticket) {
 	d.add(token.Line(tok, fmt.Sprintf("%s %s %s (%s) — inspect", p.ID, how, dwell.Round(time.Hour), p.Path)))
 }
 
-// statusConflictLine: mid-rebase tail only for known autoCommit; unknown autoCommit omits both tails.
+// statusConflictLine: sync tail when a known auto-commit root is mid-rebase or mid-merge; unknown autoCommit omits both tails.
 func (d *diagnoser) statusConflictLine(p *index.Ticket, dir string, autoCommit bool, autoCommitKnown bool) string {
 	disputed := strings.Join(p.StatusConflict, " vs ")
 	if !autoCommitKnown {
@@ -260,7 +260,7 @@ func (d *diagnoser) statusConflictLine(p *index.Ticket, dir string, autoCommit b
 	}
 	// Skip git lookup when not auto-commit — answer cannot change the line.
 	if autoCommit {
-		if root, ok := scopefile.GitRoot(dir); ok && git.MidRebase(d.deps.Ctx, root) {
+		if root, ok := scopefile.GitRoot(dir); ok && (git.MidRebase(d.deps.Ctx, root) || git.MidMerge(d.deps.Ctx, root)) {
 			return token.Line(token.StatusConflict, fmt.Sprintf("%s disputes %s (%s) — resolve in file, then tk sync", p.ID, disputed, p.Path))
 		}
 	}

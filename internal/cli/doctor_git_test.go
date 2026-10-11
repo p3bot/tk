@@ -148,6 +148,24 @@ func TestDoctorStatusConflictModesGateOnAutoCommit(t *testing.T) {
 	}
 }
 
+func TestDoctorStatusConflictMidMergeUsesSyncTail(t *testing.T) {
+	requireGit(t)
+	app := newApp(t)
+	t.Setenv("TK_SCOPE", "wc")
+	dir, repo := initGitScope(t, app, "wc", true)
+	addTicket(t, dir, "wc-ab2c", "x", "todo", "a0", "# X\n", false, "status_conflict: [done, cancelled]\n")
+	if err := os.WriteFile(filepath.Join(repo, ".git", "MERGE_HEAD"), []byte("0123456789abcdef0123456789abcdef01234567\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	if !strings.Contains(out, "resolve in file, then tk sync") {
+		t.Errorf("a paused merge must use the sync tail, got %q", out)
+	}
+}
+
 func TestDoctorAutoCommitMismatchVerdict(t *testing.T) {
 	requireGit(t)
 	cases := []struct {

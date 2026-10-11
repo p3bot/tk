@@ -146,11 +146,15 @@ func repairPreflight(deps Deps, rep Reporter, scope, dir string, res *reconcile.
 	schema := res.Schema(scope)
 	t := &Target{Scope: scope, Dir: dir, Schema: schema, AutoCommit: schemaAutoCommit(schema)}
 	t.Root, t.HasRoot = scopefile.GitRoot(dir)
-	if t.AutoCommit && t.HasRoot && git.MidRebase(deps.Ctx, t.Root) {
+	if t.AutoCommit && t.HasRoot && (git.MidRebase(deps.Ctx, t.Root) || git.MidMerge(deps.Ctx, t.Root)) {
 		if !f.All {
 			return nil, midRebaseRefusal(deps.Ctx, scope, t.Root)
 		}
-		rep.Err(fmt.Sprintf("skipping %s: git-root %s is mid-rebase — resolve then re-run", scope, t.Root))
+		kind := "mid-rebase"
+		if git.MidMerge(deps.Ctx, t.Root) && !git.MidRebase(deps.Ctx, t.Root) {
+			kind = "mid-merge"
+		}
+		rep.Err(fmt.Sprintf("skipping %s: git-root %s is %s — resolve then re-run", scope, t.Root, kind))
 		return nil, nil
 	}
 	return t, nil
@@ -534,6 +538,9 @@ func midRebaseRefusal(ctx context.Context, scope, root string) error {
 	where := "the conflicted file"
 	if files := git.UnmergedFiles(ctx, root); len(files) > 0 {
 		where = strings.Join(files, ", ")
+	}
+	if git.MidMerge(ctx, root) && !git.MidRebase(ctx, root) {
+		return fmt.Errorf("%s checkout is mid-merge in shared repo %s — resolve %s then run tk sync before repairing", scope, root, where)
 	}
 	return fmt.Errorf("%s is mid-sync-conflict in shared repo %s — resolve %s then run tk sync before repairing", scope, root, where)
 }

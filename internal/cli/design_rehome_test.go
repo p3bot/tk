@@ -46,7 +46,7 @@ func TestDesignRehomePrintsDestAndStaysOffTheBoard(t *testing.T) {
 	if strings.Contains(list, "bar-ab2c") || !strings.Contains(list, "bar-zzzz") {
 		t.Fatalf("list = %q", list)
 	}
-	designs, _, err := run(t, app, "design", "list", "--scope", "bar", "--all")
+	designs, _, err := run(t, app, "design", "list", "--scope", "bar")
 	if err != nil {
 		t.Fatal(err)
 	}

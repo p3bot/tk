@@ -58,19 +58,17 @@ type conflictItem struct {
 }
 
 // fetchAndIntegrate fetches, classifies HEAD against @{u}, then fast-forwards,
-// rebases, or leaves the branch. snap commits SnapshotScope at the class's moment:
-// after a fast-forward, before a diverged rebase, and instead of a rebase when
-// the checkout is already based on upstream. snap false takes no snapshot (claim
+// merges, or leaves the branch. snap commits SnapshotScope at the class's moment:
+// after a fast-forward, before a diverged merge, or on its own when the
+// checkout is already based on upstream. snap false takes no snapshot (claim
 // refresh and the push-reject retry).
 //
-// Rebase only when both sides already have commits. A checkout already based on
-// upstream, including equal, is a push: git rebase refuses to start while any
-// tracked file is dirty, so another scope's unsaved file would block an update
-// that replays nothing. Do not commit the named scope before a fast-forward
-// either, including when the fast-forward refuses an overwrite. That commit
-// turns a strictly-behind checkout into a diverged one, and the rebase then
-// refuses because of the other scope's dirty file. Leave HEAD unmoved and
-// commit nothing.
+// Merge when both sides already have commits. A checkout already based on
+// upstream, including equal, is a push. Do not commit the named scope before a
+// fast-forward, including when the fast-forward refuses an overwrite. That
+// commit turns a strictly-behind checkout into a diverged one. Leave HEAD
+// unmoved and commit nothing. A merge that refuses before it starts does not
+// roll back a snapshot this run already made.
 func fetchAndIntegrate(deps Deps, r Reporter, t Target, rep *syncReport, snap bool) integrateResult {
 	ctx := deps.Ctx
 	if err := git.Fetch(ctx, t.Root); err != nil {
@@ -94,7 +92,7 @@ func fetchAndIntegrate(deps Deps, r Reporter, t Target, rep *syncReport, snap bo
 		if res := snapshotThen(deps, r, t, rep, snap, integrateCompleted); res != integrateCompleted {
 			return res
 		}
-		return rebaseOntoUpstream(deps, r, t, rep)
+		return mergeOntoUpstream(deps, r, t, rep)
 	}
 }
 
@@ -140,75 +138,98 @@ func fastForward(deps Deps, r Reporter, t Target, rep *syncReport) error {
 	return err
 }
 
-func rebaseOntoUpstream(deps Deps, r Reporter, t Target, rep *syncReport) integrateResult {
+// pauseMode selects stage orientation and how a finished stop continues.
+type pauseMode int
+
+const (
+	pauseRebase pauseMode = iota
+	pauseMerge
+)
+
+func mergeOntoUpstream(deps Deps, r Reporter, t Target, rep *syncReport) integrateResult {
 	ctx := deps.Ctx
-	paused, err := git.Rebase(ctx, t.Root, "@{u}")
+	// git merge writes a deleted worktree file back when upstream changed that path.
+	blocked, err := deletionsUpstreamWouldRestore(ctx, t.Root)
 	if err != nil {
-		if git.MidRebase(ctx, t.Root) {
-			if abortErr := git.RebaseAbort(ctx, t.Root); abortErr != nil {
-				r.Err(fmt.Sprintf("%s: rebase failed to start and could not abort: %v", rep.label, abortErr))
-			}
+		r.Err(fmt.Sprintf("%s: merge failed: %v", rep.label, err))
+		return integrateError
+	}
+	if len(blocked) > 0 {
+		reportMergeRefused(r, rep, blocked)
+		return integrateError
+	}
+	paused, err := git.Merge(ctx, t.Root, "@{u}")
+	if err != nil {
+		// A merge that already started is resumed by the next sync. Aborting it
+		// drops a resolution the commit did not get to record.
+		if git.MidMerge(ctx, t.Root) {
+			return failMerge(deps, r, t, rep, fmt.Errorf("merge failed: %w", err))
 		}
-		if rebaseBlockedByDirt(err) {
-			paths := rebaseBlockers(ctx, t.Root, err)
-			r.Err(fmt.Sprintf("%s: rebase did not start; dirty path blocks it:", rep.label))
-			if len(paths) == 0 {
-				r.Err(fmt.Sprintf("  %v", err))
-			}
-			for _, path := range paths {
-				r.Err("  " + path)
-			}
+		if paths := overwrittenPaths(err.Error()); len(paths) > 0 {
+			reportMergeRefused(r, rep, paths)
 			return integrateError
 		}
-		r.Err(fmt.Sprintf("%s: rebase failed: %v", rep.label, err))
+		r.Err(fmt.Sprintf("%s: merge failed: %v", rep.label, err))
 		return integrateError
 	}
 	if !paused {
 		return integrateCompleted
 	}
+	rep.pause = pauseMerge
+	return finishMergeDrive(deps, r, t, rep, false)
+}
+
+func reportMergeRefused(r Reporter, rep *syncReport, paths []string) {
+	r.Err(fmt.Sprintf("%s: merge did not start; local changes would be overwritten:", rep.label))
+	for _, path := range paths {
+		r.Err("  " + path)
+	}
+}
+
+// finishMergeDrive field-merges one merge stop and commits the index when every
+// conflict is staged. A handoff leaves MERGE_HEAD. An operational fault leaves
+// it too: the next sync commits a resolved index, or re-drives what is still unmerged.
+func finishMergeDrive(deps Deps, r Reporter, t Target, rep *syncReport, resume bool) integrateResult {
 	driver := newDriver(deps, t)
-	return runStops(deps, r, t, driver, rep, func() (bool, error) {
-		return driveStop(deps, r, t, driver, rep)
-	})
+	var allStaged bool
+	var err error
+	if resume {
+		allStaged, err = resolveResumeStop(deps, r, t, driver, rep, pauseMerge)
+	} else {
+		allStaged, err = driveStop(deps, r, t, driver, rep, pauseMerge)
+	}
+	if err != nil {
+		return failMerge(deps, r, t, rep, err)
+	}
+	if !allStaged {
+		rep.pause = pauseMerge
+		return integratePaused
+	}
+	if err := git.MergeCommit(deps.Ctx, t.Root); err != nil {
+		return failMerge(deps, r, t, rep, fmt.Errorf("merge commit failed: %w", err))
+	}
+	return integrateCompleted
 }
 
-func rebaseBlockedByDirt(err error) bool {
-	msg := err.Error()
-	return strings.Contains(msg, "cannot rebase") ||
-		strings.Contains(msg, "would be overwritten")
+func failMerge(deps Deps, r Reporter, t Target, rep *syncReport, err error) integrateResult {
+	r.Err(fmt.Sprintf("%s: %v", rep.label, err))
+	if git.MidMerge(deps.Ctx, t.Root) {
+		r.Err(fmt.Sprintf("%s: merge left in progress — run tk sync again", rep.label))
+	}
+	return integrateError
 }
 
-func rebaseBlockers(ctx context.Context, gitRoot string, cause error) []string {
-	seen := map[string]bool{}
-	var paths []string
-	add := func(path string) {
-		path = strings.TrimSpace(path)
-		if path == "" || seen[path] {
-			return
-		}
-		seen[path] = true
-		paths = append(paths, path)
-	}
-	for _, path := range overwrittenPaths(cause.Error()) {
-		add(path)
-	}
-	if strings.Contains(cause.Error(), "cannot rebase") {
-		entries, err := git.DirtyEntries(ctx, gitRoot, ".")
-		if err == nil {
-			for _, ent := range entries {
-				if ent.Code == "??" || ent.Code == "!!" {
-					continue
-				}
-				add(repoRel(gitRoot, ent.Path))
-			}
-		}
-	}
-	sort.Strings(paths)
-	return paths
+// resumeMerge continues a paused merge before any snapshot. It commits the index,
+// not a rebase continue.
+func resumeMerge(deps Deps, r Reporter, t Target, rep *syncReport) integrateResult {
+	rep.pause = pauseMerge
+	return finishMergeDrive(deps, r, t, rep, true)
 }
 
 // overwrittenPaths reads the path list git prints between a "would be overwritten"
-// line and the following instruction.
+// line and the following instruction. A fast-forward ends that list with
+// "Please" or "Aborting". A merge ends it with a strategy sentence, which is
+// not a path. A path may contain spaces; git does not quote those in this list.
 func overwrittenPaths(msg string) []string {
 	var paths []string
 	capture := false
@@ -221,8 +242,7 @@ func overwrittenPaths(msg string) []string {
 		if !capture {
 			continue
 		}
-		if trim == "" || strings.HasPrefix(trim, "Please ") || strings.HasPrefix(trim, "Aborting") ||
-			strings.HasPrefix(trim, "Updating") || strings.HasPrefix(trim, "error:") {
+		if trim == "" || overwriteTrailer(trim) {
 			capture = false
 			continue
 		}
@@ -231,16 +251,27 @@ func overwrittenPaths(msg string) []string {
 	return paths
 }
 
-// deletionsUpstreamWouldRestore lists worktree deletions that a fast-forward would write back.
-// That happens when @{u} still has the path and its tree entry differs from HEAD.
-// A same entry keeps the local deletion. A deletion upstream also made is absent
-// there, so the fast-forward leaves the file gone.
+// overwriteTrailer reports a line that ends the path list.
+func overwriteTrailer(line string) bool {
+	return strings.HasPrefix(line, "Please ") ||
+		strings.HasPrefix(line, "Aborting") ||
+		strings.HasPrefix(line, "Updating") ||
+		strings.HasPrefix(line, "error:") ||
+		strings.HasPrefix(line, "Merge with strategy")
+}
+
+// deletionsUpstreamWouldRestore lists worktree deletions an integrate would write back.
+// Upstream must still have the path, and that blob must differ from the merge base
+// (upstream changed it) and from HEAD (checking it out would replace this checkout's copy).
+// A fast-forward's merge base is HEAD, so the two comparisons agree.
+// A blob upstream left untouched keeps the local deletion. A deletion upstream also
+// made is absent there, so the integrate leaves the file gone.
 func deletionsUpstreamWouldRestore(ctx context.Context, gitRoot string) ([]string, error) {
 	entries, err := git.DirtyEntries(ctx, gitRoot, ".")
 	if err != nil {
 		return nil, err
 	}
-	var paths []string
+	var candidates []string
 	for _, ent := range entries {
 		if !worktreeGone(ent.Code) {
 			continue
@@ -253,11 +284,29 @@ func deletionsUpstreamWouldRestore(ctx context.Context, gitRoot string) ([]strin
 		if !present {
 			continue
 		}
-		changed, err := git.PathChanged(ctx, gitRoot, "HEAD", "@{u}", rel)
+		candidates = append(candidates, rel)
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	base, err := git.MergeBase(ctx, gitRoot, "HEAD", "@{u}")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, rel := range candidates {
+		upstreamChanged, err := git.PathChanged(ctx, gitRoot, base, "@{u}", rel)
 		if err != nil {
 			return nil, err
 		}
-		if changed {
+		if !upstreamChanged {
+			continue
+		}
+		differsFromHead, err := git.PathChanged(ctx, gitRoot, "HEAD", "@{u}", rel)
+		if err != nil {
+			return nil, err
+		}
+		if differsFromHead {
 			paths = append(paths, rel)
 		}
 	}
@@ -284,7 +333,7 @@ func repoRel(root, path string) string {
 func resumeRebase(deps Deps, r Reporter, t Target, rep *syncReport) integrateResult {
 	driver := newDriver(deps, t)
 	return runStops(deps, r, t, driver, rep, func() (bool, error) {
-		return resolveResumeStop(deps, r, t, driver, rep)
+		return resolveResumeStop(deps, r, t, driver, rep, pauseRebase)
 	})
 }
 
@@ -307,7 +356,7 @@ func runStops(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep 
 		if !paused {
 			return integrateCompleted
 		}
-		allStaged, err = driveStop(deps, r, t, driver, rep)
+		allStaged, err = driveStop(deps, r, t, driver, rep, pauseRebase)
 		if err != nil {
 			r.Err(fmt.Sprintf("%s: %v", rep.label, err))
 			return integrateError
@@ -316,7 +365,7 @@ func runStops(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep 
 }
 
 // driveStop: schema-before-data; only conflicted tk.cue fail-closes ticket .md.
-func driveStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep *syncReport) (bool, error) {
+func driveStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep *syncReport, mode pauseMode) (bool, error) {
 	ctx := deps.Ctx
 	items := classifyStop(ctx, t)
 	allStaged := true
@@ -333,23 +382,42 @@ func driveStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep
 		if err != nil {
 			return false, fmt.Errorf("enumerate conflict stages for %s: %w", it.path, err)
 		}
-		reportHumanConflict(r, it, configDeleteEditSide(stages))
+		reportHumanConflict(r, it, configDeleteEditSide(stages, mode))
 		allStaged = false
 	}
 
-	head, rebaseHead, err := git.RebaseSides(ctx, t.Root)
+	head, theirs, preImage, err := conflictSides(ctx, t.Root, mode)
 	if err != nil {
-		return false, fmt.Errorf("resolve rebase sides: %w", err)
+		return false, err
 	}
 	for _, it := range items {
 		if mdItemBlocked(r, it, schemaConflicted, &allStaged) {
 			continue
 		}
-		if err := driveMD(ctx, r, driver, it, head, rebaseHead, rep, &allStaged); err != nil {
+		if err := driveMD(ctx, r, driver, it, head, theirs, preImage, mode, rep, &allStaged); err != nil {
 			return false, err
 		}
 	}
 	return allStaged, nil
+}
+
+func conflictSides(ctx context.Context, root string, mode pauseMode) (head, theirs, preImage string, err error) {
+	if mode == pauseMerge {
+		head, theirs, err = git.MergeSides(ctx, root)
+		if err != nil {
+			return "", "", "", fmt.Errorf("resolve merge sides: %w", err)
+		}
+		preImage, err = git.MergeBase(ctx, root, head, theirs)
+		if err != nil {
+			return "", "", "", fmt.Errorf("merge base: %w", err)
+		}
+		return head, theirs, preImage, nil
+	}
+	head, theirs, err = git.RebaseSides(ctx, root)
+	if err != nil {
+		return "", "", "", fmt.Errorf("resolve rebase sides: %w", err)
+	}
+	return head, theirs, "", nil
 }
 
 // reportHumanConflict: first-loop kinds (schema, ignore, notes). config_unparseable only for tk.cue.
@@ -405,20 +473,20 @@ func mdItemBlocked(r Reporter, it conflictItem, schemaConflicted map[string]bool
 	return false
 }
 
-func driveMD(ctx context.Context, r Reporter, driver *rebasedriver.Driver, it conflictItem, head, rebaseHead string, rep *syncReport, allStaged *bool) error {
+func driveMD(ctx context.Context, r Reporter, driver *rebasedriver.Driver, it conflictItem, head, theirs, preImage string, mode pauseMode, rep *syncReport, allStaged *bool) error {
 	outcome, derr := driver.Resolve(ctx, rebasedriver.Conflict{
-		Path: it.path, ScopeDir: it.owner.Dir, OursRev: head, TheirsRev: rebaseHead,
+		Path: it.path, ScopeDir: it.owner.Dir, OursRev: head, TheirsRev: theirs, PreImage: preImage,
 	})
 	if derr != nil {
 		return derr
 	}
-	if !applyDriverOutcome(r, outcome, rep) {
+	if !applyDriverOutcome(r, outcome, rep, mode) {
 		*allStaged = false
 	}
 	return nil
 }
 
-func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep *syncReport) (bool, error) {
+func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Driver, rep *syncReport, mode pauseMode) (bool, error) {
 	ctx := deps.Ctx
 	items := classifyStop(ctx, t)
 	allStaged := true
@@ -444,7 +512,7 @@ func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Dri
 			if it.kind == kindSchema {
 				schemaConflicted[it.owner.Dir] = true
 			}
-			reportHumanConflict(r, it, configDeleteEditSide(stages))
+			reportHumanConflict(r, it, configDeleteEditSide(stages, mode))
 			allStaged = false
 			continue
 		}
@@ -461,9 +529,9 @@ func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Dri
 		}
 	}
 
-	head, rebaseHead, err := git.RebaseSides(ctx, t.Root)
+	head, theirs, preImage, err := conflictSides(ctx, t.Root, mode)
 	if err != nil {
-		return false, fmt.Errorf("resolve rebase sides: %w", err)
+		return false, err
 	}
 	for _, it := range items {
 		if mdItemBlocked(r, it, schemaConflicted, &allStaged) {
@@ -481,13 +549,13 @@ func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Dri
 			if acted {
 				continue
 			}
-			if err := driveMD(ctx, r, driver, it, head, rebaseHead, rep, &allStaged); err != nil {
+			if err := driveMD(ctx, r, driver, it, head, theirs, preImage, mode, rep, &allStaged); err != nil {
 				return false, err
 			}
 			continue
 		}
 		if FrontmatterHasMarkers(it.abs) {
-			if err := driveMD(ctx, r, driver, it, head, rebaseHead, rep, &allStaged); err != nil {
+			if err := driveMD(ctx, r, driver, it, head, theirs, preImage, mode, rep, &allStaged); err != nil {
 				return false, err
 			}
 			continue
@@ -498,6 +566,13 @@ func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Dri
 			allStaged = false
 			continue
 		}
+		// Markers left in the body are still a handoff. Re-driving would replace
+		// a partial edit with the stage blobs.
+		if fileHasConflictMarkers(it.abs) {
+			r.Err(fmt.Sprintf("body conflict: resolve the merge markers in the body of %s, then run tk sync", it.path))
+			allStaged = false
+			continue
+		}
 		if err := git.Add(ctx, t.Root, []string{it.path}); err != nil {
 			return false, fmt.Errorf("stage resolved %s: %w", it.path, err)
 		}
@@ -505,7 +580,7 @@ func resolveResumeStop(deps Deps, r Reporter, t Target, driver *rebasedriver.Dri
 	return allStaged, nil
 }
 
-func applyDriverOutcome(r Reporter, o rebasedriver.Outcome, rep *syncReport) bool {
+func applyDriverOutcome(r Reporter, o rebasedriver.Outcome, rep *syncReport, mode pauseMode) bool {
 	for _, w := range o.Warnings {
 		r.Err(w)
 	}
@@ -528,7 +603,7 @@ func applyDriverOutcome(r Reporter, o rebasedriver.Outcome, rep *syncReport) boo
 	case rebasedriver.ClassDeleteEdit:
 		r.Err(fmt.Sprintf(
 			"delete/edit conflict: %s was deleted on %s while the other side edited it (status %q) — remove %s, edit it, or git add it to keep as-is, then run tk sync",
-			o.Path, deleteEditStageLabel(sideToStage(o.DeleteEdit.Deleted)), o.DeleteEdit.SurvivingStatus, o.Path))
+			o.Path, deleteEditStageLabel(sideToStage(o.DeleteEdit.Deleted), mode), o.DeleteEdit.SurvivingStatus, o.Path))
 		return false
 	case rebasedriver.ClassFailClosed:
 		r.Err(token.Line(token.ConfigUnparseable, fmt.Sprintf(
@@ -622,15 +697,15 @@ func survivingStageNumber(s git.Stages) int {
 	return 3
 }
 
-func configDeleteEditSide(s git.Stages) string {
+func configDeleteEditSide(s git.Stages, mode pauseMode) string {
 	if !isDeleteEditStages(s) {
 		return ""
 	}
 	// Survivor present ⇒ the other stage deleted.
 	if s.Ours {
-		return deleteEditStageLabel(3)
+		return deleteEditStageLabel(3, mode)
 	}
-	return deleteEditStageLabel(2)
+	return deleteEditStageLabel(2, mode)
 }
 
 func sideToStage(s fmmerge.Side) int {
@@ -640,8 +715,21 @@ func sideToStage(s fmmerge.Side) int {
 	return 2
 }
 
-// deleteEditStageLabel: stage 2 = incoming upstream; stage 3 = local replay.
-func deleteEditStageLabel(stage int) string {
+// deleteEditStageLabel names the deleting stage.
+// A rebase inverts the sides: stage 2 is the incoming upstream and stage 3 is
+// the replayed local commit. A merge does not: stage 2 is this checkout and
+// stage 3 is the fetched upstream.
+func deleteEditStageLabel(stage int, mode pauseMode) string {
+	if mode == pauseMerge {
+		switch stage {
+		case 2:
+			return "this checkout"
+		case 3:
+			return "the fetched upstream"
+		default:
+			return fmt.Sprintf("stage %d", stage)
+		}
+	}
 	switch stage {
 	case 2:
 		return "the incoming side (fetched from the remote)"

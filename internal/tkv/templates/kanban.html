@@ -104,7 +104,7 @@
         {{if .MarkStatuses}}
         <div class="mark">
           <button type="button" class="status-menu" popovertarget="status-{{.ID}}" aria-haspopup="menu" aria-label="Status {{.ID}}, {{.Status}}"><span>{{.Status}}</span></button>
-          <form class="write" method="post" action="/scope/{{$.Name}}/mark" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var b=this.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true">
+          <form class="write" method="post" action="/scope/{{$.Name}}/mark" onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true})">
             <input type="hidden" name="id" value="{{.ID}}">
             {{template "boardReturn" $}}
             <div id="status-{{.ID}}" popover class="status-menu-list">

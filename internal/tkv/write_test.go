@@ -1500,8 +1500,8 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	if strings.Contains(todoCol, `<select`) || strings.Contains(todoCol, `onchange=`) {
 		t.Fatalf("kanban mark must not use a native select: %s", todoCol)
 	}
-	if !strings.Contains(todoCol, `onsubmit="if(this.dataset.submitted)return false;`) {
-		t.Fatalf("kanban mark missing double-submit guard: %s", todoCol)
+	if !strings.Contains(todoCol, `onsubmit="if(this.dataset.submitted)return false;this.dataset.submitted=1;var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true})"`) {
+		t.Fatalf("kanban mark must defer disabling the status submitter until after the payload is built: %s", todoCol)
 	}
 	if !strings.Contains(board, `class="card-tools"`) {
 		t.Fatalf("kanban card tools row missing: %s", board)

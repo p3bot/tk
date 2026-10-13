@@ -96,6 +96,7 @@ type ScopePulse struct {
 	InProgress int
 	Blocked    int
 	Draft      int
+	Triaged    int
 	Backlog    int
 	Done       int
 	Cancelled  int
@@ -144,6 +145,8 @@ FROM tickets WHERE scope = ? AND parse_error = 0`,
 			p.Blocked = n
 		case status.Draft:
 			p.Draft = n
+		case status.Triaged:
+			p.Triaged = n
 		case status.Backlog:
 			p.Backlog = n
 		}

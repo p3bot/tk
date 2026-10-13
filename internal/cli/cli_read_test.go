@@ -247,6 +247,7 @@ func TestNextSelectionAndBlocked(t *testing.T) {
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ab2c", "network", "todo", "a0", "# Network\n", false, "")
 	addTicket(t, dir, "wc-de34", "auth", "todo", "a1", "# Auth\n", false, "depends: [wc-ab2c]\n")
+	addTicket(t, dir, "wc-gh56", "ready", "triaged", "a0", "# Ready\n", false, "")
 
 	out, _, err := run(t, app, "next", "--scope", "wc")
 	if err != nil {

@@ -86,9 +86,9 @@ func TestPulseDashboardKeyOrderAndCounts(t *testing.T) {
 		t.Errorf("total = %q want 8 (all parseable tickets, not bare-list only)", p["total"])
 	}
 	if p["todo"] != "1" || p["review"] != "1" || p["in-progress"] != "1" ||
-		p["blocked"] != "1" || p["draft"] != "1" || p["backlog"] != "1" {
-		t.Errorf("working-board counts wrong: todo=%s review=%s in-progress=%s blocked=%s draft=%s backlog=%s",
-			p["todo"], p["review"], p["in-progress"], p["blocked"], p["draft"], p["backlog"])
+		p["blocked"] != "1" || p["draft"] != "1" || p["triaged"] != "0" || p["backlog"] != "1" {
+		t.Errorf("working-board counts wrong: todo=%s review=%s in-progress=%s blocked=%s draft=%s triaged=%s backlog=%s",
+			p["todo"], p["review"], p["in-progress"], p["blocked"], p["draft"], p["triaged"], p["backlog"])
 	}
 	if p["done"] != "1" || p["cancelled"] != "1" {
 		t.Errorf("terminal tallies wrong: done=%s cancelled=%s", p["done"], p["cancelled"])
@@ -730,6 +730,7 @@ func TestPulseDesignCounts(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
 	addTicket(t, dir, "wc-ae26", "draft", "draft", "a5", "# Ticket draft\n", false, "tags: [backend]\n")
+	addTicket(t, dir, "wc-af27", "ready", "triaged", "a6", "# Ready\n", false, "tags: [backend]\n")
 	writeDesign(t, dir, "wc-d2e3", "shape", "draft", "2026-01-01T00:00:00Z", "Draft design")
 	writeDesign(t, dir, "wc-d3e4", "split", "decomposed", "2026-01-02T00:00:00Z", "Split design")
 
@@ -748,6 +749,9 @@ func TestPulseDesignCounts(t *testing.T) {
 	p := parsePulse(out)
 	if p["draft"] != "1" {
 		t.Errorf("ticket draft = %q want 1 (design draft must not count)", p["draft"])
+	}
+	if p["triaged"] != "1" {
+		t.Errorf("triaged = %q want 1", p["triaged"])
 	}
 	if p["designs"] != "2" || p["design_draft"] != "1" || p["design_decomposed"] != "1" ||
 		p["design_accepted"] != "0" || p["design_superseded"] != "0" {
@@ -835,6 +839,9 @@ func TestPulseDesignCounts(t *testing.T) {
 	p = parsePulse(out)
 	if p["draft"] != "0" {
 		t.Errorf("frontend lens should hide the backend ticket draft, got %q", p["draft"])
+	}
+	if p["triaged"] != "0" {
+		t.Errorf("frontend lens should hide the backend triaged ticket, got %q", p["triaged"])
 	}
 	if p["designs"] != "5" || p["design_draft"] != "1" || p["design_decomposed"] != "1" ||
 		p["design_accepted"] != "1" || p["design_superseded"] != "1" {

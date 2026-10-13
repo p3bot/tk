@@ -20,6 +20,7 @@ const (
 // Built-in status names (immutable; may not be redeclared as custom statuses).
 const (
 	Draft      = "draft"
+	Triaged    = "triaged"
 	Backlog    = "backlog"
 	Todo       = "todo"
 	InProgress = "in-progress"
@@ -38,6 +39,7 @@ type builtin struct {
 
 var builtins = map[string]builtin{
 	Draft:      {category: CategoryActive, inDefaultList: true, nextEligible: false},
+	Triaged:    {category: CategoryActive, inDefaultList: true, nextEligible: false},
 	Backlog:    {category: CategoryBacklog, inDefaultList: false, nextEligible: false},
 	Todo:       {category: CategoryActive, inDefaultList: true, nextEligible: true},
 	InProgress: {category: CategoryActive, inDefaultList: true, nextEligible: false},
@@ -47,16 +49,16 @@ var builtins = map[string]builtin{
 	Cancelled:  {category: CategoryDone, inDefaultList: false, nextEligible: false},
 }
 
-var builtinOrder = []string{Draft, Backlog, Todo, InProgress, Review, Blocked, Done, Cancelled}
+var builtinOrder = []string{Draft, Triaged, Backlog, Todo, InProgress, Review, Blocked, Done, Cancelled}
 
-// Builtins returns the eight built-in status names in canonical order.
+// Builtins returns the nine built-in status names in canonical order.
 func Builtins() []string {
 	out := make([]string, len(builtinOrder))
 	copy(out, builtinOrder)
 	return out
 }
 
-// IsBuiltin reports whether name is one of the eight built-in statuses.
+// IsBuiltin reports whether name is one of the nine built-in statuses.
 func IsBuiltin(name string) bool {
 	_, ok := builtins[name]
 	return ok
@@ -140,7 +142,7 @@ func TerminalNames(custom map[string]Category) []string {
 }
 
 func namesWhere(custom map[string]Category, keep func(Category) bool) []string {
-	out := make([]string, 0, 8+len(custom))
+	out := make([]string, 0, len(builtinOrder)+len(custom))
 	for _, name := range builtinOrder {
 		if keep(builtins[name].category) {
 			out = append(out, name)

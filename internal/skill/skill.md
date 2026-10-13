@@ -24,7 +24,7 @@ description: >-
 - tk writes take a per-scope flock; prefer `tk next --claim` so agents do not collide
 - todo → in-progress (`next --claim` or `mark`) on a tk-driven root with an upstream refreshes that root and pushes; never host-push
 - Active files live at the scope dir root; terminal status moves them to archive/
-- Built-in statuses: draft, backlog, todo, in-progress, review, blocked, done, cancelled
+- Built-in statuses: draft, triaged, backlog, todo, in-progress, review, blocked, done, cancelled
 - The todo status is next-eligible
 - Manage ticket status through its states; MUST mark as done when completed
 

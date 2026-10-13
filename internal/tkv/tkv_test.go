@@ -467,12 +467,13 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	}
 	blPos := strings.Index(b, "<h2>blocked ")
 	dPos := strings.Index(b, "<h2>draft ")
+	gPos := strings.Index(b, "<h2>triaged ")
 	tPos := strings.Index(b, "<h2>todo ")
 	iPos := strings.Index(b, "<h2>in-progress ")
 	rPos := strings.Index(b, "<h2>review ")
-	if blPos < 0 || dPos < 0 || tPos < 0 || iPos < 0 || rPos < 0 ||
-		!(blPos < dPos && dPos < tPos && tPos < iPos && iPos < rPos) {
-		t.Fatalf("kanban column order want blocked draft todo in-progress review: %s", b)
+	if blPos < 0 || dPos < 0 || gPos < 0 || tPos < 0 || iPos < 0 || rPos < 0 ||
+		!(blPos < dPos && dPos < gPos && gPos < tPos && tPos < iPos && iPos < rPos) {
+		t.Fatalf("kanban column order want blocked draft triaged todo in-progress review: %s", b)
 	}
 	if strings.Contains(b, "<h2>backlog ") || strings.Contains(b, "<h2>done ") || strings.Contains(b, "<h2>cancelled ") {
 		t.Fatalf("default board showed backlog or archived columns: %s", b)
@@ -637,27 +638,27 @@ func htmlText(t *testing.T, s string) string {
 
 func TestKanbanColumns(t *testing.T) {
 	custom := map[string]status.Category{
-		"triaged": status.CategoryActive,
+		"checked": status.CategoryActive,
 		"icebox":  status.CategoryBacklog,
 		"shipped": status.CategoryDone,
 	}
 	got := kanbanColumns(custom, false, false, []string{"weird"})
-	want := []string{"blocked", "draft", "todo", "in-progress", "review", "triaged"}
+	want := []string{"blocked", "draft", "triaged", "todo", "in-progress", "review", "checked"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("default = %v want %v", got, want)
 	}
 	got = kanbanColumns(custom, true, false, nil)
-	want = []string{"backlog", "icebox", "blocked", "draft", "todo", "in-progress", "review", "triaged"}
+	want = []string{"backlog", "icebox", "blocked", "draft", "triaged", "todo", "in-progress", "review", "checked"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("backlog = %v want %v", got, want)
 	}
 	got = kanbanColumns(custom, false, true, nil)
-	want = []string{"blocked", "draft", "todo", "in-progress", "review", "triaged", "done", "cancelled", "shipped"}
+	want = []string{"blocked", "draft", "triaged", "todo", "in-progress", "review", "checked", "done", "cancelled", "shipped"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("archived = %v want %v", got, want)
 	}
 	got = kanbanColumns(custom, true, true, []string{"weird", "todo"})
-	want = []string{"backlog", "icebox", "blocked", "draft", "todo", "in-progress", "review", "triaged", "done", "cancelled", "shipped", "weird"}
+	want = []string{"backlog", "icebox", "blocked", "draft", "triaged", "todo", "in-progress", "review", "checked", "done", "cancelled", "shipped", "weird"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("both = %v want %v", got, want)
 	}
@@ -755,9 +756,11 @@ func TestKanbanNextRefreshesDependsTargetScope(t *testing.T) {
 func TestOverviewMatrixAndWorkingBars(t *testing.T) {
 	app := newTestApp(t)
 	aa := initScope(t, app, "aa")
+	tr := initScope(t, app, "tr")
 	wc := initScope(t, app, "wc")
 	zz := initScope(t, app, "zz")
 	addTicket(t, aa, "aa-ab2c", "later", "backlog", "a0", "# Later\n", false, "")
+	addTicket(t, tr, "tr-ab2c", "ready", "triaged", "a0", "# Ready\n", false, "")
 	addTicket(t, wc, "wc-ab2c", "one", "in-progress", "a0", "# One\n", false, "")
 	addTicket(t, wc, "wc-cd34", "two", "in-progress", "a1", "# Two\n", false, "")
 	addTicket(t, wc, "wc-ef56", "three", "todo", "a2", "# Three\n", false, "")
@@ -767,7 +770,7 @@ func TestOverviewMatrixAndWorkingBars(t *testing.T) {
 
 	body := do(s, "/").Body.String()
 	pos := -1
-	for _, h := range []string{"name", "mode", "backlog", "draft", "todo", "blocked", "in-progress", "review", "done", "cancelled", "total"} {
+	for _, h := range []string{"name", "mode", "backlog", "draft", "triaged", "todo", "blocked", "in-progress", "review", "done", "cancelled", "total"} {
 		i := strings.Index(body, "<th>"+h+"</th>")
 		if i < 0 || i <= pos {
 			t.Fatalf("header %s at %d after %d\n%s", h, i, pos, body)
@@ -779,18 +782,27 @@ func TestOverviewMatrixAndWorkingBars(t *testing.T) {
 			t.Fatalf("overview still has %s", gone)
 		}
 	}
-	if !strings.Contains(body, "<td><a href=\"/scope/wc\">wc</a></td>\n  <td>plain-files</td>\n  <td>0</td>\n  <td>0</td>\n  <td>1</td>\n  <td>0</td>\n  <td>2</td>\n  <td>0</td>\n  <td>1</td>\n  <td>0</td>\n  <td>4</td>") {
+	if !strings.Contains(body, "<td><a href=\"/scope/wc\">wc</a></td>\n  <td>plain-files</td>\n  <td>0</td>\n  <td>0</td>\n  <td>0</td>\n  <td>1</td>\n  <td>0</td>\n  <td>2</td>\n  <td>0</td>\n  <td>1</td>\n  <td>0</td>\n  <td>4</td>") {
 		t.Fatalf("wc matrix row:\n%s", body)
 	}
+	if !strings.Contains(body, "<td><a href=\"/scope/tr\">tr</a></td>\n  <td>plain-files</td>\n  <td>0</td>\n  <td>0</td>\n  <td>1</td>\n  <td>0</td>\n  <td>0</td>\n  <td>0</td>\n  <td>0</td>\n  <td>0</td>\n  <td>0</td>\n  <td>1</td>") {
+		t.Fatalf("tr matrix row:\n%s", body)
+	}
 	aaAt := strings.Index(body, `class="scope-mix-name">aa</span>`)
+	trAt := strings.Index(body, `class="scope-mix-name">tr</span>`)
 	wcAt := strings.Index(body, `class="scope-mix-name">wc</span>`)
 	zzAt := strings.Index(body, `class="scope-mix-name">zz</span>`)
-	if aaAt < 0 || wcAt < 0 || zzAt < 0 || !(aaAt < wcAt && wcAt < zzAt) {
-		t.Fatalf("bar order aa=%d wc=%d zz=%d", aaAt, wcAt, zzAt)
+	if aaAt < 0 || trAt < 0 || wcAt < 0 || zzAt < 0 || !(aaAt < trAt && trAt < wcAt && wcAt < zzAt) {
+		t.Fatalf("bar order aa=%d tr=%d wc=%d zz=%d", aaAt, trAt, wcAt, zzAt)
 	}
 	if !strings.Contains(body, `scope-mix-name">aa</span>`) ||
 		!strings.Contains(body, `style="width: 33.33%"><span class="scope-mix-seg status-backlog" style="flex-grow: 1"><span class="scope-mix-tip">backlog: 1</span>`) {
 		t.Fatalf("aa bar:\n%s", body)
+	}
+	trBar := body[trAt:wcAt]
+	if !strings.Contains(trBar, `style="width: 33.33%"`) ||
+		!strings.Contains(trBar, `status-triaged" style="flex-grow: 1"><span class="scope-mix-tip">triaged: 1</span>`) {
+		t.Fatalf("tr bar:\n%s", trBar)
 	}
 	wcBar := body[wcAt:zzAt]
 	if !strings.Contains(wcBar, `style="width: 100.00%"`) ||
@@ -809,6 +821,36 @@ func TestOverviewMatrixAndWorkingBars(t *testing.T) {
 	}
 	if strings.Contains(body, `scope-mix-tip">done:`) || strings.Contains(body, "status-done") {
 		t.Fatalf("done must stay out of the working bars:\n%s", body)
+	}
+}
+
+func TestWorkingSegsOrder(t *testing.T) {
+	segs := workingSegs(overviewRow{
+		Backlog: 1, Draft: 1, Triaged: 1, Todo: 1,
+		Blocked: 1, InProgress: 1, Review: 1,
+	})
+	got := make([]string, len(segs))
+	for i, seg := range segs {
+		got[i] = seg.Status
+		if seg.Count != 1 {
+			t.Errorf("seg %s count = %d want 1", seg.Status, seg.Count)
+		}
+	}
+	want := []string{
+		status.Backlog, status.Draft, status.Triaged, status.Todo,
+		status.Blocked, status.InProgress, status.Review,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("working segs = %v want %v", got, want)
+	}
+
+	partial := workingSegs(overviewRow{Draft: 2, Todo: 3})
+	got = make([]string, len(partial))
+	for i, seg := range partial {
+		got[i] = seg.Status
+	}
+	if !slices.Equal(got, []string{status.Draft, status.Todo}) {
+		t.Fatalf("zero triaged must not appear or reorder = %v", got)
 	}
 }
 

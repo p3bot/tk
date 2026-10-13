@@ -145,6 +145,7 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"missing autoCommit", `name: "wc"`},
 		{"autoCommit wrong type", `name: "wc"` + "\nautoCommit: \"yes\""},
 		{"redeclare builtin status", `name: "wc"` + "\nautoCommit: true\nstatuses: {done: {category: \"done\"}}"},
+		{"redeclare triaged", `name: "wc"` + "\nautoCommit: true\nstatuses: {triaged: {category: \"active\"}}"},
 		{"status bad category", `name: "wc"` + "\nautoCommit: true\nstatuses: {foo: {category: \"weird\"}}"},
 		{"status bad alphabet", `name: "wc"` + "\nautoCommit: true\nstatuses: {\"Foo\": {category: \"done\"}}"},
 		{"field shadows builtin", `name: "wc"` + "\nautoCommit: true\nfields: {status: {type: \"string\"}}"},

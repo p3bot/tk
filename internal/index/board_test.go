@@ -297,12 +297,12 @@ func TestBoardTicketsVisibility(t *testing.T) {
 func TestBoardTicketsCustomDefaultStatuses(t *testing.T) {
 	db := openTemp(t)
 	_ = db.UpsertTicket(proj("wc", "aa22", "todo", "a0"))
-	_ = db.UpsertTicket(proj("wc", "ab23", "triaged", "a1"))
+	_ = db.UpsertTicket(proj("wc", "ab23", "checked", "a1"))
 	_ = db.UpsertTicket(proj("wc", "ac24", "icebox", "a2"))
 	_ = db.UpsertTicket(proj("wc", "ad25", "shipped", "a3"))
 
 	custom := map[string]status.Category{
-		"triaged": status.CategoryActive,
+		"checked": status.CategoryActive,
 		"icebox":  status.CategoryBacklog,
 		"shipped": status.CategoryDone,
 	}
@@ -364,6 +364,7 @@ func TestNextCandidatesSQL(t *testing.T) {
 	_ = db.UpsertTicket(done)
 	review := proj("wc", "ac24", "review", "a2")
 	_ = db.UpsertTicket(review)
+	_ = db.UpsertTicket(proj("wc", "af27", "triaged", "a0"))
 	todo2 := proj("wc", "ad25", "todo", "a0")
 	_ = db.UpsertTicket(todo2)
 	pe := proj("wc", "ae26", "todo", "a3")

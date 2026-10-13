@@ -15,6 +15,7 @@
   <th>mode</th>
   <th>backlog</th>
   <th>draft</th>
+  <th>triaged</th>
   <th>todo</th>
   <th>blocked</th>
   <th>in-progress</th>
@@ -31,6 +32,7 @@
   <td>{{.Mode}}</td>
   <td>{{.Backlog}}</td>
   <td>{{.Draft}}</td>
+  <td>{{.Triaged}}</td>
   <td>{{.Todo}}</td>
   <td>{{.Blocked}}</td>
   <td>{{.InProgress}}</td>
@@ -40,10 +42,10 @@
   <td>{{.Total}}</td>
 </tr>
 {{if .Note}}
-<tr class="note"><td colspan="11">{{.Note}}</td></tr>
+<tr class="note"><td colspan="12">{{.Note}}</td></tr>
 {{end}}
 {{else}}
-<tr><td colspan="11" class="empty">No scopes registered.</td></tr>
+<tr><td colspan="12" class="empty">No scopes registered.</td></tr>
 {{end}}
 </tbody>
 </table>

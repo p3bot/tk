@@ -8,7 +8,7 @@
 {{template "chrome" .}}
 <main class="brief">
 <h1>brief</h1>
-<p class="lead">Drafts wait to be reviewed onto the board. Todo is the short queue. Done and cancelled stay off this page.</p>
+<p class="lead">Drafts wait to be triaged. Triaged waits to enter todo. Todo is the short queue. Done and cancelled stay off this page.</p>
 {{if not .Scope}}
 <p>Select a scope.</p>
 {{else}}
@@ -71,6 +71,26 @@
   </table>
   {{else}}
   <p class="empty">No drafts.</p>
+  {{end}}
+</section>
+
+<section aria-label="triaged">
+  <h2>Triaged</h2>
+  <p class="bound">Oldest first, by created. Waiting to enter todo.</p>
+  {{if .Triaged}}
+  <table class="overview">
+    <thead><tr><th>age</th><th>title</th></tr></thead>
+    <tbody>
+    {{range .Triaged}}
+      <tr>
+        <td>{{.Age}}</td>
+        <td><a href="{{.Href}}">{{.Title}}</a></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">No triaged tickets.</p>
   {{end}}
 </section>
 

@@ -9,14 +9,14 @@ func customCategories() map[string]Category {
 	return map[string]Category{
 		"shipped": CategoryDone,
 		"wontfix": CategoryDone,
-		"triaged": CategoryActive,
+		"checked": CategoryActive,
 		"icebox":  CategoryBacklog,
 	}
 }
 
 func TestBuiltins(t *testing.T) {
 	got := Builtins()
-	want := []string{Draft, Backlog, Todo, InProgress, Review, Blocked, Done, Cancelled}
+	want := []string{Draft, Triaged, Backlog, Todo, InProgress, Review, Blocked, Done, Cancelled}
 	if len(got) != len(want) {
 		t.Fatalf("Builtins() len = %d, want %d", len(got), len(want))
 	}
@@ -41,7 +41,7 @@ func TestIsTerminal(t *testing.T) {
 			t.Errorf("IsTerminal(%q) = false, want true", s)
 		}
 	}
-	nonTerminal := []string{Draft, Backlog, Todo, InProgress, Review, Blocked, "triaged", "icebox", "unknown"}
+	nonTerminal := []string{Draft, Triaged, Backlog, Todo, InProgress, Review, Blocked, "checked", "icebox", "unknown"}
 	for _, s := range nonTerminal {
 		if IsTerminal(s, custom) {
 			t.Errorf("IsTerminal(%q) = true, want false", s)
@@ -78,7 +78,7 @@ func TestIsNextEligible(t *testing.T) {
 	if !IsNextEligible(Todo) {
 		t.Error("IsNextEligible(todo) = false, want true")
 	}
-	for _, s := range []string{Draft, Backlog, InProgress, Review, Blocked, Done, Cancelled, "triaged"} {
+	for _, s := range []string{Draft, Triaged, Backlog, InProgress, Review, Blocked, Done, Cancelled, "checked"} {
 		if IsNextEligible(s) {
 			t.Errorf("IsNextEligible(%q) = true, want false (only todo is eligible)", s)
 		}
@@ -87,7 +87,7 @@ func TestIsNextEligible(t *testing.T) {
 
 func TestInDefaultList(t *testing.T) {
 	custom := customCategories()
-	shown := []string{Draft, Todo, InProgress, Review, Blocked, "triaged"}
+	shown := []string{Draft, Triaged, Todo, InProgress, Review, Blocked, "checked"}
 	for _, s := range shown {
 		if !InDefaultList(s, custom) {
 			t.Errorf("InDefaultList(%q) = false, want true", s)
@@ -103,7 +103,7 @@ func TestInDefaultList(t *testing.T) {
 
 func TestDefaultListNames(t *testing.T) {
 	got := DefaultListNames(customCategories())
-	want := []string{Draft, Todo, InProgress, Review, Blocked, "triaged"}
+	want := []string{Draft, Triaged, Todo, InProgress, Review, Blocked, "checked"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("DefaultListNames = %v, want %v", got, want)
 	}
@@ -111,7 +111,7 @@ func TestDefaultListNames(t *testing.T) {
 
 func TestNonTerminalNames(t *testing.T) {
 	got := NonTerminalNames(customCategories())
-	want := []string{Draft, Backlog, Todo, InProgress, Review, Blocked, "icebox", "triaged"}
+	want := []string{Draft, Triaged, Backlog, Todo, InProgress, Review, Blocked, "checked", "icebox"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("NonTerminalNames = %v, want %v", got, want)
 	}
@@ -141,7 +141,7 @@ func TestTerminalNames(t *testing.T) {
 func TestCategoryOf(t *testing.T) {
 	custom := customCategories()
 	cases := map[string]Category{
-		Draft: CategoryActive, Backlog: CategoryBacklog, Todo: CategoryActive,
+		Draft: CategoryActive, Triaged: CategoryActive, Backlog: CategoryBacklog, Todo: CategoryActive,
 		Done: CategoryDone, Cancelled: CategoryDone, "shipped": CategoryDone, "icebox": CategoryBacklog,
 	}
 	for name, want := range cases {

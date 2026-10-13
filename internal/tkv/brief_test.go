@@ -16,6 +16,8 @@ func TestBriefScope(t *testing.T) {
 	addTicket(t, dir, "wc-ef4g", "doing", "in-progress", "a2", "# Doing\n", false, "tags: [layout]\n")
 	addTicket(t, dir, "wc-gh56", "stuck", "blocked", "a3", "# Stuck\n", false, "")
 	addTicket(t, dir, "wc-jk78", "queued", "todo", "a4", "# Queued\n", false, "tags: [layout]\n")
+	writeBriefTicket(t, dir, "wc-bc3d", "old-ready", "triaged", "a9", "2026-02-01T00:00:00Z", "# Old ready\n", "")
+	writeBriefTicket(t, dir, "wc-de4f", "new-ready", "triaged", "b0", "2026-07-01T00:00:00Z", "# New ready\n", "")
 	addTicket(t, dir, "wc-mn9p", "finished", "done", "a5", "# Finished\n", true, "tags: [layout]\n")
 	addTicket(t, dir, "wc-qr2s", "needs-done", "todo", "a6", "# Needs done\n", false, "depends: [wc-mn9p]\n")
 	addTicket(t, dir, "wc-tu4v", "needs-draft", "todo", "a7", "# Needs draft\n", false, "depends: [wc-ab2c]\n")
@@ -35,6 +37,24 @@ func TestBriefScope(t *testing.T) {
 	newAt := strings.Index(body, "New draft")
 	if oldAt < 0 || newAt < 0 || oldAt > newAt {
 		t.Fatalf("drafts should be oldest first:\n%s", body)
+	}
+	ready := sectionText(t, body, "triaged")
+	oldReady := strings.Index(ready, "Old ready")
+	newReady := strings.Index(ready, "New ready")
+	if oldReady < 0 || newReady < 0 || oldReady > newReady {
+		t.Fatalf("triaged should be oldest first:\n%s", ready)
+	}
+	now := sectionText(t, body, "now")
+	drafts := sectionText(t, body, "drafts")
+	if strings.Contains(now, "Old ready") || strings.Contains(now, "New ready") ||
+		strings.Contains(drafts, "Old ready") || strings.Contains(drafts, "New ready") {
+		t.Fatalf("triaged ticket leaked into now or drafts:\n%s", body)
+	}
+	if !strings.Contains(body, "Drafts wait to be triaged.") || !strings.Contains(body, "Triaged waits to enter todo.") {
+		t.Fatalf("lead: %s", body)
+	}
+	if strings.Index(body, `aria-label="drafts"`) > strings.Index(body, `aria-label="triaged"`) {
+		t.Fatalf("triaged section should follow drafts:\n%s", body)
 	}
 	if strings.Contains(body, "Finished") || strings.Contains(body, "Shipped") {
 		t.Fatalf("done ticket leaked onto the brief: %s", body)
@@ -68,13 +88,14 @@ func TestBriefCustomStatuses(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
 	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(
-		"name: \"wc\"\nautoCommit: false\nstatuses: {\n  qa: { category: \"active\" }\n  triaged: { category: \"active\" }\n  icebox: { category: \"backlog\" }\n  shipped: { category: \"done\" }\n}\n",
+		"name: \"wc\"\nautoCommit: false\nstatuses: {\n  qa: { category: \"active\" }\n  vetted: { category: \"active\" }\n  icebox: { category: \"backlog\" }\n  shipped: { category: \"done\" }\n}\n",
 	), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	addTicket(t, dir, "wc-ab2c", "doing", "in-progress", "a0", "# Doing\n", false, "")
 	addTicket(t, dir, "wc-cd3e", "queue", "qa", "a1", "# Queue check\n", false, "")
-	addTicket(t, dir, "wc-ef4g", "check", "triaged", "a2", "# Check layout\n", false, "")
+	addTicket(t, dir, "wc-ef4g", "check", "vetted", "a2", "# Check layout\n", false, "")
+	addTicket(t, dir, "wc-qr2s", "ready", "triaged", "a6", "# Ready soon\n", false, "")
 	addTicket(t, dir, "wc-gh56", "later", "icebox", "a3", "# Later\n", false, "")
 	addTicket(t, dir, "wc-jk78", "gone", "shipped", "a4", "# Gone\n", true, "")
 	addTicket(t, dir, "wc-mn9p", "odd", "weird", "a5", "# Odd\n", false, "")
@@ -84,12 +105,20 @@ func TestBriefCustomStatuses(t *testing.T) {
 	now := sectionText(t, body, "now")
 	doing := strings.Index(now, "Doing")
 	qa := strings.Index(now, "Queue check")
-	triaged := strings.Index(now, "Check layout")
-	if doing < 0 || qa < doing || triaged < qa {
+	vetted := strings.Index(now, "Check layout")
+	if doing < 0 || qa < doing || vetted < qa {
 		t.Fatalf("now order: %s", now)
 	}
-	if strings.Contains(now, "Later") || strings.Contains(now, "Gone") || strings.Contains(now, "Odd") || strings.Contains(now, "todo.") {
+	if strings.Contains(now, "Ready soon") || strings.Contains(now, "Later") || strings.Contains(now, "Gone") || strings.Contains(now, "Odd") || strings.Contains(now, "todo.") {
 		t.Fatalf("now mixed in other buckets: %s", now)
+	}
+	triaged := sectionText(t, body, "triaged")
+	if !strings.Contains(triaged, "Ready soon") || strings.Contains(triaged, "Check layout") {
+		t.Fatalf("triaged section: %s", triaged)
+	}
+	if strings.Index(body, `aria-label="drafts"`) > strings.Index(body, `aria-label="triaged"`) ||
+		strings.Index(body, `aria-label="triaged"`) > strings.Index(body, `aria-label="backlog"`) {
+		t.Fatalf("section order drafts, triaged, backlog:\n%s", body)
 	}
 	backlog := sectionText(t, body, "backlog")
 	if !strings.Contains(backlog, "Later") || strings.Contains(backlog, "Gone") {

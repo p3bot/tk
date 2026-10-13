@@ -43,6 +43,7 @@ type overviewRow struct {
 	Blocked    int
 	Review     int
 	Draft      int
+	Triaged    int
 	Backlog    int
 	Done       int
 	Cancelled  int
@@ -146,6 +147,7 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 	row.Blocked = pulse.Blocked
 	row.Review = pulse.Review
 	row.Draft = pulse.Draft
+	row.Triaged = pulse.Triaged
 	row.Backlog = pulse.Backlog
 	row.Done = pulse.Done
 	row.Cancelled = pulse.Cancelled
@@ -164,14 +166,14 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 	return row, nil
 }
 
-// mixBars stacks backlog, draft, todo, blocked, in-progress, and review.
+// mixBars stacks backlog, draft, triaged, todo, blocked, in-progress, and review.
 // Bar length shares one scale: the busiest scope is 100. A scope with no
 // working tickets keeps a row and an empty bar so the chart lines up.
 func mixBars(rows []overviewRow) []mixBar {
 	sums := make([]int, len(rows))
 	max := 0
 	for i, row := range rows {
-		sums[i] = row.Backlog + row.Draft + row.Todo + row.Blocked + row.InProgress + row.Review
+		sums[i] = row.Backlog + row.Draft + row.Triaged + row.Todo + row.Blocked + row.InProgress + row.Review
 		if sums[i] > max {
 			max = sums[i]
 		}
@@ -192,6 +194,7 @@ func workingSegs(row overviewRow) []mixSeg {
 	parts := []mixSeg{
 		{Status: status.Backlog, Count: row.Backlog},
 		{Status: status.Draft, Count: row.Draft},
+		{Status: status.Triaged, Count: row.Triaged},
 		{Status: status.Todo, Count: row.Todo},
 		{Status: status.Blocked, Count: row.Blocked},
 		{Status: status.InProgress, Count: row.InProgress},
@@ -437,6 +440,7 @@ func kanbanColumns(custom map[string]status.Category, backlog, archived bool, pr
 	}
 	add(status.Blocked)
 	add(status.Draft)
+	add(status.Triaged)
 	add(status.Todo)
 	add(status.InProgress)
 	add(status.Review)

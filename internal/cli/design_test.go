@@ -1080,6 +1080,17 @@ func TestDoctorStaleIgnoresDesign(t *testing.T) {
 	if !strings.Contains(out, `schema_error: wc-cd3e has unknown status "review"`) {
 		t.Fatalf("review design must stay an unknown status, got %q", out)
 	}
+	triaged := "---\nid: wc-ef4g\nstatus: triaged\nchanged: " + stamp + "\ncreated: 2020-01-01T00:00:00Z\n---\n# Triaged\n"
+	if err := os.WriteFile(filepath.Join(dir, "design", "wc-ef4g-triaged.md"), []byte(triaged), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err = run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor after triaged design: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `schema_error: wc-ef4g has unknown status "triaged"`) {
+		t.Fatalf("triaged design must stay an unknown status, got %q", out)
+	}
 }
 
 func designIDFromPath(t *testing.T, path string) string {

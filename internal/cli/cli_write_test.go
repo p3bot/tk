@@ -690,7 +690,7 @@ func TestMarkOpenDependsWarnMatrix(t *testing.T) {
 	wantWarn(t, subID, "todo", []string{depID})
 
 	// Silence: enter statuses that do not imply ready/active work, despite open depends.
-	for _, s := range []string{"blocked", "draft", "backlog", "done", "cancelled"} {
+	for _, s := range []string{"blocked", "draft", "backlog", "triaged", "done", "cancelled"} {
 		// prep todo may soft-warn; only the enter-s mark is checked for silence.
 		if _, _, err := run(t, app, "mark", "todo", subID); err != nil {
 			t.Fatalf("prep todo before %s: %v", s, err)
@@ -703,11 +703,17 @@ func TestMarkOpenDependsWarnMatrix(t *testing.T) {
 	wantSilence(t, aloneID, "blocked")
 	wantSilence(t, aloneID, "todo")
 
+	// Subject ended the silence loop as cancelled. Re-enter triaged in
+	// silence, then todo still warns while the depend is open.
+	wantSilence(t, subID, "triaged")
+	wantWarn(t, subID, "todo", []string{depID})
+	wantSilence(t, subID, "cancelled")
+
 	// Silence: all depends terminal — both reopen into todo and further ready/active moves.
 	if _, _, err := run(t, app, "mark", "done", depID); err != nil {
 		t.Fatalf("close dep: %v", err)
 	}
-	// Subject ended the silence loop as cancelled.
+	// Subject is cancelled again.
 	wantSilence(t, subID, "todo")
 	wantSilence(t, subID, "in-progress")
 }

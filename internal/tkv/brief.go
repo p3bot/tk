@@ -26,6 +26,7 @@ type briefPage struct {
 	Waiting      []briefWait
 	SVG          template.HTML
 	Drafts       []briefTicket
+	Triaged      []briefTicket
 	Backlog      []briefTicket
 	BacklogTotal int
 	BacklogShown int
@@ -168,21 +169,23 @@ func (s *Server) fillBrief(page *briefPage, scope string, res *reconcile.Result)
 		page.SVG = renderDepSVG(buildDependsGraph(scope, true, custom, focused, open, nil))
 	}
 
-	var drafts, backlog []*index.Ticket
+	var drafts, triaged, backlog []*index.Ticket
 	for _, t := range byID {
 		if t.Scope != scope || t.Archived {
 			continue
 		}
-		// Todo is the queue count and draft is its own list. Every other
-		// active status, including a custom one, is current work. A backlog
-		// category joins the backlog list. Finished and unknown statuses stay
-		// off; doctor reports an unknown name.
+		// Todo is the queue count. Draft and triaged are their own lists.
+		// Every other active status, including a custom one, is current work.
+		// A backlog category joins the backlog list. Finished and unknown
+		// statuses stay off; doctor reports an unknown name.
 		cat, known := status.CategoryOf(t.Status, custom)
 		switch {
 		case t.Status == status.Todo:
 			page.Todo++
 		case t.Status == status.Draft:
 			drafts = append(drafts, t)
+		case t.Status == status.Triaged:
+			triaged = append(triaged, t)
 		case known && cat == status.CategoryBacklog:
 			backlog = append(backlog, t)
 		case known && cat == status.CategoryActive:
@@ -197,9 +200,13 @@ func (s *Server) fillBrief(page *briefPage, scope string, res *reconcile.Result)
 		return nowLess(page.Now[i], page.Now[j])
 	})
 	sort.Slice(drafts, func(i, j int) bool { return briefOlder(drafts[i], drafts[j]) })
+	sort.Slice(triaged, func(i, j int) bool { return briefOlder(triaged[i], triaged[j]) })
 	sort.Slice(backlog, func(i, j int) bool { return briefOlder(backlog[i], backlog[j]) })
 	for _, t := range drafts {
 		page.Drafts = append(page.Drafts, briefTicketFrom(t, now, false))
+	}
+	for _, t := range triaged {
+		page.Triaged = append(page.Triaged, briefTicketFrom(t, now, false))
 	}
 	page.BacklogTotal = len(backlog)
 	if len(backlog) > page.BacklogShown {

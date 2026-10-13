@@ -16,6 +16,7 @@
   --status-blocked: #9f1239;
   --status-review: #6d28d9;
   --status-draft: #57534e;
+  --status-triaged: #0f766e;
   --status-backlog: #57534e;
   --status-done: #166534;
   --status-cancelled: #a8a29e;
@@ -187,6 +188,7 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
 }
 .scope-mix-seg.status-backlog { background: var(--status-backlog); }
 .scope-mix-seg.status-draft { background: var(--status-draft); }
+.scope-mix-seg.status-triaged { background: var(--status-triaged); }
 .scope-mix-seg.status-todo { background: var(--status-todo); }
 .scope-mix-seg.status-blocked { background: var(--status-blocked); }
 .scope-mix-seg.status-in-progress { background: var(--status-in-progress); }
@@ -335,6 +337,7 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
 .col[data-status="blocked"] { background: color-mix(in srgb, var(--card) 88%, var(--status-blocked) 12%); }
 .col[data-status="review"] { background: color-mix(in srgb, var(--card) 88%, var(--status-review) 12%); }
 .col[data-status="draft"] { background: color-mix(in srgb, var(--card) 88%, var(--status-draft) 12%); }
+.col[data-status="triaged"] { background: color-mix(in srgb, var(--card) 88%, var(--status-triaged) 12%); }
 .col[data-status="backlog"] { background: color-mix(in srgb, var(--card) 88%, var(--status-backlog) 12%); }
 .col[data-status="done"] { background: color-mix(in srgb, var(--card) 88%, var(--status-done) 12%); }
 .col[data-status="cancelled"] { background: color-mix(in srgb, var(--card) 88%, var(--status-cancelled) 12%); }
@@ -844,6 +847,7 @@ aside .tag-flow .write button.tag-x:hover { border-color: transparent; color: #8
 .dep-node.status-blocked rect { stroke: var(--status-blocked); }
 .dep-node.status-review rect { stroke: var(--status-review); }
 .dep-node.status-draft rect { stroke: var(--status-draft); }
+.dep-node.status-triaged rect { stroke: var(--status-triaged); }
 .dep-node.status-done rect { stroke: var(--status-done); }
 .dep-node.status-cancelled rect { stroke: var(--status-cancelled); }
 .dep-node.unresolved rect { stroke-dasharray: 5 3; fill: #fafaf9; }

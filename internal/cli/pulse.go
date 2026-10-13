@@ -34,6 +34,7 @@ var pulseKeys = []string{
 	"review",
 	"blocked",
 	"draft",
+	"triaged",
 	"backlog",
 	"done",
 	"cancelled",
@@ -84,7 +85,7 @@ func newPulseCmd(app *App) *cobra.Command {
 			"dashboard (same reconcile, next selection, counts, integrity, stderr tokens).\n" +
 			"\n" +
 			"Locked keys (order fixed): scope, dir, resolved, mode, lens, note, total,\n" +
-			"todo, in-progress, review, blocked, draft, backlog, done, cancelled, next,\n" +
+			"todo, in-progress, review, blocked, draft, triaged, backlog, done, cancelled, next,\n" +
 			"claimed, blocked_ids, dangling, integrity, uncommitted, designs,\n" +
 			"design_draft, design_accepted, design_decomposed, design_superseded.\n" +
 			"\n" +
@@ -243,6 +244,7 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 	pulse["in-progress"] = strconv.Itoa(sp.InProgress)
 	pulse["blocked"] = strconv.Itoa(sp.Blocked)
 	pulse["draft"] = strconv.Itoa(sp.Draft)
+	pulse["triaged"] = strconv.Itoa(sp.Triaged)
 	pulse["backlog"] = strconv.Itoa(sp.Backlog)
 	pulse["done"] = strconv.Itoa(sp.Done)
 	pulse["cancelled"] = strconv.Itoa(sp.Cancelled)

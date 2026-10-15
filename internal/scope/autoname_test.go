@@ -3,6 +3,8 @@ package scope
 import (
 	"errors"
 	"testing"
+
+	"github.com/p3bot/tk/internal/id"
 )
 
 func TestAutoNameDerives(t *testing.T) {
@@ -62,12 +64,12 @@ func TestAutoNameLeadingDigitDropped(t *testing.T) {
 }
 
 func TestAutoNameCap(t *testing.T) {
-	got, err := AutoName("a-b-c-d-e-f-g-h-j-k-m-n-p-q-r")
+	got, err := AutoName("a-b-c-d-e-f-g-h-j-k-m-n-p-q-r-s-t-u-v-w-x-y-z")
 	if err != nil {
 		t.Fatalf("AutoName cap err: %v", err)
 	}
-	if len(got) != 12 {
-		t.Fatalf("AutoName cap len = %d (%q), want 12", len(got), got)
+	if len(got) != id.ScopeNameMax {
+		t.Fatalf("AutoName cap len = %d (%q), want %d", len(got), got, id.ScopeNameMax)
 	}
 }
 

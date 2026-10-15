@@ -46,7 +46,7 @@ func newScopeRenameCmd(app *App) *cobra.Command {
 
 func runScopeRename(app *App, c *cobra.Command, oldName, newName string) error {
 	if !id.IsScopeName(newName) {
-		return usageErrorf("%q is not a legal scope name (^[a-z0-9]{1,12}$)", newName)
+		return usageErrorf("%q is not a legal scope name (%s)", newName, id.ScopeNamePattern())
 	}
 	if oldName == newName {
 		return usageErrorf("scope is already named %q", newName)

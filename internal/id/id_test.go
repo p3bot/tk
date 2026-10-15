@@ -10,13 +10,13 @@ import (
 )
 
 func TestIsScopeName(t *testing.T) {
-	valid := []string{"wc", "webctl", "ilili", "a", "abcdefghijkl", "api", "x1", "0a"}
+	valid := []string{"wc", "webctl", "ilili", "a", "abcdefghijkl", "adkgoanthropic", strings.Repeat("a", ScopeNameMax), "api", "x1", "0a"}
 	for _, s := range valid {
 		if !IsScopeName(s) {
 			t.Errorf("IsScopeName(%q) = false, want true", s)
 		}
 	}
-	invalid := []string{"", "abcdefghijklm", "WC", "web-control", "web_ctl", "wc ", "wc.", "wc-", "über"}
+	invalid := []string{"", strings.Repeat("a", ScopeNameMax+1), "WC", "web-control", "web_ctl", "wc ", "wc.", "wc-", "über"}
 	for _, s := range invalid {
 		if IsScopeName(s) {
 			t.Errorf("IsScopeName(%q) = true, want false", s)
@@ -54,7 +54,7 @@ func TestIsShortID(t *testing.T) {
 }
 
 func TestIsFullTicketID(t *testing.T) {
-	valid := []string{"wc-ab2c", "wc-ab2c9", "api-m9k3", "x-wxyz", "webctl-abcdefgh"}
+	valid := []string{"wc-ab2c", "wc-ab2c9", "api-m9k3", "x-wxyz", "webctl-abcdefgh", strings.Repeat("a", ScopeNameMax) + "-ab2c"}
 	for _, s := range valid {
 		if !IsFullTicketID(s) {
 			t.Errorf("IsFullTicketID(%q) = false, want true", s)
@@ -74,6 +74,7 @@ func TestIsFullTicketID(t *testing.T) {
 		"web_c-ab2c",
 		"-ab2c",
 		"wc-",
+		strings.Repeat("a", ScopeNameMax+1) + "-ab2c",
 	}
 	for _, s := range invalid {
 		if IsFullTicketID(s) {

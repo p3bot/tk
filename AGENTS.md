@@ -32,7 +32,7 @@ through the same engine as `tk`, notes list/set/delete/use through the notes pac
 lens, and chrome/doctor `tk sync` (agents keep using `tk`).
 
 - Prefer packages, tests, and the embedded skill over prose when they disagree.
-- Valid full ids match `^[a-z0-9]{1,12}-[a-hj-km-np-z][a-hj-km-np-z2-9]{3,7}$`
+- Valid full ids match `^[a-z0-9]{1,20}-[a-hj-km-np-z][a-hj-km-np-z2-9]{3,7}$`
 - Do not invent behaviour that contradicts closed contracts already in code
   (token catalogue, id/order/slug grammars, exit codes, tk-owned push — never
   host push). If behaviour is unclear, flag it rather than guessing from archive prose.

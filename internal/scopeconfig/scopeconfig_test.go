@@ -9,6 +9,7 @@ import (
 
 	"cuelang.org/go/cue/cuecontext"
 	"github.com/p3bot/tk/internal/frontmatter"
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/status"
 )
 
@@ -141,7 +142,7 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"uncompilable", `name: "wc" autoCommit:::`},
 		{"missing name", `autoCommit: true`},
 		{"bad name alphabet", `name: "WC"` + "\nautoCommit: true"},
-		{"name too long", `name: "abcdefghijklm"` + "\nautoCommit: true"},
+		{"name too long", `name: "` + strings.Repeat("a", id.ScopeNameMax+1) + "\"\nautoCommit: true"},
 		{"missing autoCommit", `name: "wc"`},
 		{"autoCommit wrong type", `name: "wc"` + "\nautoCommit: \"yes\""},
 		{"redeclare builtin status", `name: "wc"` + "\nautoCommit: true\nstatuses: {done: {category: \"done\"}}"},

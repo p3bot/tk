@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/token"
 )
 
@@ -105,16 +107,17 @@ func TestListCountMatchesRows(t *testing.T) {
 		scope, _, _ := strings.Cut(id, "-")
 		byScope[scope]++
 	}
-	wantEvery := "aa\t" + strconv.Itoa(byScope["aa"]) + "\nzz\t0\n"
+	wantEvery := scopeCountLine("aa", byScope["aa"]) + scopeCountLine("zz", 0) + scopeCountLine("TOTAL", byScope["aa"])
 	if everyCount != wantEvery {
 		t.Fatalf("every count = %q want %q\nrows %q", everyCount, wantEvery, everyRows)
 	}
+	assertScopeCountTabs(t, everyCount)
 
 	parked, _, err := run(t, app, "list", "parked", "--every-scope", "--count")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parked != "aa\t1\nzz\t0\n" {
+	if parked != scopeCountLine("aa", 1)+scopeCountLine("zz", 0)+scopeCountLine("TOTAL", 1) {
 		t.Fatalf("parked count = %q", parked)
 	}
 
@@ -122,7 +125,7 @@ func TestListCountMatchesRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ghost != "aa\t0\nzz\t0\n" {
+	if ghost != scopeCountLine("aa", 0)+scopeCountLine("zz", 0)+scopeCountLine("TOTAL", 0) {
 		t.Fatalf("ghost count = %q", ghost)
 	}
 	if !strings.Contains(ghostErr, token.FormatTagUnknown("ghost")) {
@@ -148,6 +151,8 @@ func TestListCountMatchesRows(t *testing.T) {
 		"bare integer, including 0",
 		"including zeros",
 		"still prints 0",
+		"left-justified to the scope-name",
+		"label TOTAL",
 		"empty registry stays empty",
 	} {
 		if !strings.Contains(text, want) {
@@ -161,5 +166,42 @@ func TestListCountEmptyRegistry(t *testing.T) {
 	out, _, err := run(t, app, "list", "--every-scope", "--count")
 	if err != nil || out != "" {
 		t.Fatalf("empty registry out %q err %v", out, err)
+	}
+}
+
+func TestListEveryCountPadsToLimitAndTotals(t *testing.T) {
+	app := newApp(t)
+	short := initScope(t, app, "n")
+	namedTotal := initScope(t, app, "total")
+	wide := initScope(t, app, strings.Repeat("a", id.ScopeNameMax))
+	addTicket(t, short, "n-m2n4", "one", "todo", "a0", "# One\n", false, "")
+	addTicket(t, namedTotal, "total-p5q6", "two", "todo", "a0", "# Two\n", false, "")
+	addTicket(t, namedTotal, "total-r7s8", "three", "todo", "a1", "# Three\n", false, "")
+	addTicket(t, wide, strings.Repeat("a", id.ScopeNameMax)+"-t9u2", "none", "done", "a0", "# Done\n", true, "")
+
+	out, _, err := run(t, app, "ls", "--every-scope", "--count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := scopeCountLine(strings.Repeat("a", id.ScopeNameMax), 0) +
+		scopeCountLine("n", 1) +
+		scopeCountLine("total", 2) +
+		scopeCountLine("TOTAL", 3)
+	if out != want {
+		t.Fatalf("count =\n%s\nwant\n%s", out, want)
+	}
+	assertScopeCountTabs(t, out)
+}
+
+func scopeCountLine(name string, n int) string {
+	return fmt.Sprintf("%-*s\t%d\n", id.ScopeNameMax, name, n)
+}
+
+func assertScopeCountTabs(t *testing.T, out string) {
+	t.Helper()
+	for _, line := range lines(out) {
+		if i := strings.IndexByte(line, '\t'); i != id.ScopeNameMax {
+			t.Fatalf("count tab at %d, want %d: %q", i, id.ScopeNameMax, line)
+		}
 	}
 }

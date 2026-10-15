@@ -60,7 +60,7 @@ tk design meta add <id> produces <ticket-id> [--scope S]            # Append one
 tk design meta remove <id> produces <ticket-id> [--scope S]         # Drop one list entry, including a non-id; last removal drops the key
 tk design rehome <id> <dest-scope> [--scope S]                      # Move one design into dest design/; self-commit; no push
 
-tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens] [--count]  # Board inventory (lens default; --every-scope lists every registered scope and ignores the lens, grouped by scope name ascending; a terminal-only reverse stays inside the scope; a custom status keeps rows only from scopes that declare it; --open = non-terminal; --tag hard filter, ignores lens). Inside a scope, sorted (order, id); terminal-only status filters reverse that order. --count prints the row count instead of TSV: one scope is a bare integer, including 0; --every-scope is headerless TSV scope, count for every registered scope, names ascending, including 0. An empty registry stays empty. Same filters, lens, and stderr
+tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens] [--count]  # Board inventory (lens default; --every-scope lists every registered scope and ignores the lens, grouped by scope name ascending; a terminal-only reverse stays inside the scope; a custom status keeps rows only from scopes that declare it; --open = non-terminal; --tag hard filter, ignores lens). Inside a scope, sorted (order, id); terminal-only status filters reverse that order. --count prints the row count instead of TSV: one scope is a bare integer, including 0; --every-scope is headerless TSV scope, count for every registered scope, names ascending, including 0. The scope field is left-justified to 20 before the tab; trim trailing spaces after splitting on that tab. A final line labelled TOTAL is the sum of those counts and is always last. TOTAL is not a legal scope name. An empty registry stays empty. Same filters, lens, and stderr
 tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]... [--count]  # Tickets that entered their current status on a local day. Default is done, today, every scope. changed is that instant. Create counts. Not git history. --count prints one integer for that selection, including 0, and no ticket TSV
 tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
@@ -118,6 +118,7 @@ tk reindex                                                          # Rebuild th
 ## Identifiers
 
 - Full id is `<scope>-<short>`
+- A scope name matches `^[a-z0-9]{1,20}$`. It has no hyphen
 - A filename whose id prefix is not the scope name is invisible to list, pulse, and get. `tk doctor` reports `id_prefix:`; `tk repair` rewrites that prefix in place
 - Short ids resolve in the ambient scope
 - Full id resolves in any registered scope

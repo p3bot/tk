@@ -174,7 +174,7 @@ func Evaluate(dir string, v cue.Value) (*Schema, error) {
 
 func validate(dir string, v cue.Value, raw *rawConfig) (*Schema, error) {
 	if !id.IsScopeName(raw.Name) {
-		return nil, &ConfigError{Dir: dir, Reason: fmt.Sprintf("name %q is not a legal scope name (^[a-z0-9]{1,12}$)", raw.Name)}
+		return nil, &ConfigError{Dir: dir, Reason: fmt.Sprintf("name %q is not a legal scope name (%s)", raw.Name, id.ScopeNamePattern())}
 	}
 	if raw.AutoCommit == nil {
 		return nil, &ConfigError{Dir: dir, Reason: "autoCommit is required"}

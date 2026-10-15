@@ -141,7 +141,7 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 
 func validateDesignRehome(in RehomeInput) error {
 	if !id.IsScopeName(in.DestScope) {
-		return &UsageError{Msg: fmt.Sprintf("%q is not a legal scope name (^[a-z0-9]{1,12}$)", in.DestScope)}
+		return &UsageError{Msg: fmt.Sprintf("%q is not a legal scope name (%s)", in.DestScope, id.ScopeNamePattern())}
 	}
 	if in.DestScope == in.Scope {
 		return &UsageError{Msg: fmt.Sprintf("destination scope %q is the design's current scope", in.DestScope)}

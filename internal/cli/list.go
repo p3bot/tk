@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/depgate"
+	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
@@ -58,8 +60,12 @@ func newListCmd(app *App) *cobra.Command {
 			"--count prints how many rows this invocation would have listed and prints no\n" +
 			"ticket TSV. One scope prints a bare integer, including 0. --every-scope prints\n" +
 			"headerless TSV, one line per registered scope, scope name then count, names\n" +
-			"ascending, including zeros. A scope that contributes no rows still prints 0.\n" +
-			"An empty registry stays empty stdout. Filters, the lens, and stderr tokens\n" +
+			"ascending, including zeros. The scope field is left-justified to the scope-name\n" +
+			"limit (" + strconv.Itoa(id.ScopeNameMax) + ") before the tab, so the count column aligns. Parse by splitting on\n" +
+			"the first tab and trimming trailing spaces from the name. A scope that\n" +
+			"contributes no rows still prints 0. A final line, label TOTAL, is the sum of\n" +
+			"those counts. TOTAL is not a legal scope name, and the line is always last. An\n" +
+			"empty registry stays empty stdout. Filters, the lens, and stderr tokens\n" +
 			"are unchanged.\n" +
 			"Lens echo and integrity tokens ride stderr only, never the TSV. Pure read.",
 		Args: anyArgs(),
@@ -201,12 +207,19 @@ func runListEvery(e *engine, c *cobra.Command, p listParams) error {
 	}
 
 	tokens := depgate.NewTokenSet()
+	total := 0
 	for _, scope := range scopes {
 		kept, err := scopeBoard(e.db, res.Schema(scope), scope, p)
 		if err != nil {
 			return err
 		}
+		if p.count {
+			total += len(kept)
+		}
 		emitBoard(c, kept, gate, tokens, p.count, scope)
+	}
+	if p.count && len(scopes) > 0 {
+		stdoutln(c, tsvLine(scopeCountName(scopeCountTotal), strconv.Itoa(total)))
 	}
 	for _, line := range tokens.Lines() {
 		stderrln(c, line)
@@ -256,6 +269,17 @@ func statusesThisScope(names []string, custom map[string]status.Category) []stri
 	return out
 }
 
+// scopeCountTotal is the last line of --every-scope --count. Upper case keeps
+// it outside the scope-name grammar, so a scope named total is a different row.
+// The line is always last.
+const scopeCountTotal = "TOTAL"
+
+// scopeCountName left-justifies a scope name to the scope-name limit so the
+// count tab lands on the same column for every legal name.
+func scopeCountName(name string) string {
+	return fmt.Sprintf("%-*s", id.ScopeNameMax, name)
+}
+
 // emitBoard prints the board, or with count the cardinality of the same rows.
 // scopeLabel is set for --every-scope --count (scope, count). An empty label
 // prints one integer. Depends tokens are collected either way.
@@ -263,7 +287,7 @@ func emitBoard(c *cobra.Command, kept []*index.Ticket, gate *depgate.Gate, token
 	if count {
 		n := strconv.Itoa(len(kept))
 		if scopeLabel != "" {
-			stdoutln(c, tsvLine(scopeLabel, n))
+			stdoutln(c, tsvLine(scopeCountName(scopeLabel), n))
 		} else {
 			stdoutln(c, n)
 		}

@@ -33,7 +33,7 @@ func newScopeInitCmd(app *App) *cobra.Command {
 			case name == "" && !autoName:
 				return usageErrorf("provide exactly one of --name or --auto-name")
 			case name != "" && !id.IsScopeName(name):
-				return usageErrorf("--name %q is not a legal scope name (^[a-z0-9]{1,12}$)", name)
+				return usageErrorf("--name %q is not a legal scope name (%s)", name, id.ScopeNamePattern())
 			}
 
 			dir, err := absPath(args[0])
@@ -64,7 +64,7 @@ func newScopeInitCmd(app *App) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "scope name (^[a-z0-9]{1,12}$)")
+	cmd.Flags().StringVar(&name, "name", "", "scope name ("+id.ScopeNamePattern()+")")
 	cmd.Flags().BoolVar(&autoName, "auto-name", false, "derive the scope name from the code-root basename")
 	cmd.Flags().StringVar(&codeRoot, "code-root", "", "code-root under which the scope is ambient")
 	cmd.Flags().BoolVar(&autoCommit, "auto-commit", false, "write autoCommit: true (tk-driven)")

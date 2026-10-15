@@ -218,7 +218,7 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 
 func validateRehomeArgs(in RehomeInput) error {
 	if !id.IsScopeName(in.DestScope) {
-		return &UsageError{Msg: fmt.Sprintf("%q is not a legal scope name (^[a-z0-9]{1,12}$)", in.DestScope)}
+		return &UsageError{Msg: fmt.Sprintf("%q is not a legal scope name (%s)", in.DestScope, id.ScopeNamePattern())}
 	}
 	if in.DestScope == in.SourceScope {
 		return &UsageError{Msg: fmt.Sprintf("destination scope %q is the ticket's current scope", in.DestScope)}

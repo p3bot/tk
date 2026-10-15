@@ -19,7 +19,7 @@ const (
 	// ShortIDMax is the longest legal short-id; collision repair never exceeds it.
 	ShortIDMax = 8
 	// ScopeNameMax is the longest legal scope name.
-	ScopeNameMax = 12
+	ScopeNameMax = 20
 
 	// LetterAlphabet is the 23-letter typeable subset (drops i, l, o).
 	// The first character of every short-id is drawn from this set.
@@ -51,7 +51,12 @@ func ParseArg(tok string) (Form, bool) {
 	return FormShort, IsShortID(tok)
 }
 
-// IsScopeName reports whether s is a legal scope name: ^[a-z0-9]{1,12}$.
+// ScopeNamePattern is the closed scope-name grammar.
+func ScopeNamePattern() string {
+	return fmt.Sprintf("^[a-z0-9]{1,%d}$", ScopeNameMax)
+}
+
+// IsScopeName reports whether s is a legal scope name: ^[a-z0-9]{1,20}$.
 // Ambiguous characters that short-ids drop (i/l/o/0/1) are permitted here.
 func IsScopeName(s string) bool {
 	if len(s) < 1 || len(s) > ScopeNameMax {

@@ -108,7 +108,7 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 		return runListEvery(e, c, p)
 	}
 
-	resolved, err := e.resolveAmbient(p.scope)
+	resolved, err := e.resolveAmbient(c, p.scope)
 	if err != nil {
 		return err
 	}
@@ -179,6 +179,7 @@ func runList(app *App, c *cobra.Command, p listParams) error {
 // outer sort; order keys are not compared across scopes. The lens is not applied.
 func runListEvery(e *engine, c *cobra.Command, p listParams) error {
 	targets := e.allTargets()
+	e.warnHoldTargets(c, targets)
 	res, err := e.reconcile(c, targets)
 	if err != nil {
 		return err

@@ -37,6 +37,7 @@ func runDoctor(app *App, c *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	e.warnHoldTargets(c, e.targetsFor(reportScopes))
 
 	deps := e.integrityDeps(c)
 	targets := e.targetsFor(reportScopes)

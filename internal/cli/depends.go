@@ -143,7 +143,7 @@ func (e *engine) resolveDependsSubject(c *cobra.Command, idArg, scopeFlag string
 	if !ok {
 		return nil, usageErrorf("%q is not a valid ticket id", idArg)
 	}
-	scope, err := e.scopeForID(idArg, form, scopeFlag)
+	scope, err := e.scopeForID(c, idArg, form, scopeFlag)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +323,7 @@ func (e *engine) buildDependsGraph(subject string, transitive, tree bool) (*depe
 }
 
 func runDependsForest(e *engine, c *cobra.Command, scopeFlag string, noLens bool) error {
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}

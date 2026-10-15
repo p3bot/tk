@@ -38,6 +38,7 @@ func runRepair(app *App, c *cobra.Command, reSpaceOrder, all bool) error {
 	if err != nil {
 		return err
 	}
+	e.warnHoldTargets(c, e.targetsFor(scopes))
 
 	deps := e.integrityDeps(c)
 	rep := cobraReporter{c: c}

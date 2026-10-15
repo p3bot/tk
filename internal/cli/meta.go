@@ -255,7 +255,7 @@ func runMetaMutate(app *App, c *cobra.Command, op writeengine.MetaOp, idArg, key
 	}
 	defer e.close()
 
-	scope, err := e.scopeForID(idArg, form, scopeFlag)
+	scope, err := e.scopeForID(c, idArg, form, scopeFlag)
 	if err != nil {
 		return err
 	}

@@ -12,12 +12,13 @@ func newScopeListCmd(app *App) *cobra.Command {
 		Aliases: []string{"ls"},
 		Short:   "List every registered scope as parse-stable TSV",
 		Long: "Print one line per registered scope, sorted by name ascending:\n" +
-			"  <name>\\t<dir>\\t<root>\\t<mode>\n" +
+			"  <name>\\t<dir>\\t<root>\\t<mode>\\t<hold>\n" +
 			"name/dir/root are pure registry reads (cleaned absolute paths); mode stats\n" +
 			"each dir and derives its git-root — tk-driven, repo-driven, plain-files, or\n" +
-			"unknown — so one bad scope never fails the listing. Soft tokens\n" +
-			"(name_drift, unreachable_scope, config_unparseable) ride stderr. An empty\n" +
-			"registry exits 0 with empty stdout.",
+			"unknown — so one bad scope never fails the listing. hold is true or false\n" +
+			"from tk.cue, or empty when that file cannot be evaluated. Soft tokens\n" +
+			"(name_drift, unreachable_scope, config_unparseable) ride stderr. Listing\n" +
+			"does not print scope_hold. An empty registry exits 0 with empty stdout.",
 		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runScopeList(app, c)
@@ -35,7 +36,7 @@ func runScopeList(app *App, c *cobra.Command) error {
 		stderrln(c, d)
 	}
 	for _, r := range listing.Rows {
-		stdoutln(c, strings.Join([]string{r.Name, r.Dir, r.Root, r.Mode}, "\t"))
+		stdoutln(c, strings.Join([]string{r.Name, r.Dir, r.Root, r.Mode, r.Hold}, "\t"))
 	}
 	return nil
 }

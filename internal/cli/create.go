@@ -63,7 +63,7 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}

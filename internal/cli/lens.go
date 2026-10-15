@@ -47,7 +47,7 @@ func runLens(app *App, c *cobra.Command, args []string, scopeFlag string, clearL
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}

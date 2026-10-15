@@ -82,6 +82,7 @@ tk scope forget <name>                                              # Unregister
 tk scope list                                                       # List registered scopes (TSV)
 tk scope rename <old> <new>                                         # Rename scope end-to-end
 tk scope auto-commit [true|false] [--scope S]                       # Read or set git-root-wide autoCommit
+tk scope hold [true|false] [--scope S]                              # Read or set this scope's hold (omitted tk.cue hold is false)
 tk scope field list [--scope S]                                     # List custom fields: (name type required values)
 tk scope field set <name> --type T [--required] [--values V]... [--scope S]  # Upsert field; full replace from flags (omit --required demotes)
 tk scope field unset <name> [--strip] [--scope S]                   # Remove field declaration; --strip also drops the key from all tickets
@@ -142,11 +143,13 @@ Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk n
     j8dj ─┬─ kv6x ── r345
           └─ h2h7
 
-Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `auto-commit` | `field list|set|unset`
+Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `auto-commit` | `hold` | `field list|set|unset`
+
+Hold: `hold: true` in that scope's tk.cue. Omitted is false. `tk scope hold` reads or sets it for one scope (not git-root-wide) and self-commits on a tk-driven scope. A command that resolves a held scope prints `scope_hold: This scope is on hold. No work is to be carried out.` on stderr and still runs. A command that resolves more than one scope names each held scope on that line (`scope_hold: <scope>: ...`). `tk scope list` adds a hold column and does not print the line. `tk query`, `tk skill`, and `tk scope init` do not print it. `tk mark in-progress` and `tk next --claim` exit 1, write nothing, and do not refresh or push. Other marks still run. Do not clear hold unless a human asks. `tk pulse hold` prints true or false. `tk scope list` hold is true, false, or empty when tk.cue cannot be evaluated.
 
 Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)
-  - Commands that self commit: mark, order, next --claim, rehome, meta set/add/remove, design mark, design meta add|remove, design rehome, scope field set|unset, scope rename, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
+  - Commands that self commit: mark, order, next --claim, rehome, meta set/add/remove, design mark, design meta add|remove, design rehome, scope field set|unset, scope rename, scope hold, scope auto-commit (false flip is the last tk-owned commit — allowlisted dirty paths ride it — then host git push if unpushed; later mutators are repo-driven), repair
   - Create, design create, and file edits never commit; requires `tk sync`
   - Call `tk sync` after ticket document changes to commit/push
   - `tk sync` and `tk sync --scope S` commit that scope's allowlisted dirty files. `tk sync --all`, and a bare sync with no ambient scope, commits nothing

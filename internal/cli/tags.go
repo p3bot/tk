@@ -32,7 +32,7 @@ func runTags(app *App, c *cobra.Command, scopeFlag string) error {
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}

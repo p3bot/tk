@@ -15,6 +15,9 @@ const (
 	// ConfigUnparseable marks a scope whose tk.cue cannot be trusted; writes refuse, reads stay available.
 	ConfigUnparseable = "config_unparseable:"
 
+	// ScopeHold marks a command that resolved a scope whose tk.cue hold is true.
+	ScopeHold = "scope_hold:"
+
 	// AutoCommitMismatch marks divergent autoCommit values under one derived git-root.
 	AutoCommitMismatch = "auto_commit_mismatch:"
 
@@ -167,8 +170,20 @@ func FormatRequiredMissing(id string, keys []string) string {
 		id, strings.Join(keys, " ")))
 }
 
+// ScopeHoldSentence is the fixed human sentence after scope_hold:.
+const ScopeHoldSentence = "This scope is on hold. No work is to be carried out."
+
+// FormatScopeHold is the fixed scope_hold: line. An empty scope is the
+// single-scope form. A non-empty scope names that scope on a multi-scope command.
+func FormatScopeHold(scope string) string {
+	if scope == "" {
+		return Line(ScopeHold, ScopeHoldSentence)
+	}
+	return Line(ScopeHold, scope+": "+ScopeHoldSentence)
+}
+
 var all = []string{
-	NameDrift, ConfigUnparseable, AutoCommitMismatch, UnreachableScope,
+	NameDrift, ConfigUnparseable, ScopeHold, AutoCommitMismatch, UnreachableScope,
 	ParseError, DuplicateID, IDPrefix, EqualOrder, ArchiveNonTerminal, ArchiveTerminalAtRoot,
 	DependsDangling, DependsUnresolvable, SchemaError, SchemaWarn,
 	SyncDisabled, Uncommitted, SyncNeeded, OrderLong, StatusConflict, DependsCycle,

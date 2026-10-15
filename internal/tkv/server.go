@@ -287,6 +287,7 @@ type chrome struct {
 	Alerts    []string
 	Integrity string
 	Query     string
+	Hold      bool
 }
 
 func (c chrome) LensOn(tag string) bool {
@@ -491,6 +492,7 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 	schema := s.rec.SchemaCached(selected, entry.Dir)
 	_, hasRoot := scopefile.GitRoot(entry.Dir)
 	c.Mode = pulseMode(schema, schema == nil, hasRoot)
+	c.Hold = scopeconfig.Held(schema)
 	c.Lens = strings.Join(reg.Lens[selected], " ")
 	c.LensTags = append([]string(nil), reg.Lens[selected]...)
 	c.CanLens = resolve.CheckName(s.app.Ctx, selected, entry) == nil

@@ -69,6 +69,14 @@ func mapWriteErr(err error) error {
 	if err == nil {
 		return nil
 	}
+	var already *ExitError
+	if errors.As(err, &already) {
+		return err
+	}
+	var hold *writeengine.HoldError
+	if errors.As(err, &hold) {
+		return &ExitError{Code: exitFailure, Plain: true, Err: hold}
+	}
 	var use *writeengine.UsageError
 	if errors.As(err, &use) {
 		return usageErrorf("%s", use.Msg)

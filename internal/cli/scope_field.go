@@ -139,7 +139,7 @@ func runScopeFieldList(app *App, c *cobra.Command, scopeFlag string) error {
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -188,7 +188,7 @@ func runScopeFieldSet(app *App, c *cobra.Command, name, typ string, required boo
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -250,7 +250,7 @@ func runScopeFieldUnset(app *App, c *cobra.Command, name, scopeFlag string, stri
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}

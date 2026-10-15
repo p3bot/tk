@@ -74,7 +74,7 @@ func runOrder(app *App, c *cobra.Command, idArg string, dest orderDest, scopeFla
 	}
 	defer e.close()
 
-	scope, err := e.scopeForID(idArg, form, scopeFlag)
+	scope, err := e.scopeForID(c, idArg, form, scopeFlag)
 	if err != nil {
 		return err
 	}

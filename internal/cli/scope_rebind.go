@@ -29,6 +29,9 @@ func newScopeRebindCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := warnRebindHold(app, c, name, dir); err != nil {
+				return err
+			}
 			p := scopeadmin.RebindParams{Dir: dir, Name: name}
 			if c.Flags().Changed("code-root") {
 				cr, err := absPath(codeRoot)

@@ -857,6 +857,46 @@ func TestPOSTClaimNextHonoursLens(t *testing.T) {
 	}
 }
 
+func TestHeldScopeBannerAndClaimRefuse(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"wc\"\nautoCommit: false\nhold: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\n", false, "")
+	s := mustServer(t, app)
+
+	board := do(s, "/scope/wc")
+	if board.Code != http.StatusOK {
+		t.Fatalf("board %d", board.Code)
+	}
+	if !strings.Contains(board.Body.String(), "This scope is on hold. No work is to be carried out.") {
+		t.Fatalf("board missing hold banner: %s", board.Body.String())
+	}
+
+	w := doPost(s, "/scope/wc/mark", url.Values{
+		"id":     {"wc-ab2c"},
+		"status": {status.InProgress},
+	})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("mark in-progress status %d body %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), token.ScopeHoldSentence) {
+		t.Fatalf("conflict body: %s", w.Body.String())
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") {
+		t.Fatalf("held mark wrote the ticket: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+
+	claim := doPost(s, "/scope/wc/claim", url.Values{})
+	if claim.Code != http.StatusConflict {
+		t.Fatalf("claim status %d body %s", claim.Code, claim.Body.String())
+	}
+	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") {
+		t.Fatalf("held claim wrote the ticket: %s", ticketBody(t, dir, "wc-ab2c"))
+	}
+}
+
 func TestPOSTMarkInProgressClaims(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")

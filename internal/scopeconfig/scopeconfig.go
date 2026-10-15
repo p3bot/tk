@@ -47,6 +47,8 @@ type Field struct {
 type Schema struct {
 	Name       string
 	AutoCommit bool
+	// Hold is the optional per-scope pause. Omitted in tk.cue is false.
+	Hold bool
 	// Statuses maps declared custom status names to categories (built-ins live in package status).
 	Statuses map[string]status.Category
 	// Fields maps declared custom field names to type, optional required, and optional enum.
@@ -65,6 +67,11 @@ func (s *Schema) CustomStatuses() map[string]status.Category {
 // A nil schema is false.
 func SchemaAutoCommit(s *Schema) bool {
 	return s != nil && s.AutoCommit
+}
+
+// Held reports whether the scope is on hold. A nil schema is not held.
+func Held(s *Schema) bool {
+	return s != nil && s.Hold
 }
 
 // ConfigError marks a tk.cue that cannot be trusted (absent, uncompilable, or schema-invalid).
@@ -89,6 +96,7 @@ func AsConfigError(err error) (*ConfigError, bool) {
 type rawConfig struct {
 	Name       string               `json:"name"`
 	AutoCommit *bool                `json:"autoCommit"`
+	Hold       *bool                `json:"hold"` // nil = omitted = false
 	Statuses   map[string]rawStatus `json:"statuses"`
 	Fields     map[string]rawField  `json:"fields"`
 }
@@ -181,9 +189,14 @@ func validate(dir string, v cue.Value, raw *rawConfig) (*Schema, error) {
 		return nil, err
 	}
 
+	hold := false
+	if raw.Hold != nil {
+		hold = *raw.Hold
+	}
 	return &Schema{
 		Name:       raw.Name,
 		AutoCommit: *raw.AutoCommit,
+		Hold:       hold,
 		Statuses:   statuses,
 		Fields:     fields,
 	}, nil

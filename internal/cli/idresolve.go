@@ -26,7 +26,7 @@ func (e *engine) resolveTicket(c *cobra.Command, idArg, scopeFlag string) (*reso
 		return nil, usageErrorf("%q is not a valid ticket id", idArg)
 	}
 
-	scope, err := e.scopeForID(idArg, form, scopeFlag)
+	scope, err := e.scopeForID(c, idArg, form, scopeFlag)
 	if err != nil {
 		return nil, err
 	}
@@ -82,11 +82,17 @@ func suppressDuplicateID(warnings []string, id string) []string {
 	return out
 }
 
-func (e *engine) scopeForID(idArg string, form id.Form, scopeFlag string) (string, error) {
+func (e *engine) scopeForID(c *cobra.Command, idArg string, form id.Form, scopeFlag string) (string, error) {
 	if form == id.FormFull {
-		return id.ScopeOfFullID(idArg), nil
+		scope := id.ScopeOfFullID(idArg)
+		if c != nil {
+			if entry, ok := e.reg.Scopes[scope]; ok {
+				e.warnHold(c, scope, entry.Dir)
+			}
+		}
+		return scope, nil
 	}
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return "", err
 	}

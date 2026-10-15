@@ -15,6 +15,14 @@ var (
 	ErrPushFailed    = errors.New("claim landed locally; push did not")
 )
 
+// HoldError refuses starting work while the scope's tk.cue hold is true.
+// The CLI prints the line once and exits 1. No write, refresh, or push.
+type HoldError struct{}
+
+func (e *HoldError) Error() string {
+	return token.FormatScopeHold("")
+}
+
 // UnknownStatusError is a domain error for a status not in the scope's set.
 // The CLI adapter maps it to usage (exit 2).
 type UnknownStatusError struct {

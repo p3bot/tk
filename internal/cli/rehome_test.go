@@ -67,6 +67,63 @@ func TestRehomePrintsDestPathAndRewritesEdges(t *testing.T) {
 	}
 }
 
+func TestRehomeWarnsEachHeldScope(t *testing.T) {
+	app := newApp(t)
+	foo := initScope(t, app, "foo")
+	bar := initScope(t, app, "bar")
+	if err := os.WriteFile(filepath.Join(bar, "tk.cue"), []byte("name: \"bar\"\nautoCommit: false\nhold: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, foo, "foo-ab2c", "moved", "todo", "a0", "# Moved\n", false, "")
+	out, errOut, err := run(t, app, "rehome", "foo-ab2c", "bar")
+	if err != nil {
+		t.Fatalf("rehome into held dest: %v (%s)", err, errOut)
+	}
+	if !strings.Contains(out, "bar-ab2c-moved.md") {
+		t.Fatalf("stdout = %q", out)
+	}
+	if errOut != token.FormatScopeHold("bar")+"\n" {
+		t.Fatalf("held dest stderr = %q", errOut)
+	}
+
+	app = newApp(t)
+	foo = initScope(t, app, "foo")
+	initScope(t, app, "bar")
+	if err := os.WriteFile(filepath.Join(foo, "tk.cue"), []byte("name: \"foo\"\nautoCommit: false\nhold: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, foo, "foo-ab2c", "moved", "todo", "a0", "# Moved\n", false, "")
+	_, errOut, err = run(t, app, "rehome", "foo-ab2c", "bar")
+	if err != nil {
+		t.Fatalf("rehome from held source: %v (%s)", err, errOut)
+	}
+	if errOut != token.FormatScopeHold("foo")+"\n" {
+		t.Fatalf("held source stderr = %q", errOut)
+	}
+
+	app = newApp(t)
+	foo = initScope(t, app, "foo")
+	if err := os.WriteFile(filepath.Join(foo, "tk.cue"), []byte("name: \"foo\"\nautoCommit: false\nhold: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTicket(t, foo, "foo-ab2c", "x", "todo", "a0", "# X\n", false, "")
+	_, errOut, err = run(t, app, "rehome", "foo-ab2c", "ghost")
+	if ExitCodeFromError(err) != exitFailure {
+		t.Fatalf("unknown dest exit = %d (%v)", ExitCodeFromError(err), err)
+	}
+	if errOut != token.FormatScopeHold("")+"\n" {
+		t.Fatalf("unknown dest stderr = %q", errOut)
+	}
+
+	_, errOut, err = run(t, app, "rehome", "foo-ab2c", "foo")
+	if ExitCodeFromError(err) != exitUsage {
+		t.Fatalf("same-scope exit = %d (%v)", ExitCodeFromError(err), err)
+	}
+	if errOut != token.FormatScopeHold("")+"\n" {
+		t.Fatalf("same-scope stderr = %q", errOut)
+	}
+}
+
 func TestRehomeSameScopeUsage(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "foo")

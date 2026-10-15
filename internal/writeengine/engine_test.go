@@ -197,6 +197,108 @@ func TestMarkTodoInProgressIsClaim(t *testing.T) {
 	}
 }
 
+func TestHoldRefusesInProgressAndClaim(t *testing.T) {
+	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\nhold: true\n")
+	path := addTicket(t, e.dir, "wc-ab2c", "todo")
+
+	_, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "in-progress"})
+	var hold *HoldError
+	if !errors.As(err, &hold) {
+		t.Fatalf("mark in-progress: %v", err)
+	}
+	_, err = Claim(e.deps, nil, ClaimInput{Kind: ClaimNext, Scope: "wc", Dir: e.dir})
+	if !errors.As(err, &hold) {
+		t.Fatalf("claim next: %v", err)
+	}
+	if _, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "done"}); err != nil {
+		t.Fatalf("mark done on a held scope: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "status: todo") {
+		t.Fatal("mark done should have moved the ticket off todo")
+	}
+}
+
+func TestClaimHoldRefusesBeforeRefresh(t *testing.T) {
+	if !git.Available() {
+		t.Skip("git not on PATH")
+	}
+	e, repo := initAutoCommitRepo(t, "wc")
+	path := addTicket(t, e.dir, "wc-ab2c", "todo")
+
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	testgit.Run(t, filepath.Dir(bare), "init", "--bare", "-b", "main", filepath.Base(bare))
+	testgit.Run(t, repo, "add", "-A")
+	testgit.Run(t, repo, "commit", "-m", "seed")
+	testgit.Run(t, repo, "remote", "add", "origin", bare)
+	testgit.Run(t, repo, "push", "-u", "origin", "HEAD:main")
+	if err := os.RemoveAll(bare); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(e.dir, "tk.cue"), "name: \"wc\"\nautoCommit: true\nhold: true\n")
+
+	_, err := Claim(e.deps, nil, ClaimInput{Kind: ClaimID, Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c")})
+	var hold *HoldError
+	if !errors.As(err, &hold) {
+		t.Fatalf("want hold refuse before refresh, got %v", err)
+	}
+	if errors.Is(err, ErrRefreshFailed) {
+		t.Fatal("hold must not reach refresh")
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "status: todo") {
+		t.Fatalf("must stay todo, got %s", data)
+	}
+}
+
+func TestClaimHoldFlippedBeforeLockRefusesWriteAndPush(t *testing.T) {
+	if !git.Available() {
+		t.Skip("git not on PATH")
+	}
+	e, repo := initAutoCommitRepo(t, "wc")
+	path := addTicket(t, e.dir, "wc-ab2c", "todo")
+
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	testgit.Run(t, filepath.Dir(bare), "init", "--bare", "-b", "main", filepath.Base(bare))
+	testgit.Run(t, repo, "add", "-A")
+	testgit.Run(t, repo, "commit", "-m", "seed")
+	testgit.Run(t, repo, "remote", "add", "origin", bare)
+	testgit.Run(t, repo, "push", "-u", "origin", "HEAD:main")
+
+	beforeScopeLock = func() {
+		writeFile(t, filepath.Join(e.dir, "tk.cue"), "name: \"wc\"\nautoCommit: true\nhold: true\n")
+	}
+	t.Cleanup(func() { beforeScopeLock = nil })
+
+	_, err := Claim(e.deps, nil, ClaimInput{Kind: ClaimID, Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c")})
+	var hold *HoldError
+	if !errors.As(err, &hold) {
+		t.Fatalf("want hold refuse after refresh, got %v", err)
+	}
+	if errors.Is(err, ErrPushFailed) || errors.Is(err, ErrRefreshFailed) {
+		t.Fatalf("hold after refresh must not be a push or refresh failure: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "status: todo") {
+		t.Fatalf("must stay todo, got %s", data)
+	}
+	for _, subject := range gitLog(t, repo) {
+		if strings.Contains(subject, "in-progress") {
+			t.Fatalf("claim committed despite hold: %v", gitLog(t, repo))
+		}
+	}
+
+	writeFile(t, filepath.Join(e.dir, "tk.cue"), "name: \"wc\"\nautoCommit: true\n")
+	_, err = Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "in-progress"})
+	if !errors.As(err, &hold) {
+		t.Fatalf("mark in-progress after a late hold: %v", err)
+	}
+	data, _ = os.ReadFile(path)
+	if !strings.Contains(string(data), "status: todo") {
+		t.Fatalf("mark must stay todo, got %s", data)
+	}
+}
+
 func TestClaimRefreshFailedDoesNotWrite(t *testing.T) {
 	if !git.Available() {
 		t.Skip("git not on PATH")

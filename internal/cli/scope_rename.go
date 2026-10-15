@@ -66,6 +66,7 @@ func runScopeRename(app *App, c *cobra.Command, oldName, newName string) error {
 		return fmt.Errorf("scope name %q is already registered — names are machine-unique", newName)
 	}
 	dir := entry.Dir
+	e.warnHold(c, oldName, dir)
 
 	// Resolve by registry key <old> (name_drift exemption for interrupted rename).
 	cueName, err := scopeconfig.ReadName(app.Ctx, dir)

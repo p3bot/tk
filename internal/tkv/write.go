@@ -573,6 +573,10 @@ func mapWriteError(res writeengine.Result, err error) error {
 	if errors.As(err, &he) {
 		return he
 	}
+	var held *writeengine.HoldError
+	if errors.As(err, &held) {
+		return errConflict(held.Error())
+	}
 	var unk *writeengine.UnknownStatusError
 	if errors.As(err, &unk) {
 		return errBadRequest(unk.Error())

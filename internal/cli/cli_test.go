@@ -95,7 +95,7 @@ func TestScopeListEndToEnd(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 	fields := strings.Split(strings.TrimRight(out, "\n"), "\t")
-	if len(fields) != 4 || fields[0] != "home" || fields[3] != "plain-files" {
+	if len(fields) != 5 || fields[0] != "home" || fields[3] != "plain-files" || fields[4] != "false" {
 		t.Fatalf("unexpected TSV row %q", out)
 	}
 	if strings.Contains(out, "\x1b") {

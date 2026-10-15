@@ -33,7 +33,8 @@ func newMarkCmd(app *App) *cobra.Command {
 			"touched path in one commit when a git-root exists. todo → in-progress on a\n" +
 			"tk-driven git-root with an upstream is a claim: one refresh of that root, re-check\n" +
 			"each named todo is still todo, write every member, then one push. A quarantined\n" +
-			"or duplicate-id ticket is refused with no writes.\n" +
+			"or duplicate-id ticket is refused with no writes. A held scope refuses\n" +
+			"in-progress (exit 1, no write, no refresh, no push) and prints scope_hold:.\n" +
 			"For a scope pulse (counts, next, integrity), use `tk pulse`.",
 		Args: arity(1, -1, []string{"<status>", "<id>"}),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -63,7 +64,7 @@ func runMark(app *App, c *cobra.Command, newStatus string, idArgs []string, scop
 		return usageErrorf("%q is not a valid ticket id", idArgs[0])
 	}
 
-	scope, err := e.scopeForID(idArgs[0], firstForm, scopeFlag)
+	scope, err := e.scopeForID(c, idArgs[0], firstForm, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -97,7 +98,7 @@ func runMark(app *App, c *cobra.Command, newStatus string, idArgs []string, scop
 		Lookups:   lookups,
 		NewStatus: newStatus,
 	})
-	return emitWriteResult(c, res, err)
+	return emitWriteResult(c, res, holdExit(e, scope, err))
 }
 
 func markOneArgUsage(app *App, c *cobra.Command, newStatus, scopeFlag string) error {
@@ -168,10 +169,10 @@ func markCueDir(e *engine, newStatus, firstID string, firstForm id.Form, firstOK
 			if d := registeredDir(e, id.ScopeOfFullID(firstID)); d.dir != "" {
 				return d
 			}
-		} else if resolved, err := e.resolveAmbient(scopeFlag); err == nil {
+		} else if resolved, err := e.resolveAmbient(nil, scopeFlag); err == nil {
 			return cueDir{scope: resolved.Name, dir: resolved.Entry.Dir}
 		}
-	} else if resolved, err := e.resolveAmbient(scopeFlag); err == nil {
+	} else if resolved, err := e.resolveAmbient(nil, scopeFlag); err == nil {
 		return cueDir{scope: resolved.Name, dir: resolved.Entry.Dir}
 	}
 	if form, ok := parseIDArg(newStatus); ok && form == id.FormFull {

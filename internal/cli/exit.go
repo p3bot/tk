@@ -18,6 +18,8 @@ type ExitError struct {
 	Err  error
 	// Plain: non-fault diagnostic (e.g. empty next queue); printed without "error:" label.
 	Plain bool
+	// AlreadyPrinted: the diagnostic is already on stderr. PrintError stays quiet.
+	AlreadyPrinted bool
 }
 
 func (e *ExitError) Error() string { return e.Err.Error() }

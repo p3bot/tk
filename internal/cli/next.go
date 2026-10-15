@@ -25,7 +25,9 @@ func newNextCmd(app *App) *cobra.Command {
 			"Without --claim it is a pure read that never runs git. With --claim it is the\n" +
 			"start-work write: on a tk-driven git-root with an upstream the board is refreshed\n" +
 			"first, then the first still-eligible candidate is set to in-progress, self-committed,\n" +
-			"and pushed. Without an upstream the claim stays a local write and self-commit.",
+			"and pushed. Without an upstream the claim stays a local write and self-commit.\n" +
+			"A held scope refuses --claim (exit 1, no write, no refresh, no push) and prints\n" +
+			"scope_hold:. Without --claim the next path is still printed.",
 		Args: noArgs(),
 		RunE: func(c *cobra.Command, _ []string) error {
 			if claim {
@@ -47,7 +49,7 @@ func runNext(app *App, c *cobra.Command, scopeFlag string, noLens bool) error {
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}

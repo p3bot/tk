@@ -42,7 +42,8 @@ func runRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) e
 	if !ok {
 		return usageErrorf("%q is not a valid ticket id", idArg)
 	}
-	srcScope, err := e.scopeForID(idArg, form, scopeFlag)
+	// Resolve without warning. Name a hold line only once a second scope is known.
+	srcScope, err := e.scopeForID(nil, idArg, form, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -58,9 +59,22 @@ func runRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) e
 		DestScope:   destScope,
 		Lookup:      lookup,
 	}
+	names := []string{srcScope}
+	dirs := map[string]string{srcScope: entry.Dir}
 	if destEntry, ok := e.reg.Scopes[destScope]; ok {
 		in.DestDir = destEntry.Dir
-	} else if id.IsScopeName(destScope) {
+		if destScope != srcScope {
+			names = append(names, destScope)
+			dirs[destScope] = destEntry.Dir
+		}
+	}
+	if len(names) > 1 {
+		e.holdNamed = true
+	}
+	for _, name := range names {
+		e.warnHold(c, name, dirs[name])
+	}
+	if in.DestDir == "" && id.IsScopeName(destScope) {
 		return fmt.Errorf("unknown scope %q", destScope)
 	}
 

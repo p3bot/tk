@@ -26,6 +26,7 @@ var pulseKeys = []string{
 	"dir",
 	"resolved",
 	"mode",
+	"hold",
 	"lens",
 	"note",
 	"total",
@@ -84,13 +85,16 @@ func newPulseCmd(app *App) *cobra.Command {
 			"are usage exit 2. The attribute path builds the same pulse map as the full\n" +
 			"dashboard (same reconcile, next selection, counts, integrity, stderr tokens).\n" +
 			"\n" +
-			"Locked keys (order fixed): scope, dir, resolved, mode, lens, note, total,\n" +
+			"Locked keys (order fixed): scope, dir, resolved, mode, hold, lens, note, total,\n" +
 			"todo, in-progress, review, blocked, draft, triaged, backlog, done, cancelled, next,\n" +
 			"claimed, blocked_ids, dangling, integrity, uncommitted, designs,\n" +
 			"design_draft, design_accepted, design_decomposed, design_superseded.\n" +
 			"\n" +
 			"resolved is how the scope was chosen: flag (--scope), env (TK_SCOPE), or cwd\n" +
 			"(longest-prefix code-root).\n" +
+			"\n" +
+			"hold is true when tk.cue sets hold, otherwise false (including an unusable\n" +
+			"schema). `tk pulse hold` prints that bare bool.\n" +
 			"\n" +
 			"mode is one of tk-driven | repo-driven | plain-files only. With a known schema:\n" +
 			"autoCommit true → tk-driven (with or without a git-root — the planned no-repo\n" +
@@ -159,7 +163,7 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -200,6 +204,7 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 		"dir":      absDir,
 		"resolved": resolved.Source,
 		"mode":     mode,
+		"hold":     strconv.FormatBool(scopeconfig.Held(schema)),
 		"lens":     strings.Join(lens, " "),
 		"note":     notePath,
 	}

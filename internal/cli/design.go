@@ -261,7 +261,7 @@ func runDesignCreate(app *App, c *cobra.Command, title, scopeFlag string, edit b
 		return err
 	}
 	defer e.close()
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -312,7 +312,7 @@ func runDesignList(app *App, c *cobra.Command, scopeFlag string, statuses []stri
 		return err
 	}
 	defer e.close()
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -348,6 +348,7 @@ func runDesignSearch(app *App, c *cobra.Command, args []string, scope string) er
 		}
 		targets = map[string]string{scope: entry.Dir}
 	}
+	e.warnHoldTargets(c, targets)
 	if _, err := e.reconcile(c, targets); err != nil {
 		return err
 	}
@@ -391,14 +392,28 @@ func runDesignMark(app *App, c *cobra.Command, status, idArg, scopeFlag string) 
 }
 
 func runDesignRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) error {
-	e, in, err := eDesignID(app, c, idArg, scopeFlag)
+	// Resolve without warning. The source and destination are both known
+	// before any scope_hold line, so a second scope is named and one scope is not.
+	e, in, err := eDesignID(app, nil, idArg, scopeFlag)
 	if err != nil {
 		return err
 	}
 	defer e.close()
 	rehome := design.RehomeInput{IDInput: in, DestScope: destScope}
+	names := []string{in.Scope}
+	dirs := map[string]string{in.Scope: in.Dir}
 	if dest, ok := e.reg.Scopes[destScope]; ok {
 		rehome.DestDir = dest.Dir
+		if destScope != in.Scope {
+			names = append(names, destScope)
+			dirs[destScope] = dest.Dir
+		}
+	}
+	if len(names) > 1 {
+		e.holdNamed = true
+	}
+	for _, name := range names {
+		e.warnHold(c, name, dirs[name])
 	}
 	res, err := design.Rehome(e.designDeps(c), rehome)
 	return emitDesign(c, res, err)
@@ -423,7 +438,7 @@ func eDesignID(app *App, c *cobra.Command, idArg, scopeFlag string) (*engine, de
 	if err != nil {
 		return nil, design.IDInput{}, err
 	}
-	scope, err := e.scopeForID(idArg, form, scopeFlag)
+	scope, err := e.scopeForID(c, idArg, form, scopeFlag)
 	if err != nil {
 		e.close()
 		return nil, design.IDInput{}, err

@@ -60,6 +60,7 @@ tk scope forget <name>
 tk scope list          # bare `tk scope` and `tk scopes` also run list
 tk scope rename <old> <new>
 tk scope auto-commit [true|false] [--scope S]  # read or set git-root-wide autoCommit
+tk scope hold [true|false] [--scope S]         # read or set this scope's hold
 tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields in tk.cue
 ```
 
@@ -72,10 +73,14 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
 - `rebind` rewrites a registered scope's paths after a move or clone.
 - `forget` unregisters a scope (registry, lens, and note entries only); it never
   touches the scope's files.
-- `list` prints parse-stable TSV, one line per scope: `name\tdir\troot\tmode`,
-  where `mode` is `tk-driven`, `repo-driven`, `plain-files`, or `unknown`.
+- `list` prints parse-stable TSV, one line per scope: `name\tdir\troot\tmode\thold`,
+  where `mode` is `tk-driven`, `repo-driven`, `plain-files`, or `unknown`, and
+  `hold` is `true`, `false`, or empty when `tk.cue` cannot be evaluated.
 - `rename` renames a scope end-to-end (registry, lens, note default, `tk.cue` name,
   ticket ids).
+- `hold` prints the evaluated `hold` bool, or rewrites it on that one scope.
+  Omitted `hold` is false. A held scope warns on stderr (`scope_hold:`). `tk mark
+  in-progress` and `tk next --claim` exit 1 and do not write. Other commands still run.
 - `auto-commit` prints the evaluated `autoCommit` bool, or rewrites it to
   `true`/`false` for every registered scope that shares the dir's git-root
   (already-that-value is ensure: exit 0, no rewrite). Mode labels stay derived;

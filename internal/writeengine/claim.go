@@ -59,10 +59,17 @@ func claimMarks(deps Deps, r Reporter, in claimMarksInput) (Result, error) {
 	})
 }
 
+// beforeScopeLock, when set, runs after the pre-lock hold check and before
+// the scope lock. Tests flip hold in that gap. Production leaves it nil.
+var beforeScopeLock func()
+
 func runNetworkClaim(deps Deps, r Reporter, scope, dir string, underLock networkClaimFn) (Result, error) {
 	r = reporterOrNop(r)
 	ctx := ctxOf(deps)
-	schema, _ := deps.Rec.SchemaOrError(scope, dir)
+	schema, schemaErr := deps.Rec.SchemaOrError(scope, dir)
+	if schemaErr == nil && scopeconfig.Held(schema) {
+		return Result{}, &HoldError{}
+	}
 	autoCommit := scopeconfig.SchemaAutoCommit(schema)
 	root, hasRoot := scopefile.GitRoot(dir)
 	network := autoCommit && hasRoot && git.HasUpstream(ctx, root)
@@ -83,12 +90,22 @@ func runNetworkClaim(deps Deps, r Reporter, scope, dir string, underLock network
 		}
 	}
 
+	// The pre-lock check skips refresh when hold is already on. Setting hold
+	// takes this same scope lock, so it can finish during the refresh. Read
+	// the config again after the lock is held, before any ticket write.
+	if beforeScopeLock != nil {
+		beforeScopeLock()
+	}
 	out, err := func() (Result, error) {
 		lock, err := scopefile.AcquireLock(dir)
 		if err != nil {
 			return Result{}, err
 		}
 		defer func() { _ = lock.Release() }()
+		schema, schemaErr = deps.Rec.SchemaOrError(scope, dir)
+		if schemaErr == nil && scopeconfig.Held(schema) {
+			return Result{}, &HoldError{}
+		}
 		return underLock(autoCommit, root, hasRoot, network)
 	}()
 	if err != nil {

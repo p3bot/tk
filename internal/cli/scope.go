@@ -10,8 +10,9 @@ func newScopeCmd(app *App) *cobra.Command {
 		Short:   "Manage scopes — register, address, and inspect ticket containers",
 		Long: "A scope is a directory of ticket markdown files plus its tk.cue. Scope\n" +
 			"administration registers scopes on this machine, rebinds their paths, lists\n" +
-			"them, edits custom field declarations (field list|set|unset), and reads or\n" +
-			"sets the stored autoCommit bool (auto-commit). Bare `tk scope` runs `list`.",
+			"them, edits custom field declarations (field list|set|unset), reads or\n" +
+			"sets the stored autoCommit bool (auto-commit), and reads or sets the\n" +
+			"per-scope hold bool (hold). Bare `tk scope` runs `list`.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -28,6 +29,7 @@ func newScopeCmd(app *App) *cobra.Command {
 		newScopeListCmd(app),
 		newScopeRenameCmd(app),
 		newScopeAutoCommitCmd(app),
+		newScopeHoldCmd(app),
 		newScopeFieldCmd(app),
 	)
 	return cmd

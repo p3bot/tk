@@ -45,6 +45,9 @@ func Mark(deps Deps, r Reporter, in MarkInput) (Result, error) {
 	if !status.IsKnown(in.NewStatus, custom) {
 		return Result{}, &UnknownStatusError{Status: in.NewStatus, Scope: in.Scope}
 	}
+	if in.NewStatus == status.InProgress && scopeconfig.Held(sess.Schema) {
+		return Result{}, &HoldError{}
+	}
 	if err := sess.CheckMidRebase(); err != nil {
 		return Result{}, err
 	}

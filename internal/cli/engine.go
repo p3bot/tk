@@ -25,6 +25,10 @@ type engine struct {
 	reg *registry.Registry
 	db  *index.DB
 	rec *reconcile.Reconciler
+	// holdNamed prefixes scope_hold lines with the scope name. Set before
+	// resolution on commands that can enter more than one scope.
+	holdNamed bool
+	holdSeen  map[string]bool
 }
 
 func (a *App) openEngine(_ *cobra.Command) (*engine, error) {
@@ -154,10 +158,19 @@ func ambientOptions(scopeFlag string) (resolve.Options, error) {
 }
 
 // resolveAmbient: no-scope is generic non-zero; drift is fail-closed via resolve.
-func (e *engine) resolveAmbient(scopeFlag string) (*resolve.Resolved, error) {
+// A non-nil command warns when the resolved scope is on hold. nil skips the
+// warning for speculative lookups that are not the command's scope.
+func (e *engine) resolveAmbient(c *cobra.Command, scopeFlag string) (*resolve.Resolved, error) {
 	opts, err := ambientOptions(scopeFlag)
 	if err != nil {
 		return nil, err
 	}
-	return resolve.Resolve(e.app.Ctx, e.reg, opts)
+	resolved, err := resolve.Resolve(e.app.Ctx, e.reg, opts)
+	if err != nil {
+		return nil, err
+	}
+	if c != nil {
+		e.warnHold(c, resolved.Name, resolved.Entry.Dir)
+	}
+	return resolved, nil
 }

@@ -12,7 +12,10 @@ func newScopeForgetCmd(app *App) *cobra.Command {
 			"scope for this verb; forget here removes registry, lens, and note only. A\n" +
 			"merely unreachable dir stays registered until forget.",
 		Args: exactArgs("<name>"),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(c *cobra.Command, args []string) error {
+			if err := warnRegisteredHold(app, c, args[0]); err != nil {
+				return err
+			}
 			return app.admin().Forget(args[0])
 		},
 	}

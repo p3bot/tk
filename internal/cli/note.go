@@ -323,7 +323,7 @@ func runNoteUse(app *App, c *cobra.Command, args []string, scopeFlag string, cle
 	}
 	defer e.close()
 
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -371,7 +371,7 @@ func openNote(app *App, c *cobra.Command, scopeFlag string) (*noteScope, error) 
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	if err != nil {
 		e.close()
 		return nil, err

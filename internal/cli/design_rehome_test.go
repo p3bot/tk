@@ -55,6 +55,56 @@ func TestDesignRehomePrintsDestAndStaysOffTheBoard(t *testing.T) {
 	}
 }
 
+func TestDesignRehomeWarnsEachHeldScope(t *testing.T) {
+	app := newApp(t)
+	foo := initScope(t, app, "foo")
+	bar := initScope(t, app, "bar")
+	if err := os.WriteFile(filepath.Join(bar, "tk.cue"), []byte("name: \"bar\"\nautoCommit: false\nhold: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeDesign(t, foo, "foo-ab2c", "shape", "draft", "2026-01-01T00:00:00Z", "Shape")
+
+	out, errOut, err := run(t, app, "design", "rehome", "foo-ab2c", "bar")
+	if err != nil {
+		t.Fatalf("rehome into held dest: %v (%s)", err, errOut)
+	}
+	if !strings.Contains(out, filepath.Join("bar", "design", "bar-ab2c-shape.md")) {
+		t.Fatalf("stdout = %q", out)
+	}
+	if errOut != token.FormatScopeHold("bar")+"\n" {
+		t.Fatalf("held dest stderr = %q", errOut)
+	}
+
+	app = newApp(t)
+	foo = initScope(t, app, "foo")
+	bar = initScope(t, app, "bar")
+	if err := os.WriteFile(filepath.Join(foo, "tk.cue"), []byte("name: \"foo\"\nautoCommit: false\nhold: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeDesign(t, foo, "foo-ab2c", "shape", "draft", "2026-01-01T00:00:00Z", "Shape")
+	_, errOut, err = run(t, app, "design", "rehome", "foo-ab2c", "bar")
+	if err != nil {
+		t.Fatalf("rehome from held source: %v (%s)", err, errOut)
+	}
+	if errOut != token.FormatScopeHold("foo")+"\n" {
+		t.Fatalf("held source stderr = %q", errOut)
+	}
+
+	app = newApp(t)
+	foo = initScope(t, app, "foo")
+	if err := os.WriteFile(filepath.Join(foo, "tk.cue"), []byte("name: \"foo\"\nautoCommit: false\nhold: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeDesign(t, foo, "foo-cd3e", "shape", "draft", "2026-01-01T00:00:00Z", "Shape")
+	_, errOut, err = run(t, app, "design", "rehome", "foo-cd3e", "foo")
+	if ExitCodeFromError(err) != exitUsage {
+		t.Fatalf("same-scope exit = %d (%v)", ExitCodeFromError(err), err)
+	}
+	if errOut != token.FormatScopeHold("")+"\n" {
+		t.Fatalf("same-scope stderr = %q", errOut)
+	}
+}
+
 func TestDesignRehomeSameScopeExitsTwo(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "foo")

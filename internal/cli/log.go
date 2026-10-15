@@ -156,6 +156,7 @@ func runLog(app *App, c *cobra.Command, p logParams) error {
 	if err != nil {
 		return err
 	}
+	e.warnHoldTargets(c, targets)
 	res, err := e.reconcile(c, targets)
 	if err != nil {
 		return err

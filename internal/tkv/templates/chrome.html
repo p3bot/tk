@@ -80,8 +80,9 @@
   </dialog>
   {{end}}
 </header>
-{{if or .Chrome.Notices .Chrome.Alerts}}
+{{if or .Chrome.Hold .Chrome.Notices .Chrome.Alerts}}
 <div class="chrome-notices">
+{{if .Chrome.Hold}}<p class="banner">This scope is on hold. No work is to be carried out.</p>{{end}}
 {{range .Chrome.Alerts}}<p class="banner">{{.}}</p>{{end}}
 {{template "notices" .Chrome.Notices}}
 </div>

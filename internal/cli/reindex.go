@@ -29,6 +29,7 @@ func runReindex(app *App, c *cobra.Command) error {
 	}
 	defer e.close()
 
+	e.warnHoldTargets(c, e.allTargets())
 	if err := e.db.Rebuild(); err != nil {
 		return err
 	}

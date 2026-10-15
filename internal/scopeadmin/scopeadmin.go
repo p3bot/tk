@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"cuelang.org/go/cue"
@@ -310,6 +311,8 @@ type ListRow struct {
 	Dir  string
 	Root string
 	Mode string
+	// Hold is true, false, or empty when tk.cue could not be evaluated.
+	Hold string
 }
 
 // Mode labels for tk scope list.
@@ -384,6 +387,7 @@ func (a *Admin) List() (*Listing, error) {
 		}
 
 		row.Mode = DeriveMode(schema.AutoCommit, inRepo)
+		row.Hold = strconv.FormatBool(schema.Hold)
 		out.Rows = append(out.Rows, row)
 	}
 	return out, nil

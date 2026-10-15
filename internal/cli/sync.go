@@ -49,7 +49,7 @@ func runSync(app *App, c *cobra.Command, scopeFlag string, all bool) error {
 	}
 	defer e.close()
 
-	in, err := e.syncInput(scopeFlag, all)
+	in, err := e.syncInput(c, scopeFlag, all)
 	if err != nil {
 		return err
 	}
@@ -67,11 +67,12 @@ func runSync(app *App, c *cobra.Command, scopeFlag string, all bool) error {
 // syncInput maps the three CLI invocation shapes onto the two package inputs.
 // Ambient success → ambient; --all or resolve.ErrNoScope → all-registered;
 // other resolve errors fail here before the package runs.
-func (e *engine) syncInput(scopeFlag string, all bool) (syncengine.Input, error) {
+func (e *engine) syncInput(c *cobra.Command, scopeFlag string, all bool) (syncengine.Input, error) {
 	if all {
+		e.warnHoldTargets(c, e.allTargets())
 		return syncengine.Input{AllRegistered: true}, nil
 	}
-	resolved, err := e.resolveAmbient(scopeFlag)
+	resolved, err := e.resolveAmbient(c, scopeFlag)
 	switch {
 	case err == nil:
 		return syncengine.Input{Ambient: &syncengine.AmbientScope{
@@ -79,6 +80,7 @@ func (e *engine) syncInput(scopeFlag string, all bool) (syncengine.Input, error)
 			Dir:  resolved.Entry.Dir,
 		}}, nil
 	case errors.Is(err, resolve.ErrNoScope):
+		e.warnHoldTargets(c, e.allTargets())
 		return syncengine.Input{AllRegistered: true}, nil
 	default:
 		return syncengine.Input{}, err

@@ -51,6 +51,7 @@ func runSearch(app *App, c *cobra.Command, args []string, scope string) error {
 		}
 		targets = map[string]string{scope: entry.Dir}
 	}
+	e.warnHoldTargets(c, targets)
 	if _, err := e.reconcile(c, targets); err != nil {
 		return err
 	}

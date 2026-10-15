@@ -37,8 +37,11 @@ func PrintError(err error) {
 
 // fprintError: closed tokens and Plain diagnostics print verbatim (no "error:" label).
 func fprintError(w io.Writer, err error, colorAllowed bool) {
-	msg := err.Error()
 	var ee *ExitError
+	if errors.As(err, &ee) && ee.AlreadyPrinted {
+		return
+	}
+	msg := err.Error()
 	plain := errors.As(err, &ee) && ee.Plain
 	if plain || token.HasKnownPrefix(msg) || !colorAllowed {
 		fmt.Fprintln(w, msg)

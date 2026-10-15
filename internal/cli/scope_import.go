@@ -4,6 +4,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/p3bot/tk/internal/scopeadmin"
+	"github.com/p3bot/tk/internal/scopeconfig"
+	"github.com/p3bot/tk/internal/token"
 )
 
 func newScopeImportCmd(app *App) *cobra.Command {
@@ -36,6 +38,9 @@ func newScopeImportCmd(app *App) *cobra.Command {
 				p.CodeRootGiven = true
 			}
 
+			if schema, _, loadErr := scopeconfig.LoadWithClosure(app.Ctx, dir); loadErr == nil && scopeconfig.Held(schema) {
+				stderrln(c, token.FormatScopeHold(""))
+			}
 			registered, err := app.admin().Import(p)
 			if err != nil {
 				return err

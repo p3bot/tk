@@ -2,6 +2,7 @@ package design
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,24 @@ func TestCreateAndMarkStampChangedFromNow(t *testing.T) {
 	}
 	if got, gotCreated := fenceChanged(t, bare); got != bareAt.Format(time.RFC3339) || gotCreated != "2026-01-01T00:00:00Z" {
 		t.Fatalf("bare mark changed=%q created=%q", got, gotCreated)
+	}
+}
+
+func TestCreateRedrawsBlockedMint(t *testing.T) {
+	deps, dir := plainDeps(t)
+	// Mint bytes for "fuck", then the all-zero draw "aaaa".
+	src := io.MultiReader(
+		bytes.NewReader([]byte{5, 0, 17, 0, 2, 0, 9}),
+		bytes.NewReader(bytes.Repeat([]byte{0x00}, 7)),
+	)
+	res, err := Create(deps, CreateInput{
+		Scope: "wc", Dir: dir, Title: "Redraw", Rand: src,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ID != "wc-aaaa" {
+		t.Fatalf("id = %q, want wc-aaaa after a blocked redraw", res.ID)
 	}
 }
 

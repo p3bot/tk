@@ -125,6 +125,23 @@ func TestCreateMintRedrawsTaken(t *testing.T) {
 	}
 }
 
+func TestCreateMintRedrawsBlocked(t *testing.T) {
+	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
+
+	// Mint bytes for "fuck", then the all-zero draw "aaaa".
+	src := io.MultiReader(
+		bytes.NewReader([]byte{5, 0, 17, 0, 2, 0, 9}),
+		bytes.NewReader(bytes.Repeat([]byte{0x00}, 7)),
+	)
+	res, err := Create(e.deps, CreateInput{Scope: "wc", Dir: e.dir, Title: "Redraw", Rand: src})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if res.ID != "wc-aaaa" {
+		t.Errorf("id = %q, want wc-aaaa after a blocked redraw", res.ID)
+	}
+}
+
 func TestCreateMintSkipsUntrackedDesign(t *testing.T) {
 	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
 	writeFile(t, filepath.Join(e.dir, "design", "wc-aaaa-shape.md"), "---\nid: wc-aaaa\nstatus: draft\ncreated: 2026-01-01T00:00:00Z\n---\n# Shape\n")

@@ -163,7 +163,7 @@ func mintUnusedID(taken map[string]struct{}, r io.Reader) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("mint id: %w", err)
 		}
-		if _, used := taken[s]; !used {
+		if _, used := taken[s]; !used && !id.MintBlocked(s) {
 			return s, nil
 		}
 	}

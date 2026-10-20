@@ -358,8 +358,8 @@ func (c chrome) BriefHref() string { return c.sectionHref("/brief") }
 
 func (c chrome) DoctorHref() string { return c.sectionHref("/doctor") }
 
-// ScopeHref is the switcher target for name. Board and inspect land on that
-// scope's board; designs, notes, brief, and doctor keep the current section.
+// ScopeHref is the switcher target for name. Board, inspect, and doctor land
+// on that scope's board; designs, notes, and brief keep the current section.
 func (c chrome) ScopeHref(name string) string {
 	if name == "" {
 		return ""
@@ -371,8 +371,6 @@ func (c chrome) ScopeHref(name string) string {
 		return notesListHref(name)
 	case navBrief:
 		return c.sectionHrefFor(name, briefKeepPath(c.Return))
-	case navDoctor:
-		return c.sectionHrefFor(name, "/doctor")
 	default:
 		return "/scope/" + name
 	}

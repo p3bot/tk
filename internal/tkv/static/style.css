@@ -320,7 +320,18 @@ table.overview tr.note td { color: var(--issues); background: var(--banner); fon
   color: var(--muted);
 }
 .tag.on { background: #e0e7ff; color: #1e3a8a; border-color: #c7d2fe; }
-.kanban { display: flex; gap: 0.8rem; overflow-x: auto; align-items: flex-start; padding-bottom: 1rem; }
+/* Flip the scrollport so the horizontal bar sits above the column titles.
+   flex-end is the layout bottom; after the flip it is the visual top, so
+   short columns still share a top edge. The column flips back upright. */
+.kanban {
+  display: flex;
+  gap: 0.8rem;
+  overflow-x: auto;
+  align-items: flex-end;
+  padding-bottom: 1rem;
+  transform: scaleY(-1);
+}
+.kanban > .col { transform: scaleY(-1); }
 .col {
   flex: 0 0 16.5rem;
   background: var(--card);

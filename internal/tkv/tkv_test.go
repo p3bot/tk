@@ -1308,7 +1308,7 @@ func TestPrimaryNav(t *testing.T) {
 		{"/scope/wc", "Board", "/scope/wc"},
 		{"/search", "", "/scope/wc"},
 		{"/brief", "Brief", "/brief?scope=wc"},
-		{"/doctor", "Doctor", "/doctor?scope=wc"},
+		{"/doctor", "Doctor", "/scope/wc"},
 	}
 	for _, c := range cases {
 		w := do(s, c.path)
@@ -1537,11 +1537,14 @@ func TestChromeScopeTabs(t *testing.T) {
 		t.Fatalf("/doctor?scope=wc = %d %s", w.Code, w.Body.String())
 	}
 	doctor := scopesNav(t, w.Body.String())
-	if !strings.Contains(doctor, `href="/doctor?scope=wc" class="selected" aria-current="page">wc</a>`) {
-		t.Errorf("doctor must keep doctor: %s", doctor)
+	if !strings.Contains(doctor, `href="/scope/wc" class="selected" aria-current="true">wc</a>`) {
+		t.Errorf("doctor must mark wc selected and link it to the board: %s", doctor)
 	}
-	if !strings.Contains(doctor, `href="/doctor?scope=aa">aa</a>`) {
-		t.Errorf("doctor must switch aa onto doctor: %s", doctor)
+	if !strings.Contains(doctor, `href="/scope/aa">aa</a>`) {
+		t.Errorf("doctor must switch aa onto the board: %s", doctor)
+	}
+	if strings.Contains(doctor, `href="/doctor?scope=`) {
+		t.Errorf("doctor scope tabs must not stay on doctor: %s", doctor)
 	}
 
 	w = do(s, "/designs")
@@ -1678,7 +1681,7 @@ func TestScopeHref(t *testing.T) {
 		t.Errorf("old depends = %q", got)
 	}
 	c.Section = navDoctor
-	if got := c.ScopeHref("aa"); got != "/doctor?scope=aa" {
+	if got := c.ScopeHref("aa"); got != "/scope/aa" {
 		t.Errorf("doctor = %q", got)
 	}
 }
@@ -1703,6 +1706,11 @@ func TestScopeAriaCurrent(t *testing.T) {
 	c.Section = navBrief
 	if got := c.ScopeAriaCurrent("wc"); got != "page" {
 		t.Errorf("graphs hub = %q, want page", got)
+	}
+	c.Section = navDoctor
+	c.Return = "/doctor?scope=wc"
+	if got := c.ScopeAriaCurrent("wc"); got != "true" {
+		t.Errorf("doctor = %q, want true", got)
 	}
 	c.Section = navDesigns
 	c.Return = "/scope/wc/designs"

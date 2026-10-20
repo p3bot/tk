@@ -394,6 +394,7 @@ func runDesignMark(app *App, c *cobra.Command, status, idArg, scopeFlag string) 
 func runDesignRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) error {
 	// Resolve without warning. The source and destination are both known
 	// before any scope_hold line, so a second scope is named and one scope is not.
+	// Two held scopes share one line.
 	e, in, err := eDesignID(app, nil, idArg, scopeFlag)
 	if err != nil {
 		return err
@@ -409,12 +410,7 @@ func runDesignRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag str
 			dirs[destScope] = dest.Dir
 		}
 	}
-	if len(names) > 1 {
-		e.holdNamed = true
-	}
-	for _, name := range names {
-		e.warnHold(c, name, dirs[name])
-	}
+	e.warnHoldSet(c, names, dirs)
 	res, err := design.Rehome(e.designDeps(c), rehome)
 	return emitDesign(c, res, err)
 }

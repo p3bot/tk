@@ -68,12 +68,7 @@ func runRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) e
 			dirs[destScope] = destEntry.Dir
 		}
 	}
-	if len(names) > 1 {
-		e.holdNamed = true
-	}
-	for _, name := range names {
-		e.warnHold(c, name, dirs[name])
-	}
+	e.warnHoldSet(c, names, dirs)
 	if in.DestDir == "" && id.IsScopeName(destScope) {
 		return fmt.Errorf("unknown scope %q", destScope)
 	}

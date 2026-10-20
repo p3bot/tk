@@ -25,10 +25,13 @@ type engine struct {
 	reg *registry.Registry
 	db  *index.DB
 	rec *reconcile.Reconciler
-	// holdNamed prefixes scope_hold lines with the scope name. Set before
-	// resolution on commands that can enter more than one scope.
+	// holdNamed prefixes a single scope_hold line with the scope name. Set
+	// before resolution on commands that can enter more than one scope.
 	holdNamed bool
-	holdSeen  map[string]bool
+	// holdBatch collects held scopes so two or more share one line.
+	holdBatch   bool
+	holdPending []string
+	holdSeen    map[string]bool
 }
 
 func (a *App) openEngine(_ *cobra.Command) (*engine, error) {

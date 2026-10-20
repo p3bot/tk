@@ -166,6 +166,31 @@ func TestHeldScopeNamesEachScopeOnDoctor(t *testing.T) {
 	_ = other
 }
 
+func TestHeldScopesShareOneLine(t *testing.T) {
+	app := newApp(t)
+	aa := initScope(t, app, "aa")
+	bb := initScope(t, app, "bb")
+	for _, spec := range []struct{ dir, name string }{{aa, "aa"}, {bb, "bb"}} {
+		body := "name: \"" + spec.name + "\"\nautoCommit: false\nhold: true\n"
+		if err := os.WriteFile(filepath.Join(spec.dir, "tk.cue"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(t.TempDir())
+
+	_, errOut, err := run(t, app, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v (%s)", err, errOut)
+	}
+	want := token.FormatScopeHolds([]string{"bb", "aa"})
+	if strings.Count(errOut, token.ScopeHold) != 1 || !strings.Contains(errOut, want) {
+		t.Fatalf("doctor stderr = %q, want one %q", errOut, want)
+	}
+	if strings.Contains(errOut, token.ScopeHoldSentence) {
+		t.Fatalf("plural line repeated the singular sentence: %q", errOut)
+	}
+}
+
 func TestScopeHoldAutoCommitDurability(t *testing.T) {
 	requireGit(t)
 	app := newApp(t)

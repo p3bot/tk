@@ -12,7 +12,8 @@ import (
 
 // warnHold prints one scope_hold line when <dir>'s evaluated tk.cue has hold
 // true. A second call for the same scope in this command is quiet. Load failure
-// prints nothing: config_unparseable owns that scope.
+// prints nothing: config_unparseable owns that scope. Inside a hold batch the
+// line is held until finishHoldBatch.
 func (e *engine) warnHold(c *cobra.Command, scope, dir string) {
 	if c == nil || e == nil || scope == "" || dir == "" {
 		return
@@ -28,6 +29,10 @@ func (e *engine) warnHold(c *cobra.Command, scope, dir string) {
 		e.holdSeen = map[string]bool{}
 	}
 	e.holdSeen[scope] = true
+	if e.holdBatch {
+		e.holdPending = append(e.holdPending, scope)
+		return
+	}
 	name := ""
 	if e.holdNamed {
 		name = scope
@@ -36,14 +41,38 @@ func (e *engine) warnHold(c *cobra.Command, scope, dir string) {
 }
 
 // warnHoldTargets warns for each scope in targets. More than one scope names
-// each held scope on its line.
+// each held scope. Two or more held scopes share one line.
 func (e *engine) warnHoldTargets(c *cobra.Command, targets map[string]string) {
-	if len(targets) > 1 {
+	e.warnHoldSet(c, scopeNames(targets), targets)
+}
+
+// warnHoldSet warns for names in walk order. One scope in the set stays
+// unnamed. More than one scope names each held scope, and two or more held
+// scopes share one line.
+func (e *engine) warnHoldSet(c *cobra.Command, names []string, dirs map[string]string) {
+	if len(names) > 1 {
 		e.holdNamed = true
+		e.holdBatch = true
 	}
-	for _, name := range scopeNames(targets) {
-		e.warnHold(c, name, targets[name])
+	for _, name := range names {
+		e.warnHold(c, name, dirs[name])
 	}
+	e.finishHoldBatch(c)
+}
+
+// finishHoldBatch emits the collected scope_hold line. One held scope keeps
+// the named sentence. Two or more share one line.
+func (e *engine) finishHoldBatch(c *cobra.Command) {
+	if e == nil {
+		return
+	}
+	e.holdBatch = false
+	if len(e.holdPending) == 0 {
+		return
+	}
+	names := e.holdPending
+	e.holdPending = nil
+	stderrln(c, token.FormatScopeHolds(names))
 }
 
 // holdExit maps a hold refusal to exit 1. The line is printed here only when

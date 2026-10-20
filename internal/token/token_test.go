@@ -50,6 +50,35 @@ func TestFormatDependsOpen(t *testing.T) {
 	}
 }
 
+func TestFormatScopeHold(t *testing.T) {
+	unnamed := FormatScopeHold("")
+	if unnamed != "scope_hold: This scope is on hold. No work is to be carried out." {
+		t.Errorf("unnamed = %q", unnamed)
+	}
+	named := FormatScopeHold("tk")
+	if named != "scope_hold: tk: This scope is on hold. No work is to be carried out." {
+		t.Errorf("named = %q", named)
+	}
+	many := FormatScopeHolds([]string{"tk", "foo"})
+	if many != "scope_hold: foo, tk: No work is to be carried out in those scopes." {
+		t.Errorf("many = %q", many)
+	}
+	if FormatScopeHolds([]string{"foo", "tk"}) != many {
+		t.Errorf("many order = %q", FormatScopeHolds([]string{"foo", "tk"}))
+	}
+	if FormatScopeHolds([]string{"tk"}) != named {
+		t.Errorf("one-element = %q", FormatScopeHolds([]string{"tk"}))
+	}
+	if FormatScopeHolds(nil) != "" {
+		t.Errorf("empty = %q", FormatScopeHolds(nil))
+	}
+	for _, line := range []string{unnamed, named, many} {
+		if !HasKnownPrefix(line) {
+			t.Errorf("scope_hold line must be catalogue-prefixed: %q", line)
+		}
+	}
+}
+
 func TestFormatRequiredMissing(t *testing.T) {
 	got := FormatRequiredMissing("wc-ab2c", []string{"jira", "owners"})
 	want := "required_missing: wc-ab2c missing required: jira owners"

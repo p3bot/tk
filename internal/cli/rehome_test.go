@@ -122,6 +122,24 @@ func TestRehomeWarnsEachHeldScope(t *testing.T) {
 	if errOut != token.FormatScopeHold("")+"\n" {
 		t.Fatalf("same-scope stderr = %q", errOut)
 	}
+
+	app = newApp(t)
+	foo = initScope(t, app, "foo")
+	bar = initScope(t, app, "bar")
+	for _, spec := range []struct{ dir, name string }{{foo, "foo"}, {bar, "bar"}} {
+		body := "name: \"" + spec.name + "\"\nautoCommit: false\nhold: true\n"
+		if err := os.WriteFile(filepath.Join(spec.dir, "tk.cue"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addTicket(t, foo, "foo-ab2c", "moved", "todo", "a0", "# Moved\n", false, "")
+	_, errOut, err = run(t, app, "rehome", "foo-ab2c", "bar")
+	if err != nil {
+		t.Fatalf("rehome both held: %v (%s)", err, errOut)
+	}
+	if errOut != token.FormatScopeHolds([]string{"bar", "foo"})+"\n" {
+		t.Fatalf("both held stderr = %q", errOut)
+	}
 }
 
 func TestRehomeSameScopeUsage(t *testing.T) {

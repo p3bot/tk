@@ -5,6 +5,7 @@ package token
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -170,16 +171,34 @@ func FormatRequiredMissing(id string, keys []string) string {
 		id, strings.Join(keys, " ")))
 }
 
-// ScopeHoldSentence is the fixed human sentence after scope_hold:.
+// ScopeHoldSentence is the fixed human sentence after scope_hold: for one scope.
 const ScopeHoldSentence = "This scope is on hold. No work is to be carried out."
 
+// ScopeHoldScopesSentence is the fixed human sentence when two or more scopes are held.
+const ScopeHoldScopesSentence = "No work is to be carried out in those scopes."
+
 // FormatScopeHold is the fixed scope_hold: line. An empty scope is the
-// single-scope form. A non-empty scope names that scope on a multi-scope command.
+// single-scope form. A non-empty scope names that one scope on a multi-scope command.
 func FormatScopeHold(scope string) string {
 	if scope == "" {
 		return Line(ScopeHold, ScopeHoldSentence)
 	}
 	return Line(ScopeHold, scope+": "+ScopeHoldSentence)
+}
+
+// FormatScopeHolds is one scope_hold: line for the held scopes of a multi-scope
+// command. Zero scopes is empty. One scope is FormatScopeHold. Two or more
+// share one line, names ascending.
+func FormatScopeHolds(scopes []string) string {
+	switch len(scopes) {
+	case 0:
+		return ""
+	case 1:
+		return FormatScopeHold(scopes[0])
+	}
+	names := append([]string(nil), scopes...)
+	sort.Strings(names)
+	return Line(ScopeHold, strings.Join(names, ", ")+": "+ScopeHoldScopesSentence)
 }
 
 var all = []string{

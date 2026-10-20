@@ -258,18 +258,17 @@ func TestSkillDocumentsEveryScope(t *testing.T) {
 	text := skill.Text()
 	for _, want := range []string{
 		"tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens] [--count]",
-		"--count prints the row count instead of TSV",
-		"--every-scope is headerless TSV scope, count for every registered scope, names ascending, including 0",
+		"`--count` prints the row count instead of TSV",
+		"`--every-scope` is headerless TSV scope, count for every registered scope, names ascending, including 0",
 		"The scope field is left-justified to 20 before the tab",
 		"A scope name matches `^[a-z0-9]{1,20}$`",
 		"A final line labelled TOTAL is the sum of those counts and is always last",
 		"TOTAL is not a legal scope name",
-		"--every-scope lists every registered scope and ignores the lens",
+		"`--every-scope` lists every registered scope and ignores the lens",
 		"a custom status keeps rows only from scopes that declare it",
 		"grouped by scope name ascending",
 		"a terminal-only reverse stays inside the scope",
 		"Inside a scope, sorted (order, id); terminal-only status filters reverse that order",
-		"--every-scope keeps scope names ascending",
 		"`tk list --every-scope`",
 	} {
 		if !strings.Contains(text, want) {
@@ -291,8 +290,7 @@ func TestSkillDocumentsLog(t *testing.T) {
 	text := skill.Text()
 	for _, want := range []string{
 		"tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]... [--count]",
-		"--count prints one integer for that selection, including 0",
-		"`--count` prints that selection as one integer, including 0",
+		"`--count` prints that selection as one integer, including 0, and no ticket TSV",
 		"Default is done, today, every scope",
 		"Status entry: `tk log`",
 		"tk log cancelled --date YYYY-MM-DD",
@@ -377,7 +375,6 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		"TSV id, status, title; every parsed design",
 		`schema_error: <id> has unknown status "<status>" (<path>)`,
 		"design/<id>-<slug>.md",
-		"not a board item",
 		"A design is its own row in the index. A design does not appear in `tk list`, `tk next`, `tk search`, or `tk log`",
 		"`tk pulse` appends `designs`, `design_draft`, `design_accepted`, `design_decomposed`, and `design_superseded` after `uncommitted`",
 		"An unknown status increments `designs` only",

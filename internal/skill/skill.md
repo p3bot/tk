@@ -16,7 +16,7 @@ description: >-
 - That path is live: call create once, work with it, do not create ticket files yourself
 - mark prints one path per unique marked ticket
 - A ticket is one markdown file: YAML frontmatter fence, then a single ATX H1, then the body
-- Fence (opening `---` through closing `---`): sealed except via tk mutators; parse_error: in-place fence repair (see Recovery)
+- Fence (opening `---` through closing `---`): sealed except via tk mutators; parse_error: in-place fence repair
 - H1: live title
 - Body under the H1: edit in the file
 - Whole-file rewrite of a ticket path is corruption, not authoring
@@ -24,17 +24,17 @@ description: >-
 - tk writes take a per-scope flock; prefer `tk next --claim` so agents do not collide
 - todo → in-progress (`next --claim` or `mark`) on a tk-driven root with an upstream refreshes that root and pushes; never host-push
 - Active files live at the scope dir root; terminal status moves them to archive/
-- Built-in statuses: draft, triaged, backlog, todo, in-progress, review, blocked, done, cancelled
+- Built-in statuses: backlog, draft, triaged, todo, in-progress, review, blocked, done, cancelled
 - The todo status is next-eligible
-- Manage ticket status through its states; MUST mark as done when completed
+- MUST mark as done when completed
 
 ## Frontmatter
 
 - status → tk mark
 - order → tk order
 - id, created: never invent or "repair"
-- changed: the time the current status was entered. Edits and `tk meta` do not move it. Absent on tickets written before the field existed
-- status_conflict: not via meta; see Recovery
+- changed: the time the current status was entered
+- status_conflict: not via meta
 - summary / scalar customs → tk meta set
 - depends, related, tags, links → tk meta add|remove
 - related write is one-way on the subject only (no mirror on the target); tk depends shows both directions
@@ -60,8 +60,8 @@ tk design meta add <id> produces <ticket-id> [--scope S]            # Append one
 tk design meta remove <id> produces <ticket-id> [--scope S]         # Drop one list entry, including a non-id; last removal drops the key
 tk design rehome <id> <dest-scope> [--scope S]                      # Move one design into dest design/; self-commit; no push
 
-tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens] [--count]  # Board inventory (lens default; --every-scope lists every registered scope and ignores the lens, grouped by scope name ascending; a terminal-only reverse stays inside the scope; a custom status keeps rows only from scopes that declare it; --open = non-terminal; --tag hard filter, ignores lens). Inside a scope, sorted (order, id); terminal-only status filters reverse that order. --count prints the row count instead of TSV: one scope is a bare integer, including 0; --every-scope is headerless TSV scope, count for every registered scope, names ascending, including 0. The scope field is left-justified to 20 before the tab; trim trailing spaces after splitting on that tab. A final line labelled TOTAL is the sum of those counts and is always last. TOTAL is not a legal scope name. An empty registry stays empty. Same filters, lens, and stderr
-tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]... [--count]  # Tickets that entered their current status on a local day. Default is done, today, every scope. changed is that instant. Create counts. Not git history. --count prints one integer for that selection, including 0, and no ticket TSV
+tk list [status...] [--scope S] [--every-scope] [--tag T]... [--all] [--open] [--no-lens] [--count]  # Board inventory (lens default; --open = non-terminal; --tag hard filter, ignores lens). Sort, --every-scope, and --count: Board
+tk log [status...] [--all] [--today | --yesterday | --date YYYY-MM-DD | --since YYYY-MM-DD [--until YYYY-MM-DD] | --until YYYY-MM-DD] [--scope S] [--tag T]... [--count]  # Tickets that entered their current status on a local day. Default, changed, and --count: Status entry
 tk pulse [key] [--scope S]                                          # Scope pulse; optional key → bare value
 tk meta get <id> [key] [--scope S]                                  # Full header (title/path/lines/words/characters + FM) or one key
 tk meta set <id> <key> <value> [--scope S]                          # Set scalar frontmatter key; soft required_missing: if gaps remain
@@ -94,26 +94,28 @@ tk reindex                                                          # Rebuild th
 
 ## Designs
 
-- A design lives at `design/<id>-<slug>.md` in the scope directory. It is not a board item
+- A design lives at `design/<id>-<slug>.md` in the scope directory
 - A design is its own row in the index. A design does not appear in `tk list`, `tk next`, `tk search`, or `tk log`
-- `tk pulse` appends `designs`, `design_draft`, `design_accepted`, `design_decomposed`, and `design_superseded` after `uncommitted`. `designs` counts parseable design rows and ignores the lens. Each status key counts that status. An unknown status increments `designs` only. A broken fence increments none. Ticket `draft` stays the ticket draft count
+- `tk pulse` appends `designs`, `design_draft`, `design_accepted`, `design_decomposed`, and `design_superseded` after `uncommitted`
 - `tk design list` and `tk design get` read that index after reconcile
-- `tk design search <terms> [--scope S]` searches design titles and bodies (bm25, tie-broken by full id). Empty scope is machine-wide. TSV is id, status, title, path. A parse-error hit has an empty status and a filled path. No lens, no status filter, empty result exits 0. `find` is not an alias. `tk search` still searches tickets only
-- `tk depends` on a ticket keeps its three sections and appends `produced by` (design id, status, and title; an empty side prints `(none)`; several design files on one id print `(ambiguous)`). When that id is also one design, a `produces` section is appended. When several designs share it, the ticket report stays and stderr gets `design_id`. `tk depends` on a design id with no ticket prints one section, `produces`, with the ticket neighbour lines, and does not print depends or related. A shared design short id with no ticket refuses and prints no path. `--transitive` does not walk produces. `--tree` does not include designs
+- `tk design search <terms> [--scope S]` searches design titles and bodies (bm25, tie-broken by full id). Empty scope is machine-wide. TSV is id, status, title, path
+- `tk depends` on a ticket keeps its three sections and appends `produced by`. TSV is design id, status, and title
 - Statuses: draft, accepted, decomposed, superseded. The file stays in `design/`
-- `tk design list` prints every parsed design, including a status outside the four names. Order is catalogue status (draft, accepted, decomposed, superseded, then any other status by name), then changed descending, then id. A changed value that is not RFC3339 sorts after every real instant. Status positionals replace that set: `tk design list draft accepted` is draft and accepted. A positional outside those four exits 2. Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)`
-- Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`. `tk design rehome` rewrites the id prefix and leaves status, created, produces, and changed
-- `changed` is the time the design entered its current status. `tk design create` sets `changed` to the same RFC3339 instant as `created`. `tk design mark` updates it only on a status change. A same-status mark does not add the key. `tk design meta`, `tk design rehome`, and `tk scope rename` leave it alone. Ticket stale clocks do not apply to a design. A design written before the field has no key
-- `produces` stores full ticket ids, design to tickets only. There is no back-link on the ticket. `tk design meta remove` drops a list entry even when it is not a full ticket id
-- The slug is frozen at create. Editing the H1 does not rename the file. Body text under the H1 is a direct file edit
-- `tk design edit <id>` resolves like `tk design get`, then opens `$EDITOR` on that path. Success prints nothing. It does not rewrite the fence and does not self-commit. `$EDITOR` may include flags. An unset `$EDITOR` or a non-zero editor exit is non-zero and names `tk design edit`
-- `tk design create --edit` prints the absolute path, then opens `$EDITOR` on it. It does not self-commit. An unset `$EDITOR` or a non-zero editor exit is non-zero and leaves the scaffold. Without `--edit`, create does not launch an editor. Agents use the printed path rather than `--edit`
-- `tk design get`, `tk design edit`, `tk design mark`, `tk design meta`, and `tk design rehome` refuse a short id held by two design files and print no path. Edit does not launch the editor. Rehome does not write
-- A broken fence stays off `tk design list`. List and get print `parse_error: N unparseable`. Get of that file also prints `parse_error: <id>: <message>` and exits 0. `tk design edit` opens that path. Doctor prints `parse_error: <id>: <message> (<path>)`. Mark and meta refuse and do not write
+- `tk design list` prints every parsed design, including a status outside the four names. Order is catalogue status (draft, accepted, decomposed, superseded, then any other status by name)
+- Status positionals replace that set (`tk design list draft accepted`). A positional outside those four exits 2
+- Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`
+- `tk design rehome` rewrites the id prefix and leaves status, created, produces, and changed
+- `changed` is the time the design entered its current status
+- `produces` stores full ticket ids, design to tickets only. There is no back-link on the ticket
+- `tk design meta remove` drops a list entry even when it is not a full ticket id
+- The slug is frozen at create. Editing the H1 does not rename the file
+- `tk design edit` is for humans only, avoid
+- `tk design get`, `tk design mark`, `tk design meta`, and `tk design rehome` refuse a short id held by two design files and print no path
+- A broken fence stays off `tk design list`. List and get print `parse_error: N unparseable`. Get of that file also prints `parse_error: <id>: <message>` and exits 0
 - `tk scope rename` rewrites design filenames and fence ids, and rekeys `produces` entries that use the old scope prefix. Entries that name another scope stay and are reported as `edge_verify`
 - tk repair resolves a short id shared with a design. A broken design fence, an unknown design status, a filename that disagrees with the fence id, and a produces entry that does not name that id stay doctor warnings
 - `tk design create` does not self-commit. `tk design mark`, `tk design meta add|remove`, and `tk design rehome` self-commit on a tk-driven scope and do not push
-- `tk design rehome <id> <dest-scope>` moves that file to `<dest>/design/<new-id>-<slug>.md`. The file stays in `design/`. The slug is unchanged. The short id is kept when the destination does not hold it; tickets and designs both count. A real occupant extends it and is left untouched. A destination design with the same slug and `created`, whose short id is the source short id or an extension of it, is reused instead of minting another id. `produces` is not rekeyed. Same-scope destination exits 2. An unknown destination does not write. A missing or unparseable source fence does not write. A root that contained a written or removed path self-commits when that root is tk-driven. The command does not push. Scopes that share a git root and disagree on autoCommit refuse with `auto_commit_mismatch` and do not write
+- `tk design rehome <id> <dest-scope>` moves that file to `<dest>/design/<new-id>-<slug>.md`. The slug is unchanged
 
 ## Identifiers
 
@@ -135,9 +137,14 @@ Core work loop: `tk next --claim` | `tk get <id>` -> edit body under H1 -> `tk m
 
 Capture: `tk create <title> [--tag T]...` -> fill body -> optional meta / tk order / mark -> Durability
 
-Board: `tk list` | `tk list --open` | `tk list --all` | `tk list --every-scope` -> `tk tags` | `tk order` | `tk lens` | `tk search` (`list done` / other terminal-only filters are reverse (order, id) inside the scope; --every-scope keeps scope names ascending; mixed and --all stay forward)
+Board: `tk list` | `tk list --open` | `tk list --all` | `tk list --every-scope` -> `tk tags` | `tk order` | `tk lens` | `tk search`
+- Inside a scope, sorted (order, id); terminal-only status filters reverse that order (`list done`). Mixed filters and `--all` stay forward
+- `--every-scope` lists every registered scope and ignores the lens, grouped by scope name ascending, and a terminal-only reverse stays inside the scope, and a custom status keeps rows only from scopes that declare it
+- `--count` prints the row count instead of TSV. One scope is a bare integer, including 0. Filters, the lens, and stderr match the listing
+- `--every-scope` is headerless TSV scope, count for every registered scope, names ascending, including 0. The scope field is left-justified to 20 before the tab; trim trailing spaces after splitting on that tab
+- A final line labelled TOTAL is the sum of those counts and is always last. TOTAL is not a legal scope name. An empty registry stays empty
 
-Status entry: `tk log` lists tickets that entered their current status on a local day. The default is status `done`, today, every registered scope. `tk log cancelled --date YYYY-MM-DD` is that status on that day. `changed` is the instant the ticket entered the status it has now. Create counts. This is not git history and not an audit trail. The tag lens is not applied. `--count` prints that selection as one integer, including 0
+Status entry: `tk log` lists tickets that entered their current status on a local day. Default is done, today, every scope. `tk log cancelled --date YYYY-MM-DD` is that status on that day. `changed` is the instant the ticket entered the status it has now. Create counts. This is not git history and not an audit trail. The tag lens is not applied. `--count` prints that selection as one integer, including 0, and no ticket TSV
 
 Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk next` (mark does not enforce depends; may soft-warn depends_open:). A ticket id appends `produced by`. When one design shares the id, it also appends `produces`. A design id with no ticket prints `produces`. `--transitive` does not walk produces. `tk depends --tree` pretty-prints a short-id forest of tickets (omit id for the default board, lens unless `--no-lens`) and does not include designs; not TSV:
 
@@ -146,7 +153,12 @@ Dependencies: `tk depends <id>` -> `tk meta add|remove depends|related` -> `tk n
 
 Manage scopes: `tk scope list` -> `init` | `import` | `rebind` | `forget` | `rename` | `auto-commit` | `hold` | `field list|set|unset`
 
-Hold: `hold: true` in that scope's tk.cue. Omitted is false. `tk scope hold` reads or sets it for one scope (not git-root-wide) and self-commits on a tk-driven scope. A command that resolves a held scope prints `scope_hold: This scope is on hold. No work is to be carried out.` on stderr and still runs. A command that resolves more than one scope names each held scope. One held scope is `scope_hold: <scope>: This scope is on hold. No work is to be carried out.` Two or more held scopes are one line, scope names ascending: `scope_hold: <scope>, <scope>: No work is to be carried out in those scopes.` `tk scope list` adds a hold column and does not print the line. `tk query`, `tk skill`, and `tk scope init` do not print it. `tk mark in-progress` and `tk next --claim` exit 1, write nothing, and do not refresh or push. Other marks still run. Do not clear hold unless a human asks. `tk pulse hold` prints true or false. `tk scope list` hold is true, false, or empty when tk.cue cannot be evaluated.
+Hold: `hold: true` in that scope's tk.cue. Omitted is false. `tk scope hold` reads or sets it for one scope (not git-root-wide) and self-commits on a tk-driven scope. Do not clear hold unless a human asks.
+- A command that resolves a held scope, and only that scope, prints `scope_hold: This scope is on hold. No work is to be carried out.` on stderr and still runs
+- A command that resolves more than one scope names each held scope. One held scope is `scope_hold: <scope>: This scope is on hold. No work is to be carried out.` Two or more held scopes are one line, scope names ascending: `scope_hold: <scope>, <scope>: No work is to be carried out in those scopes.`
+- `tk scope list` adds a hold column and does not print the line. `tk query`, `tk skill`, and `tk scope init` do not print it
+- `tk mark in-progress` and `tk next --claim` exit 1, write nothing, and do not refresh or push. Other marks still run
+- `tk pulse hold` prints true or false. `tk scope list` hold is true, false, or empty when tk.cue cannot be evaluated
 
 Durability (`tk pulse mode`):
 - tk-driven: mutators self-commit -> `tk sync` (never host push/rebase)

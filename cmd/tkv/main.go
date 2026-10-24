@@ -12,10 +12,13 @@ import (
 )
 
 func main() {
-	err := tkv.NewApp().Run(os.Args[1:])
+	err := tkv.NewApp().Execute(os.Args[1:])
 	if err == nil || errors.Is(err, flag.ErrHelp) {
 		return
 	}
 	fmt.Fprintln(os.Stderr, err)
+	if errors.Is(err, tkv.ErrAlreadyRunning) {
+		os.Exit(tkv.ExitAlreadyRunning)
+	}
 	os.Exit(1)
 }

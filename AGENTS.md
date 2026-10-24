@@ -103,7 +103,7 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `writeengine` — cobra-free ticket-file write session, create, meta, order, mark, claim, and rehome orchestration
   - `notes` — cobra-free scope note list/read/set/add/delete and the machine-local use pointer (`tk note edit` stays in CLI)
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
-  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, doctor diagnose/reindex, mark/claim/create/meta/order, chrome lens, sync)
+  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, doctor diagnose/reindex, mark/claim/create/meta/order, chrome lens, sync). `tkv` detaches; `tkv stop` is SIGTERM plus the serve drain; `tkv foreground` stays in the terminal
   - `cli` — Cobra command tree, exit codes, signals, colour/TTY, path hand-off
 
 ## Build, test, lint, format

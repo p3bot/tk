@@ -1861,8 +1861,15 @@ func TestParseFlags(t *testing.T) {
 	if err := app.parseFlags([]string{"--no-open", "--port", "9001", "--scope", "wc"}); err != nil {
 		t.Fatal(err)
 	}
-	if !app.NoOpen || app.Port != 9001 || app.ScopeFlag != "wc" {
+	if !app.NoOpen || app.Port != 9001 || !app.PortSet || app.ScopeFlag != "wc" {
 		t.Fatalf("%+v", app)
+	}
+	omitted := newTestApp(t)
+	if err := omitted.parseFlags([]string{"--no-open"}); err != nil {
+		t.Fatal(err)
+	}
+	if omitted.PortSet || omitted.Port != DefaultPort {
+		t.Fatalf("omitted port: set=%v port=%d", omitted.PortSet, omitted.Port)
 	}
 	if err := app.parseFlags([]string{"--port", "0"}); err == nil {
 		t.Fatal("port 0 should fail")

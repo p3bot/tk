@@ -16,6 +16,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -37,14 +40,21 @@ Humans can mark, claim, create, meta, order, edit title and body, edit scope not
 git-roots, and run doctor diagnose plus reindex. Agents keep using tk. It listens
 on 127.0.0.1 (never 0.0.0.0). The default port is 8736.
 
-Usage: tkv [--port N] [--no-open] [--scope NAME]
+Usage: tkv [command] [--port N] [--no-open] [--scope NAME]
 
-  --port N     listen port (default 8736)
+Commands:
+  start        start in the background and return (default)
+  stop         stop the running dashboard (SIGTERM, wait for writes)
+  status       show pid, port, URL, and log path
+  foreground   run in this terminal until interrupted
+
+  --port N     listen port (default 8736). With no --port, start attaches to
+               the dashboard already running, on whatever port it bound.
   --no-open    print the landing URL and do not open a browser
   --scope NAME open this scope's board (same as tk: wins over TK_SCOPE and cwd)
 
-Launch inside a registered code-root to open that scope. Otherwise the
-machine overview is opened. Agents keep using tk; tkv is for humans.
+One dashboard per machine. Launch inside a registered code-root to open that
+scope. Otherwise the machine overview is opened. Agents keep using tk.
 `
 
 // App is the process-wide viewer configuration. Tests inject dirs, cwd, and I/O.
@@ -56,6 +66,7 @@ type App struct {
 	EnvScope    string
 	Cwd         string
 	Port        int
+	PortSet     bool
 	NoOpen      bool
 	Stdout      io.Writer
 	Stderr      io.Writer
@@ -65,6 +76,9 @@ type App struct {
 	ServeCtx context.Context
 	// afterIndexUnlock is copied onto Server (tests).
 	afterIndexUnlock func()
+	// afterStopSignal runs after SIGTERM and before Stop waits for that
+	// process to drop the lock file (tests).
+	afterStopSignal func()
 }
 
 // NewApp builds a production App (XDG dirs and cwd resolved at Run).
@@ -79,15 +93,62 @@ func NewApp() *App {
 	}
 }
 
-// Run parses flags, opens the index, listens on 127.0.0.1, starts serving,
-// then prints the landing URL. --no-open skips the browser.
+// Execute is the CLI entry: start (the default), stop, status, or foreground.
+func (a *App) Execute(args []string) error {
+	if !supportedOS() {
+		return unsupportedOS()
+	}
+	verb, rest := splitVerb(args)
+	switch verb {
+	case "start":
+		return a.Start(rest)
+	case "stop":
+		return a.Stop(rest)
+	case "status":
+		return a.Status(rest)
+	case "foreground":
+		return a.Run(rest)
+	default:
+		return fmt.Errorf("unknown command %q\n\n%s", verb, usageText)
+	}
+}
+
+func unsupportedOS() error {
+	return fmt.Errorf("tkv supports macOS and Linux only; this operating system is unsupported")
+}
+
+// splitVerb peels a leading command. Flags, or no args, mean start.
+func splitVerb(args []string) (string, []string) {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return "start", args
+	}
+	return args[0], args[1:]
+}
+
+// Run is the attached server. It holds the machine lock until it exits.
+// --no-open skips the browser. Tests call Run directly.
 func (a *App) Run(args []string) error {
 	if !supportedOS() {
-		return fmt.Errorf("tkv supports macOS and Linux only; this operating system is unsupported")
+		return unsupportedOS()
 	}
+	// tkv start waits on the ready pipe. Until that write, this process exits
+	// with the parent so cancelling start does not leave a server behind.
+	// The watch stops before the write: a normal start exits the parent on
+	// purpose once it has the URL.
+	stopParentWatch := watchParentUntilReady()
+	defer stopParentWatch()
 	if err := a.parseFlags(args); err != nil {
 		return err
 	}
+	stateDir, err := a.stateDir()
+	if err != nil {
+		return err
+	}
+	release, err := serverLock(stateDir, a.Port)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	srv, err := a.NewServer()
 	if err != nil {
@@ -123,6 +184,17 @@ func (a *App) Run(args []string) error {
 
 	ready := fmt.Sprintf("http://127.0.0.1:%d/static/style.css", a.Port)
 	if err := waitServing(ctx, ready); err != nil {
+		_ = httpSrv.Close()
+		if se := <-serveErr; se != nil {
+			return se
+		}
+		return err
+	}
+
+	// The parent start process is blocked on this pipe. Write it before the
+	// terminal print so a detached child (stdout is the log) still unblocks it.
+	stopParentWatch()
+	if err := signalReady(url); err != nil {
 		_ = httpSrv.Close()
 		if se := <-serveErr; se != nil {
 			return se
@@ -188,6 +260,71 @@ func waitServing(ctx context.Context, url string) error {
 	return errors.New("server did not become ready")
 }
 
+// watchParentUntilReady arms a watch when this process was spawned by
+// tkv start. The returned stop is idempotent. A foreground run and an
+// in-process test leave TKV_READY_FD unset and get a no-op stop.
+func watchParentUntilReady() func() {
+	if os.Getenv("TKV_READY_FD") == "" {
+		return func() {}
+	}
+	parent := os.Getppid()
+	done := make(chan struct{})
+	var once sync.Once
+	// stop checks the parent once more, then disarms. A parent that is already
+	// gone does not get a server; a parent that is still waiting keeps it.
+	stop := func() {
+		once.Do(func() {
+			if os.Getppid() != parent {
+				os.Exit(1)
+			}
+			close(done)
+		})
+	}
+	go func() {
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			if os.Getppid() != parent {
+				select {
+				case <-done:
+					return
+				default:
+					os.Exit(1)
+				}
+			}
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return stop
+}
+
+// signalReady writes the landing URL to the pipe inherited from tkv start.
+// Foreground runs and in-process tests leave TKV_READY_FD unset.
+func signalReady(url string) error {
+	v := os.Getenv("TKV_READY_FD")
+	if v == "" {
+		return nil
+	}
+	fd, err := strconv.Atoi(v)
+	if err != nil || fd < 3 {
+		return fmt.Errorf("TKV_READY_FD %q", v)
+	}
+	f := os.NewFile(uintptr(fd), "tkv-ready")
+	_, werr := fmt.Fprintln(f, url)
+	cerr := f.Close()
+	if werr != nil {
+		return fmt.Errorf("signal ready: %w", werr)
+	}
+	if cerr != nil {
+		return fmt.Errorf("signal ready: %w", cerr)
+	}
+	return nil
+}
+
 func (a *App) parseFlags(args []string) error {
 	fs := flag.NewFlagSet("tkv", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -208,6 +345,12 @@ func (a *App) parseFlags(args []string) error {
 		return fmt.Errorf("invalid --port %d: must be 1–65535", *port)
 	}
 	a.Port = *port
+	a.PortSet = false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "port" {
+			a.PortSet = true
+		}
+	})
 	a.NoOpen = *noOpen
 	a.ScopeFlag = *scope
 	return nil

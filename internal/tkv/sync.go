@@ -14,7 +14,7 @@ import (
 	"github.com/p3bot/tk/internal/writeengine"
 )
 
-func (s *Server) postUnscopedSync(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) postUnscopedSync(_ http.ResponseWriter, r *http.Request) error {
 	if err := r.ParseForm(); err != nil {
 		return errBadRequest("malformed form")
 	}

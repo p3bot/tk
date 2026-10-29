@@ -31,7 +31,7 @@ func doPost(s *Server, path string, form url.Values) *httptest.ResponseRecorder 
 }
 
 func doPostHeader(s *Server, path string, form url.Values, hdr http.Header) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+	req := newRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	for k, vs := range hdr {
 		if http.CanonicalHeaderKey(k) == "Host" {
@@ -250,7 +250,7 @@ func TestGETDoesNotWrite(t *testing.T) {
 	if code := do(s, "/scope/wc/body").Code; code != http.StatusNotFound {
 		t.Fatalf("GET /scope/wc/body = %d, want inspect 404", code)
 	}
-	head := httptest.NewRequest(http.MethodHead, "/scope/wc/ab2c", nil)
+	head := newRequest(http.MethodHead, "/scope/wc/ab2c", nil)
 	hw := httptest.NewRecorder()
 	s.Handler().ServeHTTP(hw, head)
 	if hw.Code == http.StatusSeeOther {
@@ -1493,8 +1493,7 @@ func TestFormsWorkWithoutBoardJS(t *testing.T) {
 	backlogAt := strings.Index(board, "Backlog")
 	filterAt := strings.Index(board, `data-board-filter`)
 	tagsAt := strings.Index(board, `class="board-tags"`)
-	if createAt < 0 || claimAt < 0 || backlogAt < 0 || filterAt < 0 || tagsAt < 0 ||
-		!(createAt < claimAt && claimAt < backlogAt && backlogAt < filterAt && filterAt < tagsAt) {
+	if !ascending(createAt, claimAt, backlogAt, filterAt, tagsAt) {
 		t.Fatalf("toolbar order create, claim, layers, filter, then tags: %s", board)
 	}
 	if strings.Contains(board, `action="/scope/wc/create"`) && strings.Contains(board, "<textarea") {

@@ -146,8 +146,8 @@ func (a *App) Status(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.stdout(), "pid %d\nport %d\nurl http://127.0.0.1:%d/\nlog %s\n",
-		pid, port, port, filepath.Join(dir, logFileName))
+	fmt.Fprintf(a.stdout(), "pid %d\nport %d\nurl %s/\nlog %s\n",
+		pid, port, baseURL(port), filepath.Join(dir, logFileName))
 	return nil
 }
 
@@ -178,7 +178,7 @@ func serverLock(stateDir string, port int) (func(), error) {
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("%w at http://127.0.0.1:%d/", ErrAlreadyRunning, running)
+		return nil, fmt.Errorf("%w at %s/", ErrAlreadyRunning, baseURL(running))
 	}
 	if err := lk.WriteHead(formatMeta(os.Getpid(), port)); err != nil {
 		_ = lk.Release()
@@ -193,7 +193,7 @@ func (a *App) attach(lockPath string) error {
 		return err
 	}
 	if a.PortSet && a.Port != port {
-		return fmt.Errorf("tkv is already running on port %d (http://127.0.0.1:%d/)", port, port)
+		return fmt.Errorf("tkv is already running on port %d (%s/)", port, baseURL(port))
 	}
 	// The lock record is written before listen so stop can signal during index
 	// open. Publish the URL only once that port answers.
@@ -215,7 +215,7 @@ func (a *App) attach(lockPath string) error {
 // that held the lock at attach time is gone. There is no deadline: index open
 // sits in front of listen and can outlast any short cap.
 func waitUntilServing(lockPath string, pid, port int) error {
-	ready := fmt.Sprintf("http://127.0.0.1:%d/static/style.css", port)
+	ready := baseURL(port) + "/static/style.css"
 	client := &http.Client{Timeout: 200 * time.Millisecond}
 	for {
 		holds, err := pidHoldsLock(pid, lockPath)

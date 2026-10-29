@@ -104,8 +104,18 @@ func mustServer(t *testing.T, app *App) *Server {
 	return s
 }
 
+// testHost is the Host every helper request sends: the dashboard's own
+// address, so tests exercise routes rather than the Host guard.
+var testHost = net.JoinHostPort(bindAddr.String(), strconv.Itoa(DefaultPort))
+
+func newRequest(method, path string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, path, body)
+	req.Host = testHost
+	return req
+}
+
 func do(s *Server, path string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req := newRequest(http.MethodGet, path, nil)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
 	return w
@@ -471,8 +481,7 @@ func TestOverviewAndKanbanAndInspect(t *testing.T) {
 	tPos := strings.Index(b, "<h2>todo ")
 	iPos := strings.Index(b, "<h2>in-progress ")
 	rPos := strings.Index(b, "<h2>review ")
-	if blPos < 0 || dPos < 0 || gPos < 0 || tPos < 0 || iPos < 0 || rPos < 0 ||
-		!(blPos < dPos && dPos < gPos && gPos < tPos && tPos < iPos && iPos < rPos) {
+	if !ascending(blPos, dPos, gPos, tPos, iPos, rPos) {
 		t.Fatalf("kanban column order want blocked draft triaged todo in-progress review: %s", b)
 	}
 	if strings.Contains(b, "<h2>backlog ") || strings.Contains(b, "<h2>done ") || strings.Contains(b, "<h2>cancelled ") {
@@ -699,7 +708,7 @@ func TestKanbanLayerSwitches(t *testing.T) {
 	doneAt := strings.Index(archived, "<h2>done ")
 	cancelAt := strings.Index(archived, "<h2>cancelled ")
 	reviewAt := strings.Index(archived, "<h2>review ")
-	if doneAt < 0 || cancelAt < 0 || reviewAt < 0 || !(reviewAt < doneAt && doneAt < cancelAt) {
+	if !ascending(reviewAt, doneAt, cancelAt) {
 		t.Fatalf("archived columns after review: %s", archived)
 	}
 	if !strings.Contains(archived, `href="/scope/wc?archived=1&amp;backlog=1"`) {
@@ -792,7 +801,7 @@ func TestOverviewMatrixAndWorkingBars(t *testing.T) {
 	trAt := strings.Index(body, `class="scope-mix-name">tr</span>`)
 	wcAt := strings.Index(body, `class="scope-mix-name">wc</span>`)
 	zzAt := strings.Index(body, `class="scope-mix-name">zz</span>`)
-	if aaAt < 0 || trAt < 0 || wcAt < 0 || zzAt < 0 || !(aaAt < trAt && trAt < wcAt && wcAt < zzAt) {
+	if !ascending(aaAt, trAt, wcAt, zzAt) {
 		t.Fatalf("bar order aa=%d tr=%d wc=%d zz=%d", aaAt, trAt, wcAt, zzAt)
 	}
 	if !strings.Contains(body, `scope-mix-name">aa</span>`) ||
@@ -1884,4 +1893,15 @@ func TestParseFlags(t *testing.T) {
 	if !strings.Contains(errBuf.String(), "tkv is a local") {
 		t.Fatalf("usage = %q", errBuf.String())
 	}
+}
+
+// ascending reports whether every index was found (>= 0) and the indexes are
+// strictly increasing, i.e. the matched markers appear in the given order.
+func ascending(idx ...int) bool {
+	for i, n := range idx {
+		if n < 0 || (i > 0 && n <= idx[i-1]) {
+			return false
+		}
+	}
+	return true
 }

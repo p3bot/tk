@@ -171,18 +171,18 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 // working tickets keeps a row and an empty bar so the chart lines up.
 func mixBars(rows []overviewRow) []mixBar {
 	sums := make([]int, len(rows))
-	max := 0
+	peak := 0
 	for i, row := range rows {
 		sums[i] = row.Backlog + row.Draft + row.Triaged + row.Todo + row.Blocked + row.InProgress + row.Review
-		if sums[i] > max {
-			max = sums[i]
+		if sums[i] > peak {
+			peak = sums[i]
 		}
 	}
 	out := make([]mixBar, len(rows))
 	for i, row := range rows {
 		bar := mixBar{Name: row.Name, Width: "0.00"}
-		if max > 0 && sums[i] > 0 {
-			bar.Width = strconv.FormatFloat(float64(sums[i])/float64(max)*100, 'f', 2, 64)
+		if peak > 0 && sums[i] > 0 {
+			bar.Width = strconv.FormatFloat(float64(sums[i])/float64(peak)*100, 'f', 2, 64)
 			bar.Segs = workingSegs(row)
 		}
 		out[i] = bar

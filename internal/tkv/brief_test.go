@@ -11,13 +11,13 @@ import (
 func TestBriefScope(t *testing.T) {
 	app := newTestApp(t)
 	dir := initScope(t, app, "wc")
-	writeBriefTicket(t, dir, "wc-ab2c", "old-draft", "draft", "a0", "2026-01-01T00:00:00Z", "# Old draft\n", "")
-	writeBriefTicket(t, dir, "wc-cd3e", "new-draft", "draft", "a1", "2026-06-01T00:00:00Z", "# New draft\n", "")
+	writeBriefTicket(t, dir, "wc-ab2c", "old-draft", "draft", "a0", "2026-01-01T00:00:00Z", "# Old draft\n")
+	writeBriefTicket(t, dir, "wc-cd3e", "new-draft", "draft", "a1", "2026-06-01T00:00:00Z", "# New draft\n")
 	addTicket(t, dir, "wc-ef4g", "doing", "in-progress", "a2", "# Doing\n", false, "tags: [layout]\n")
 	addTicket(t, dir, "wc-gh56", "stuck", "blocked", "a3", "# Stuck\n", false, "")
 	addTicket(t, dir, "wc-jk78", "queued", "todo", "a4", "# Queued\n", false, "tags: [layout]\n")
-	writeBriefTicket(t, dir, "wc-bc3d", "old-ready", "triaged", "a9", "2026-02-01T00:00:00Z", "# Old ready\n", "")
-	writeBriefTicket(t, dir, "wc-de4f", "new-ready", "triaged", "b0", "2026-07-01T00:00:00Z", "# New ready\n", "")
+	writeBriefTicket(t, dir, "wc-bc3d", "old-ready", "triaged", "a9", "2026-02-01T00:00:00Z", "# Old ready\n")
+	writeBriefTicket(t, dir, "wc-de4f", "new-ready", "triaged", "b0", "2026-07-01T00:00:00Z", "# New ready\n")
 	addTicket(t, dir, "wc-mn9p", "finished", "done", "a5", "# Finished\n", true, "tags: [layout]\n")
 	addTicket(t, dir, "wc-qr2s", "needs-done", "todo", "a6", "# Needs done\n", false, "depends: [wc-mn9p]\n")
 	addTicket(t, dir, "wc-tu4v", "needs-draft", "todo", "a7", "# Needs draft\n", false, "depends: [wc-ab2c]\n")
@@ -145,7 +145,7 @@ func TestBriefBacklogCap(t *testing.T) {
 	for i, id := range ids {
 		title := fmt.Sprintf("Slot %d", i+1)
 		created := fmt.Sprintf("2026-%02d-01T00:00:00Z", i+1)
-		writeBriefTicket(t, dir, id, fmt.Sprintf("slot-%d", i+1), "backlog", fmt.Sprintf("a%d", i), created, "# "+title+"\n", "")
+		writeBriefTicket(t, dir, id, fmt.Sprintf("slot-%d", i+1), "backlog", fmt.Sprintf("a%d", i), created, "# "+title+"\n")
 	}
 	s := mustServer(t, app)
 
@@ -191,12 +191,12 @@ func TestBriefCrossScopeFinished(t *testing.T) {
 	}
 }
 
-func writeBriefTicket(t *testing.T, dir, id, slug, status, order, created, body, extra string) {
+func writeBriefTicket(t *testing.T, dir, id, slug, status, order, created, body string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	fm := "---\nid: " + id + "\nstatus: " + status + "\norder: \"" + order + "\"\ncreated: " + created + "\n" + extra + "---\n"
+	fm := "---\nid: " + id + "\nstatus: " + status + "\norder: \"" + order + "\"\ncreated: " + created + "\n---\n"
 	if err := os.WriteFile(filepath.Join(dir, id+"-"+slug+".md"), []byte(fm+body), 0o644); err != nil {
 		t.Fatal(err)
 	}

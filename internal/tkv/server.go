@@ -41,12 +41,13 @@ type indexHandle struct {
 
 // Server is the long-lived HTTP process: one index connection, templates, CSS.
 type Server struct {
-	app *App
-	mu  sync.Mutex
-	db  *index.DB
-	rec *reconcile.Reconciler
-	cur *indexHandle
-	tpl *template.Template
+	app   *App
+	mu    sync.Mutex
+	db    *index.DB
+	rec   *reconcile.Reconciler
+	cur   *indexHandle
+	tpl   *template.Template
+	hosts hostAllowlist
 	// afterIndexUnlock runs after a write handler drops Server.mu and before
 	// the engine call. Tests use it to prove claim's git work is not inside wrap.
 	afterIndexUnlock func()
@@ -72,6 +73,7 @@ func (a *App) NewServer() (*Server, error) {
 		rec:              rec,
 		cur:              &indexHandle{db: db, rec: rec, n: 1},
 		tpl:              pages,
+		hosts:            newHostAllowlist(bindAddr),
 		afterIndexUnlock: a.afterIndexUnlock,
 	}, nil
 }
@@ -202,10 +204,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /sync", s.wrapEngine(s.postUnscopedSync))
 	mux.HandleFunc("POST /doctor/sync", s.wrapEngine(s.postDoctorSync))
 	mux.HandleFunc("POST /doctor/reindex", s.wrapEngine(s.postDoctorReindex))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return s.hosts.guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Frame-Options", "DENY")
 		mux.ServeHTTP(w, r)
-	})
+	}))
 }
 
 type requestFn func(http.ResponseWriter, *http.Request) error

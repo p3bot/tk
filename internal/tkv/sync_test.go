@@ -531,7 +531,7 @@ func TestChromeSyncResumesPausedBodyConflict(t *testing.T) {
 	}
 }
 
-func replaceOnce(t *testing.T, path, old, new string) {
+func replaceOnce(t *testing.T, path, old, repl string) {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -541,7 +541,7 @@ func replaceOnce(t *testing.T, path, old, new string) {
 	if !strings.Contains(s, old) {
 		t.Fatalf("%s: %q not found:\n%s", path, old, s)
 	}
-	if err := os.WriteFile(path, []byte(strings.Replace(s, old, new, 1)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Replace(s, old, repl, 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

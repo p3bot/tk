@@ -38,7 +38,8 @@ const usageText = `tkv is a local web dashboard for tk tickets.
 
 Humans can mark, claim, create, meta, order, edit title and body, edit scope notes, set or clear the tag lens, sync tk-driven
 git-roots, and run doctor diagnose plus reindex. Agents keep using tk. It listens
-on 127.0.0.1 (never 0.0.0.0). The default port is 8736.
+on 127.0.0.1 (never 0.0.0.0) and answers only to the hosts localhost,
+127.0.0.1, or [::1] on any port. The default port is 8736.
 
 Usage: tkv [command] [--port N] [--no-open] [--scope NAME]
 
@@ -182,7 +183,7 @@ func (a *App) Run(args []string) error {
 		serveErr <- nil
 	}()
 
-	ready := fmt.Sprintf("http://127.0.0.1:%d/static/style.css", a.Port)
+	ready := baseURL(a.Port) + "/static/style.css"
 	if err := waitServing(ctx, ready); err != nil {
 		_ = httpSrv.Close()
 		if se := <-serveErr; se != nil {
@@ -368,7 +369,7 @@ func (a *App) maybeOpen(url string) error {
 }
 
 func listen(port int) (net.Listener, error) {
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	addr := bindHostPort(port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("listen %s: %w (use --port)", addr, err)
@@ -382,7 +383,7 @@ func (a *App) LandingURL(port int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("http://127.0.0.1:%d%s", port, path), nil
+	return baseURL(port) + path, nil
 }
 
 // LandingPath resolves the ambient scope the same way tk does.

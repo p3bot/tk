@@ -97,11 +97,15 @@ tk reindex                                                          # Rebuild th
 - A design lives at `design/<id>-<slug>.md` in the scope directory
 - A design is its own row in the index. A design does not appear in `tk list`, `tk next`, `tk search`, or `tk log`
 - `tk pulse` appends `designs`, `design_draft`, `design_accepted`, `design_decomposed`, and `design_superseded` after `uncommitted`
+- An unknown status increments `designs` only. A broken fence increments none. Ticket `draft` stays the ticket draft count
 - `tk design list` and `tk design get` read that index after reconcile
 - `tk design search <terms> [--scope S]` searches design titles and bodies (bm25, tie-broken by full id). Empty scope is machine-wide. TSV is id, status, title, path
+- `tk search` still searches tickets only
 - `tk depends` on a ticket keeps its three sections and appends `produced by`. TSV is design id, status, and title
+- In `produced by`, several design files on one id print `(ambiguous)`. When several designs share the ticket's id, the ticket report stays and stderr gets `design_id`
 - Statuses: draft, accepted, decomposed, superseded. The file stays in `design/`
-- `tk design list` prints every parsed design, including a status outside the four names. Order is catalogue status (draft, accepted, decomposed, superseded, then any other status by name)
+- `tk design list` prints every parsed design, including a status outside the four names. Order is catalogue status (draft, accepted, decomposed, superseded, then any other status by name), then changed descending, then id
+- Doctor prints `schema_error: <id> has unknown status "<status>" (<path>)` for a status outside the four
 - Status positionals replace that set (`tk design list draft accepted`). A positional outside those four exits 2
 - Fence is sealed: status via `tk design mark`; `produces` via `tk design meta add` and `tk design meta remove`
 - `tk design rehome` rewrites the id prefix and leaves status, created, produces, and changed

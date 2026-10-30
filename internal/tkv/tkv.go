@@ -9,7 +9,6 @@ package tkv
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -17,7 +16,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,33 +28,6 @@ import (
 	"github.com/p3bot/tk/internal/resolve"
 	"github.com/p3bot/tk/internal/xdg"
 )
-
-// DefaultPort is the localhost listen port when --port is omitted.
-const DefaultPort = 8736
-
-const usageText = `tkv is a local web dashboard for tk tickets.
-
-Humans can mark, claim, create, meta, order, edit title and body, edit scope notes, set or clear the tag lens, sync tk-driven
-git-roots, and run doctor diagnose plus reindex. Agents keep using tk. It listens
-on 127.0.0.1 (never 0.0.0.0) and answers only to the hosts localhost,
-127.0.0.1, or [::1] on any port. The default port is 8736.
-
-Usage: tkv [command] [--port N] [--no-open] [--scope NAME]
-
-Commands:
-  start        start in the background and return (default)
-  stop         stop the running dashboard (SIGTERM, wait for writes)
-  status       show pid, port, URL, and log path
-  foreground   run in this terminal until interrupted
-
-  --port N     listen port (default 8736). With no --port, start attaches to
-               the dashboard already running, on whatever port it bound.
-  --no-open    print the landing URL and do not open a browser
-  --scope NAME open this scope's board (same as tk: wins over TK_SCOPE and cwd)
-
-One dashboard per machine. Launch inside a registered code-root to open that
-scope. Otherwise the machine overview is opened. Agents keep using tk.
-`
 
 // App is the process-wide viewer configuration. Tests inject dirs, cwd, and I/O.
 type App struct {
@@ -94,41 +65,13 @@ func NewApp() *App {
 	}
 }
 
-// Execute is the CLI entry: start (the default), stop, status, or foreground.
-func (a *App) Execute(args []string) error {
-	if !supportedOS() {
-		return unsupportedOS()
-	}
-	verb, rest := splitVerb(args)
-	switch verb {
-	case "start":
-		return a.Start(rest)
-	case "stop":
-		return a.Stop(rest)
-	case "status":
-		return a.Status(rest)
-	case "foreground":
-		return a.Run(rest)
-	default:
-		return fmt.Errorf("unknown command %q\n\n%s", verb, usageText)
-	}
-}
-
 func unsupportedOS() error {
 	return fmt.Errorf("tkv supports macOS and Linux only; this operating system is unsupported")
 }
 
-// splitVerb peels a leading command. Flags, or no args, mean start.
-func splitVerb(args []string) (string, []string) {
-	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-		return "start", args
-	}
-	return args[0], args[1:]
-}
-
 // Run is the attached server. It holds the machine lock until it exits.
-// --no-open skips the browser. Tests call Run directly.
-func (a *App) Run(args []string) error {
+// It serves on a.Port; a.NoOpen skips the browser. Tests call Run directly.
+func (a *App) Run() error {
 	if !supportedOS() {
 		return unsupportedOS()
 	}
@@ -138,9 +81,6 @@ func (a *App) Run(args []string) error {
 	// purpose once it has the URL.
 	stopParentWatch := watchParentUntilReady()
 	defer stopParentWatch()
-	if err := a.parseFlags(args); err != nil {
-		return err
-	}
 	stateDir, err := a.stateDir()
 	if err != nil {
 		return err
@@ -323,37 +263,6 @@ func signalReady(url string) error {
 	if cerr != nil {
 		return fmt.Errorf("signal ready: %w", cerr)
 	}
-	return nil
-}
-
-func (a *App) parseFlags(args []string) error {
-	fs := flag.NewFlagSet("tkv", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	port := fs.Int("port", DefaultPort, "listen port (always bound on 127.0.0.1)")
-	noOpen := fs.Bool("no-open", false, "print the landing URL and do not open a browser")
-	scope := fs.String("scope", "", "scope to open (same as tk: wins over TK_SCOPE and cwd)")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprint(a.stderr(), usageText)
-			return flag.ErrHelp
-		}
-		return fmt.Errorf("%w\n\n%s", err, usageText)
-	}
-	if fs.NArg() != 0 {
-		return fmt.Errorf("tkv takes no positional arguments\n\n%s", usageText)
-	}
-	if *port < 1 || *port > 65535 {
-		return fmt.Errorf("invalid --port %d: must be 1–65535", *port)
-	}
-	a.Port = *port
-	a.PortSet = false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "port" {
-			a.PortSet = true
-		}
-	})
-	a.NoOpen = *noOpen
-	a.ScopeFlag = *scope
 	return nil
 }
 

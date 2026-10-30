@@ -11,18 +11,18 @@ var ErrAlreadyRunning = errors.New("tkv is already running")
 // ExitAlreadyRunning is the foreground exit status for a busy lock.
 const ExitAlreadyRunning = 75
 
-func (a *App) Start(args []string) error {
-	_, _ = a, args
+func (a *App) Start() error {
+	_ = a
 	return unsupportedOS()
 }
 
-func (a *App) Stop(args []string) error {
-	_, _ = a, args
+func (a *App) Stop() error {
+	_ = a
 	return unsupportedOS()
 }
 
-func (a *App) Status(args []string) error {
-	_, _ = a, args
+func (a *App) Status() error {
+	_ = a
 	return unsupportedOS()
 }
 

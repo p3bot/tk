@@ -245,8 +245,6 @@ func TestSkillChangedContract(t *testing.T) {
 	text := skill.Text()
 	for _, want := range []string{
 		"the time the current status was entered",
-		"do not move it",
-		"Absent on tickets written before the field existed",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("skill missing changed contract %q", want)
@@ -357,14 +355,12 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 	for _, n := range []string{
 		"tk design create <title> [--scope S] [--edit]",
 		"tk design edit <id> [--scope S]",
-		"Agents use the printed path rather than `--edit`",
 		"tk design get <id> [--content] [--scope S]",
 		"tk design mark <status> <id> [--scope S]",
 		"tk design meta add <id> produces <ticket-id> [--scope S]",
 		"tk design meta remove <id> produces <ticket-id> [--scope S]",
 		"tk design rehome <id> <dest-scope> [--scope S]",
 		"The file stays in `design/`",
-		"auto_commit_mismatch",
 		"drops a list entry even when it is not a full ticket id",
 		"draft, accepted, decomposed, superseded",
 		"prints every parsed design",
@@ -385,10 +381,10 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		"`tk search` still searches tickets only",
 		"appends `produced by`",
 		"several design files on one id print `(ambiguous)`",
-		"prints one section, `produces`",
-		"When that id is also one design, a `produces` section is appended",
+		"A design id with no ticket prints `produces`",
+		"When one design shares the id, it also appends `produces`",
 		"the ticket report stays and stderr gets `design_id`",
-		"`--tree` does not include designs",
+		"forest of tickets (omit id for the default board, lens unless `--no-lens`) and does not include designs",
 		"refuse a short id held by two design files",
 		"parse_error: N unparseable",
 		"rekeys `produces` entries that use the old scope prefix",
@@ -397,9 +393,6 @@ func TestSkillDocumentsDesigns(t *testing.T) {
 		"stay doctor warnings",
 		"design mark, design meta add|remove",
 		"design create, and file edits never commit",
-		"tk design create` sets `changed`",
-		"tk design mark` updates it only on a status change",
-		"Ticket stale clocks do not apply to a design",
 	} {
 		if !strings.Contains(text, n) {
 			t.Errorf("skill missing design contract %q", n)

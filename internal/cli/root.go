@@ -71,6 +71,13 @@ const (
 	groupAdminTitle = "Admin:"
 )
 
+// Help keeps the locked within-group order (mini workflow), not pure alpha.
+// Cobra only offers a process-wide switch, so it is set once here rather than
+// per tree, where concurrent builds would race on it.
+func init() {
+	cobra.EnableCommandSorting = false
+}
+
 // newRootCmd builds a fresh tree so flag state cannot leak across test invocations.
 func newRootCmd(app *App) *cobra.Command {
 	root := &cobra.Command{
@@ -87,9 +94,6 @@ func newRootCmd(app *App) *cobra.Command {
 	}
 	root.SetVersionTemplate(versionTemplate)
 	root.SetFlagErrorFunc(flagUsageError)
-
-	// Locked within-group order (mini workflow), not pure alpha.
-	cobra.EnableCommandSorting = false
 
 	root.AddGroup(
 		&cobra.Group{ID: groupWorkID, Title: groupWorkTitle},

@@ -4,7 +4,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 
@@ -13,12 +12,17 @@ import (
 
 func main() {
 	err := tkv.NewApp().Execute(os.Args[1:])
-	if err == nil || errors.Is(err, flag.ErrHelp) {
+	if err == nil {
 		return
 	}
 	fmt.Fprintln(os.Stderr, err)
-	if errors.Is(err, tkv.ErrAlreadyRunning) {
+	var usage *tkv.UsageError
+	switch {
+	case errors.As(err, &usage):
+		os.Exit(tkv.ExitUsage)
+	case errors.Is(err, tkv.ErrAlreadyRunning):
 		os.Exit(tkv.ExitAlreadyRunning)
+	default:
+		os.Exit(1)
 	}
-	os.Exit(1)
 }

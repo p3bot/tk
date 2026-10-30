@@ -216,41 +216,34 @@ func startParentWatch(t *testing.T, mode, result string) int {
 		"TKV_TEST_PARENT_MODE="+mode,
 		"TKV_TEST_PARENT_RESULT="+result,
 	)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("middle: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(stdout.String()))
+	// Files, not buffers: the watched child inherits the middle's stderr, and a
+	// pipe would hold Run open until that long-lived child exits.
+	dir := t.TempDir()
+	stdoutFile, err := os.Create(filepath.Join(dir, "stdout"))
 	if err != nil {
-		t.Fatalf("pid %q: %v stderr=%s", stdout.String(), err, stderr.String())
+		t.Fatal(err)
+	}
+	defer func() { _ = stdoutFile.Close() }()
+	stderrFile, err := os.Create(filepath.Join(dir, "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stderrFile.Close() }()
+	cmd.Stdout = stdoutFile
+	cmd.Stderr = stderrFile
+	runErr := cmd.Run()
+	stdoutBytes, _ := os.ReadFile(stdoutFile.Name())
+	stderrBytes, _ := os.ReadFile(stderrFile.Name())
+	stdout, stderr := string(stdoutBytes), string(stderrBytes)
+	if runErr != nil {
+		t.Fatalf("middle: %v\nstdout: %s\nstderr: %s", runErr, stdout, stderr)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(stdout))
+	if err != nil {
+		t.Fatalf("pid %q: %v stderr=%s", stdout, err, stderr)
 	}
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	return pid
-}
-
-func TestSplitVerb(t *testing.T) {
-	verb, rest := splitVerb(nil)
-	if verb != "start" || len(rest) != 0 {
-		t.Fatalf("bare = %q %q", verb, rest)
-	}
-	verb, rest = splitVerb([]string{"--port", "9"})
-	if verb != "start" || len(rest) != 2 {
-		t.Fatalf("flags = %q %q", verb, rest)
-	}
-	verb, rest = splitVerb([]string{"stop", "--help"})
-	if verb != "stop" || len(rest) != 1 || rest[0] != "--help" {
-		t.Fatalf("verb = %q %q", verb, rest)
-	}
-}
-
-func TestExecuteUnknownCommand(t *testing.T) {
-	app := newTestApp(t)
-	err := app.Execute([]string{"nope"})
-	if err == nil || !strings.Contains(err.Error(), "unknown command") {
-		t.Fatalf("err = %v", err)
-	}
 }
 
 func TestMetaNamesTheHolder(t *testing.T) {
@@ -298,7 +291,7 @@ func TestStartAttachesAndStopReleases(t *testing.T) {
 
 	var out bytes.Buffer
 	app.Stdout = &out
-	if err := app.Start([]string{"--no-open"}); err != nil {
+	if err := app.Execute([]string{"--no-open"}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != fmt.Sprintf("http://127.0.0.1:%d/", port) {
@@ -306,13 +299,13 @@ func TestStartAttachesAndStopReleases(t *testing.T) {
 	}
 
 	out.Reset()
-	err := app.Start([]string{"--no-open", "--port", "9000"})
+	err := app.Execute([]string{"start", "--no-open", "--port", "9000"})
 	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("port %d", port)) {
 		t.Fatalf("mismatch err = %v", err)
 	}
 
 	out.Reset()
-	if err := app.Status(nil); err != nil {
+	if err := app.Status(); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), fmt.Sprintf("pid %d", cmd.Process.Pid)) || !strings.Contains(out.String(), fmt.Sprintf("port %d", port)) {
@@ -320,12 +313,12 @@ func TestStartAttachesAndStopReleases(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := app.Run([]string{"--no-open", "--port", "8742"}); !errors.Is(err, ErrAlreadyRunning) {
+	if err := app.Execute([]string{"foreground", "--no-open", "--port", "8742"}); !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("foreground err = %v", err)
 	}
 
 	out.Reset()
-	if err := app.Stop(nil); err != nil {
+	if err := app.Stop(); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "stopped" {
@@ -339,12 +332,12 @@ func TestStartAttachesAndStopReleases(t *testing.T) {
 		t.Fatal("helper still running after stop")
 	}
 	out.Reset()
-	err = app.Status(nil)
+	err = app.Status()
 	if !errors.Is(err, errNotRunning) {
 		t.Fatalf("status after stop = %v", err)
 	}
 	out.Reset()
-	if err := app.Stop(nil); err != nil {
+	if err := app.Stop(); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out.String()) != "tkv is not running" {
@@ -379,7 +372,7 @@ func TestStopReturnsWhileSuccessorHoldsLock(t *testing.T) {
 	var out bytes.Buffer
 	app.Stdout = &out
 	done := make(chan error, 1)
-	go func() { done <- app.Stop(nil) }()
+	go func() { done <- app.Stop() }()
 
 	select {
 	case <-hookReached:
@@ -482,7 +475,7 @@ func TestAttachWaitsUntilServing(t *testing.T) {
 	out := &concBuf{}
 	app.Stdout = out
 	errCh := make(chan error, 1)
-	go func() { errCh <- app.Start([]string{"--no-open"}) }()
+	go func() { errCh <- app.Execute([]string{"start", "--no-open"}) }()
 
 	select {
 	case err := <-errCh:
@@ -502,7 +495,7 @@ func TestAttachWaitsUntilServing(t *testing.T) {
 	if otherPort == port {
 		otherPort = port - 1
 	}
-	go func() { mismatch <- other.Start([]string{"--no-open", "--port", strconv.Itoa(otherPort)}) }()
+	go func() { mismatch <- other.Execute([]string{"start", "--no-open", "--port", strconv.Itoa(otherPort)}) }()
 	select {
 	case err := <-mismatch:
 		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("port %d", port)) {

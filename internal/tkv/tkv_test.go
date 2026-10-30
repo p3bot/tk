@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"html/template"
 	"io"
@@ -254,7 +253,7 @@ func TestRunDoesNotAdvertiseWhenIndexFails(t *testing.T) {
 	app.OpenBrowser = func(string) error { opened++; return nil }
 	var out bytes.Buffer
 	app.Stdout = &out
-	err := app.Run(nil)
+	err := app.Run()
 	if err == nil {
 		t.Fatal("expected index open failure")
 	}
@@ -283,9 +282,10 @@ func TestRunPrintsURLAfterServing(t *testing.T) {
 	port := ln.Addr().(*net.TCPAddr).Port
 	_ = ln.Close()
 
+	app.Port = port
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- app.Run([]string{"--port", strconv.Itoa(port), "--no-open"})
+		errCh <- app.Run()
 	}()
 
 	deadline := time.Now().Add(3 * time.Second)
@@ -348,9 +348,10 @@ func TestRunDrainsInFlightWrite(t *testing.T) {
 	port := ln.Addr().(*net.TCPAddr).Port
 	_ = ln.Close()
 
+	app.Port = port
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- app.Run([]string{"--port", strconv.Itoa(port), "--no-open"})
+		errCh <- app.Run()
 	}()
 
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
@@ -1862,36 +1863,6 @@ func TestDependsGraphPage(t *testing.T) {
 	}
 	if !strings.Contains(body, "1 ticket") || !strings.Contains(body, "omitted") {
 		t.Errorf("isolated copy: %s", body)
-	}
-}
-
-func TestParseFlags(t *testing.T) {
-	app := newTestApp(t)
-	if err := app.parseFlags([]string{"--no-open", "--port", "9001", "--scope", "wc"}); err != nil {
-		t.Fatal(err)
-	}
-	if !app.NoOpen || app.Port != 9001 || !app.PortSet || app.ScopeFlag != "wc" {
-		t.Fatalf("%+v", app)
-	}
-	omitted := newTestApp(t)
-	if err := omitted.parseFlags([]string{"--no-open"}); err != nil {
-		t.Fatal(err)
-	}
-	if omitted.PortSet || omitted.Port != DefaultPort {
-		t.Fatalf("omitted port: set=%v port=%d", omitted.PortSet, omitted.Port)
-	}
-	if err := app.parseFlags([]string{"--port", "0"}); err == nil {
-		t.Fatal("port 0 should fail")
-	}
-	app2 := newTestApp(t)
-	var errBuf bytes.Buffer
-	app2.Stderr = &errBuf
-	err := app2.parseFlags([]string{"--help"})
-	if !errors.Is(err, flag.ErrHelp) {
-		t.Fatalf("help err = %v", err)
-	}
-	if !strings.Contains(errBuf.String(), "tkv is a local") {
-		t.Fatalf("usage = %q", errBuf.String())
 	}
 }
 

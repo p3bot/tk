@@ -39,12 +39,9 @@ var errSpawnBusy = errors.New("tkv server is already starting")
 var errNotRunning = errors.New("tkv is not running")
 
 // Start detaches a server, or attaches to the one already holding the lock.
-// An explicit --port that is not the running port is refused. If that holder
+// An explicit port (a.PortSet) that is not the running port is refused. If that holder
 // exits during the attach, Start tries once more so the dashboard comes up.
-func (a *App) Start(args []string) error {
-	if err := a.parseFlags(args); err != nil {
-		return err
-	}
+func (a *App) Start() error {
 	dir, err := a.prepareStateDir()
 	if err != nil {
 		return err
@@ -76,10 +73,7 @@ func (a *App) startOrAttach(dir, path string) error {
 // the lock file. A successor that takes the lock is left running. The
 // server's own signal path drains in-flight mark and claim work. A dashboard
 // that is not running is a successful stop.
-func (a *App) Stop(args []string) error {
-	if err := a.parseFlags(args); err != nil {
-		return err
-	}
+func (a *App) Stop() error {
 	dir, err := a.stateDir()
 	if err != nil {
 		return err
@@ -126,10 +120,7 @@ func waitHolderGone(path string, pid int) error {
 }
 
 // Status prints the running server, or returns an error when none is up.
-func (a *App) Status(args []string) error {
-	if err := a.parseFlags(args); err != nil {
-		return err
-	}
+func (a *App) Status() error {
 	dir, err := a.stateDir()
 	if err != nil {
 		return err

@@ -42,6 +42,11 @@
         <button type="submit">Sync</button>
       </form>
       {{end}}
+      {{if .Chrome.Network}}
+      <form class="write chrome-logout" method="post" action="/logout">
+        <button type="submit">Log out</button>
+      </form>
+      {{end}}
       <form class="search" action="/search" method="get">
         <input type="search" name="q" placeholder="search" value="{{.Chrome.Query}}" aria-label="search">
       </form>

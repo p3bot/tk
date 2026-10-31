@@ -4,10 +4,12 @@ package tkv
 
 import (
 	"bufio"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,13 +19,19 @@ import (
 	"time"
 
 	"github.com/p3bot/tk/internal/flock"
+	"github.com/p3bot/tk/internal/tkvcert"
+	"github.com/p3bot/tk/internal/tkvconf"
 )
 
 const (
 	lockFileName = "tkv.lock"
 	logFileName  = "tkv.log"
-	// metaSize is pid (10 digits), newline, port (5 digits), newline.
-	metaSize = 17
+	// metaSize is the scheme padded to 5 bytes, newline, pid (10 digits),
+	// newline, bind address padded to 47 bytes (the longest bracketed IPv6
+	// address with port), newline.
+	metaSize   = 65
+	metaAddrAt = 17
+	metaAddrW  = 47
 	// ExitAlreadyRunning is the foreground exit status when the machine lock
 	// is already held. tkv start treats it as "attach to the server that won".
 	ExitAlreadyRunning = 75
@@ -39,32 +47,40 @@ var errSpawnBusy = errors.New("tkv server is already starting")
 var errNotRunning = errors.New("tkv is not running")
 
 // Start detaches a server, or attaches to the one already holding the lock.
-// An explicit port (a.PortSet) that is not the running port is refused. If that holder
-// exits during the attach, Start tries once more so the dashboard comes up.
+// An explicit host or port that is not the running one is refused. If that
+// holder exits during the attach, Start tries once more so the dashboard
+// comes up.
 func (a *App) Start() error {
 	dir, err := a.prepareStateDir()
 	if err != nil {
 		return err
 	}
+	conf, rb, err := a.resolveServe()
+	if err != nil {
+		return err
+	}
 	path := filepath.Join(dir, lockFileName)
-	err = a.startOrAttach(dir, path)
+	err = a.startOrAttach(dir, path, conf, rb)
 	if errors.Is(err, errNotRunning) {
-		err = a.startOrAttach(dir, path)
+		err = a.startOrAttach(dir, path, conf, rb)
 	}
 	return err
 }
 
-func (a *App) startOrAttach(dir, path string) error {
+func (a *App) startOrAttach(dir, path string, conf tkvconf.Config, rb resolvedBind) error {
 	held, err := lockHeld(path)
 	if err != nil {
 		return err
 	}
 	if held {
-		return a.attach(path)
+		return a.attach(dir, path, rb)
 	}
-	err = a.spawn(dir)
+	if rb.network() && len(conf.Users) == 0 {
+		return errNoUsers
+	}
+	err = a.spawn(dir, rb.bind)
 	if errors.Is(err, errSpawnBusy) {
-		return a.attach(path)
+		return a.attach(dir, path, rb)
 	}
 	return err
 }
@@ -87,10 +103,11 @@ func (a *App) Stop() error {
 		fmt.Fprintln(a.stdout(), "tkv is not running")
 		return nil
 	}
-	pid, _, err := awaitHolder(path, 5*time.Second)
+	h, err := awaitHolder(path, 5*time.Second)
 	if err != nil {
 		return err
 	}
+	pid := h.pid
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return fmt.Errorf("signal tkv: %w", err)
 	}
@@ -120,6 +137,7 @@ func waitHolderGone(path string, pid int) error {
 }
 
 // Status prints the running server, or returns an error when none is up.
+// The fingerprint is read from cert.pem, so it reflects an in-place renewal.
 func (a *App) Status() error {
 	dir, err := a.stateDir()
 	if err != nil {
@@ -133,12 +151,27 @@ func (a *App) Status() error {
 	if !held {
 		return errNotRunning
 	}
-	pid, port, err := awaitHolder(path, 5*time.Second)
+	h, err := awaitHolder(path, 5*time.Second)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.stdout(), "pid %d\nport %d\nurl %s/\nlog %s\n",
-		pid, port, baseURL(port), filepath.Join(dir, logFileName))
+	w := a.stdout()
+	fmt.Fprintf(w, "pid %d\nmode %s\naddress %s\nurl %s/\n", h.pid, h.bind.modeName(), h.bind, h.bind.origin())
+	if h.bind.network() {
+		if leaf, err := tkvcert.ReadLeaf(tkvcert.Dir(dir)); err == nil {
+			fmt.Fprintf(w, "fingerprint %s\n", tkvcert.Fingerprint(leaf.Raw))
+		} else {
+			fmt.Fprintf(a.stderr(), "tkv: read certificate: %v\n", err)
+		}
+		conf, err := a.loadConfig()
+		if err != nil {
+			fmt.Fprintf(a.stderr(), "tkv: %v\n", err)
+		}
+		for _, u := range remoteURLs(h.bind, a.shortHostname(), conf.Hosts, a.interfaceAddrs()) {
+			fmt.Fprintf(w, "remote %s\n", u)
+		}
+	}
+	fmt.Fprintf(w, "log %s\n", filepath.Join(dir, logFileName))
 	return nil
 }
 
@@ -153,9 +186,11 @@ func (a *App) prepareStateDir() (string, error) {
 	return dir, nil
 }
 
-// serverLock takes the machine lock and records pid and port before listen.
-// The release function drops the lock. A busy lock is ErrAlreadyRunning.
-func serverLock(stateDir string, port int) (func(), error) {
+// serverLock takes the machine lock and records the scheme, pid, and bind
+// address before the index opens and before listen, so stop and attach can
+// find the process during a slow index open. A busy lock is
+// ErrAlreadyRunning.
+func serverLock(stateDir string, b bind) (func(), error) {
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create XDG state directory %s: %w", stateDir, err)
 	}
@@ -165,66 +200,95 @@ func serverLock(stateDir string, port int) (func(), error) {
 		return nil, err
 	}
 	if !acquired {
-		_, running, err := awaitHolder(path, 5*time.Second)
+		h, err := awaitHolder(path, 5*time.Second)
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("%w at %s/", ErrAlreadyRunning, baseURL(running))
+		return nil, fmt.Errorf("%w at %s/", ErrAlreadyRunning, h.bind.origin())
 	}
-	if err := lk.WriteHead(formatMeta(os.Getpid(), port)); err != nil {
+	if err := lk.WriteHead(formatMeta(os.Getpid(), b)); err != nil {
 		_ = lk.Release()
 		return nil, err
 	}
 	return func() { _ = lk.Release() }, nil
 }
 
-func (a *App) attach(lockPath string) error {
-	pid, port, err := awaitHolder(lockPath, 5*time.Second)
+func (a *App) attach(stateDir, lockPath string, rb resolvedBind) error {
+	h, err := awaitHolder(lockPath, 5*time.Second)
 	if err != nil {
 		return err
 	}
-	if a.PortSet && a.Port != port {
-		return fmt.Errorf("tkv is already running on port %d (%s/)", port, baseURL(port))
+	if (rb.hostExplicit && h.bind.Addr() != rb.Addr()) || (rb.portExplicit && h.bind.Port() != rb.Port()) {
+		return fmt.Errorf("tkv is already running on %s (%s/); stop it first to listen on %s", h.bind, h.bind.origin(), rb.bind)
 	}
 	// The lock record is written before listen so stop can signal during index
-	// open. Publish the URL only once that port answers.
-	if err := waitUntilServing(lockPath, pid, port); err != nil {
+	// open. Publish the URL only once that address answers.
+	if err := waitUntilServing(stateDir, lockPath, h, 5*time.Second); err != nil {
 		return err
 	}
-	url, err := a.LandingURL(port)
+	url, err := a.LandingURL(h.bind)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintln(a.stdout(), url)
+	a.announceNetwork(stateDir, h.bind)
 	if err := a.maybeOpen(url); err != nil {
 		fmt.Fprintln(a.stderr(), err)
 	}
 	return nil
 }
 
+// announceNetwork prints the network-mode banner from the files a running
+// dashboard wrote, for a start that did not run the server itself.
+func (a *App) announceNetwork(stateDir string, b bind) {
+	if !b.network() {
+		return
+	}
+	leaf, err := tkvcert.ReadLeaf(tkvcert.Dir(stateDir))
+	if err != nil {
+		fmt.Fprintf(a.stderr(), "tkv: read certificate: %v\n", err)
+	}
+	conf, err := a.loadConfig()
+	if err != nil {
+		fmt.Fprintf(a.stderr(), "tkv: %v\n", err)
+	}
+	a.writeNetworkBanner(b, leaf, conf.Hosts)
+}
+
 // waitUntilServing polls the stylesheet until it returns 200, or the process
 // that held the lock at attach time is gone. There is no deadline: index open
-// sits in front of listen and can outlast any short cap.
-func waitUntilServing(lockPath string, pid, port int) error {
-	ready := baseURL(port) + "/static/style.css"
-	client := &http.Client{Timeout: 200 * time.Millisecond}
+// sits in front of listen and can outlast any short cap. In network mode each
+// attempt trusts the certificate on disk, which the server may still be
+// writing when the attach begins.
+//
+// The lock record precedes certificate generation by milliseconds, so a
+// certificate still unreadable after certGrace is broken, not pending.
+func waitUntilServing(stateDir, lockPath string, h holder, certGrace time.Duration) error {
+	ready := h.bind.probeURL()
+	var unreadableSince time.Time
 	for {
-		holds, err := pidHoldsLock(pid, lockPath)
+		holds, err := pidHoldsLock(h.pid, lockPath)
 		if err != nil {
 			return err
 		}
 		if !holds {
 			return errNotRunning
 		}
-		req, err := http.NewRequest(http.MethodGet, ready, nil)
-		if err != nil {
-			return err
+		var leaf *x509.Certificate
+		if h.bind.network() {
+			var err error
+			leaf, err = tkvcert.ReadLeaf(tkvcert.Dir(stateDir))
+			switch {
+			case err == nil:
+				unreadableSince = time.Time{}
+			case unreadableSince.IsZero():
+				unreadableSince = time.Now()
+			case time.Since(unreadableSince) > certGrace:
+				return fmt.Errorf("tkv is running on %s but its certificate is unreadable: %w; restart it to regenerate (tkv stop, then tkv start)", h.bind, err)
+			}
 		}
-		resp, err := client.Do(req)
-		if err == nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
+		if !h.bind.network() || leaf != nil {
+			if probeOK(h.bind.probeClient(leaf), ready) {
 				return nil
 			}
 		}
@@ -232,22 +296,33 @@ func waitUntilServing(lockPath string, pid, port int) error {
 	}
 }
 
+func probeOK(client *http.Client, url string) bool {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
 // spawn re-execs this binary in a new session. The parent returns when the
 // child writes its landing URL, or when the child exits. On success the child
 // is left running; this process is about to exit and init adopts it.
-func (a *App) spawn(stateDir string) error {
+func (a *App) spawn(stateDir string, b bind) error {
 	bin, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("find tkv executable: %w", err)
 	}
-	args := []string{"foreground", "--port", strconv.Itoa(a.Port), "--no-open"}
-	if a.ScopeFlag != "" {
-		args = append(args, "--scope", a.ScopeFlag)
-	}
+	args := foregroundArgs(b, a.ScopeFlag)
 	logPath := filepath.Join(stateDir, logFileName)
-	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logf, err := openLog(logPath)
 	if err != nil {
-		return fmt.Errorf("open log %s: %w", logPath, err)
+		return err
 	}
 	defer func() { _ = logf.Close() }()
 
@@ -272,6 +347,7 @@ func (a *App) spawn(stateDir string) error {
 	line, readErr := bufio.NewReader(pr).ReadString('\n')
 	if readErr == nil {
 		fmt.Fprint(a.stdout(), line)
+		a.announceNetwork(stateDir, b)
 		if err := a.maybeOpen(strings.TrimSpace(line)); err != nil {
 			fmt.Fprintln(a.stderr(), err)
 		}
@@ -292,6 +368,16 @@ func (a *App) spawn(stateDir string) error {
 	return fmt.Errorf("tkv did not start: %w\n%s", waitErr, tail)
 }
 
+// foregroundArgs is the detached child's whole command line: the resolved
+// address and the scope. Users, keys, and hashes have no way in.
+func foregroundArgs(b bind, scope string) []string {
+	args := []string{"foreground", "--listen", b.String(), "--no-open"}
+	if scope != "" {
+		args = append(args, "--scope", scope)
+	}
+	return args
+}
+
 func childEnv() []string {
 	src := os.Environ()
 	out := make([]string, 0, len(src)+2)
@@ -305,63 +391,110 @@ func childEnv() []string {
 	return out
 }
 
-func formatMeta(pid, port int) []byte {
-	return []byte(fmt.Sprintf("%010d\n%05d\n", pid, port))
+// openLog opens tkv.log for append at mode 0600, tightening a log an earlier
+// tkv created 0644: it records client IPs and usernames.
+func openLog(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open log %s: %w", path, err)
+	}
+	fi, err := f.Stat()
+	if err == nil && fi.Mode().Perm()&0o077 != 0 {
+		err = f.Chmod(0o600)
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("open log %s: %w", path, err)
+	}
+	return f, nil
 }
 
-func readMeta(path string) (pid, port int, ok bool, err error) {
+// holder is the lock record of the running dashboard.
+type holder struct {
+	pid  int
+	bind bind
+}
+
+// formatMeta is the fixed-width lock record. The writer overwrites from
+// offset 0 without truncating, so a reader checks fixed positions to reject
+// a half-written record.
+func formatMeta(pid int, b bind) []byte {
+	return []byte(fmt.Sprintf("%-5s\n%010d\n%-*s\n", b.scheme(), pid, metaAddrW, b.String()))
+}
+
+// readMeta parses the lock record. legacy reports a record that starts with a
+// digit, the pid-first form of an older tkv.
+func readMeta(path string) (h holder, ok, legacy bool, err error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return 0, 0, false, err
+		return holder{}, false, false, err
 	}
+	legacy = len(b) > 0 && b[0] >= '0' && b[0] <= '9'
 	if len(b) < metaSize {
-		return 0, 0, false, nil
+		return holder{}, false, legacy, nil
 	}
 	b = b[:metaSize]
-	if b[10] != '\n' || b[16] != '\n' {
-		return 0, 0, false, nil
+	if b[5] != '\n' || b[16] != '\n' || b[metaSize-1] != '\n' {
+		return holder{}, false, legacy, nil
 	}
-	pid, err1 := strconv.Atoi(string(b[:10]))
-	port, err2 := strconv.Atoi(string(b[11:16]))
-	if err1 != nil || err2 != nil || pid <= 0 || port < 1 || port > 65535 {
-		return 0, 0, false, nil
+	scheme := strings.TrimRight(string(b[:5]), " ")
+	pid, err := strconv.Atoi(string(b[6:16]))
+	if err != nil || pid <= 0 {
+		return holder{}, false, legacy, nil
 	}
-	return pid, port, true, nil
+	ap, err := netip.ParseAddrPort(strings.TrimRight(string(b[metaAddrAt:metaSize-1]), " "))
+	if err != nil || ap.Port() == 0 || ap.Addr().Zone() != "" {
+		return holder{}, false, legacy, nil
+	}
+	bd := bind{ap}
+	if bd.scheme() != scheme {
+		return holder{}, false, legacy, nil
+	}
+	return holder{pid: pid, bind: bd}, true, false, nil
 }
 
+// errLegacyHolder names the one recovery for a dashboard whose lock record
+// this tkv cannot read.
+var errLegacyHolder = errors.New("tkv lock is held by a dashboard from a different tkv version; stop it with: pkill -f 'tkv foreground'")
+
 // awaitHolder waits until the lock file names a pid that still has it open.
-func awaitHolder(path string, wait time.Duration) (int, int, error) {
+// An unreadable record is retried: the lock file outlives its dashboard, so a
+// new holder may not have written its record yet.
+func awaitHolder(path string, wait time.Duration) (holder, error) {
 	deadline := time.Now().Add(wait)
 	var why string
 	for {
-		pid, port, ok, err := readMeta(path)
+		h, ok, legacy, err := readMeta(path)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				return 0, 0, errNotRunning
+				return holder{}, errNotRunning
 			}
-			return 0, 0, err
+			return holder{}, err
 		}
 		if ok {
-			holds, err := pidHoldsLock(pid, path)
+			holds, err := pidHoldsLock(h.pid, path)
 			if err != nil {
-				return 0, 0, err
+				return holder{}, err
 			}
 			if holds {
-				return pid, port, nil
+				return h, nil
 			}
-			why = fmt.Sprintf("pid %d does not hold the lock", pid)
+			why = fmt.Sprintf("pid %d does not hold the lock", h.pid)
 		} else {
 			why = "no server record"
 		}
 		held, err := lockHeld(path)
 		if err != nil {
-			return 0, 0, err
+			return holder{}, err
 		}
-		if !held || time.Now().After(deadline) {
-			if !held {
-				return 0, 0, errNotRunning
+		if !held {
+			return holder{}, errNotRunning
+		}
+		if time.Now().After(deadline) {
+			if !ok && legacy {
+				return holder{}, errLegacyHolder
 			}
-			return 0, 0, fmt.Errorf("tkv lock is held but the server is not identifiable: %s", why)
+			return holder{}, fmt.Errorf("tkv lock is held but the server is not identifiable: %s", why)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

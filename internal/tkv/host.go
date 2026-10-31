@@ -8,45 +8,38 @@ import (
 	"strings"
 )
 
-// bindAddr is the only address tkv listens on.
-var bindAddr = netip.AddrFrom4([4]byte{127, 0, 0, 1})
-
-// bindHostPort is the listen address for port. Callers pass a port already
-// validated to 1–65535.
-func bindHostPort(port int) string {
-	return netip.AddrPortFrom(bindAddr, uint16(port)).String()
-}
-
-// baseURL is the dashboard origin for port, with no trailing slash.
-func baseURL(port int) string {
-	return "http://" + bindHostPort(port)
-}
-
 // hostAllowlist is the set of lower-case Host hostnames tkv serves.
 // DNS rebinding always presents the attacker's name in Host, so the name
 // alone is the guard; the port is ignored so a forward on another local
 // port (ssh -L 9000:127.0.0.1:8736) still works.
 type hostAllowlist map[string]struct{}
 
-// newHostAllowlist builds the name set for a server bound on bind.
-func newHostAllowlist(bind netip.Addr) hostAllowlist {
-	hosts := hostAllowlist{strings.ToLower(bind.String()): {}}
-	if bind.IsLoopback() {
-		for _, name := range []string{"localhost", "127.0.0.1", "::1"} {
-			hosts[name] = struct{}{}
-		}
+// newHostAllowlist builds the allowlist from the stable name set.
+func newHostAllowlist(names []string) hostAllowlist {
+	hosts := make(hostAllowlist, len(names))
+	for _, name := range names {
+		hosts[strings.ToLower(name)] = struct{}{}
 	}
 	return hosts
 }
 
-// allows reports whether the Host header value names an allowed host.
-func (h hostAllowlist) allows(host string) bool {
+// allows reports whether the Host header value is a stable name, or an IP
+// literal equal to local, the address the connection was accepted on.
+// An IP literal is safe against rebinding, which always presents a DNS name,
+// and it lets a wildcard bind serve a LAN address gained after start.
+func (h hostAllowlist) allows(host string, local netip.Addr) bool {
 	name := hostName(host)
 	if name == "" {
 		return false
 	}
-	_, ok := h[strings.ToLower(name)]
-	return ok
+	if _, ok := h[strings.ToLower(name)]; ok {
+		return true
+	}
+	addr, err := netip.ParseAddr(name)
+	if err != nil || !local.IsValid() {
+		return false
+	}
+	return addr.WithZone("").Unmap() == local.WithZone("").Unmap()
 }
 
 // hostName is the hostname in a Host header value, or "" when the value is
@@ -72,11 +65,28 @@ func hostName(host string) string {
 	return name
 }
 
+// localAddr is the address r arrived on, or the zero Addr when unknown.
+func localAddr(r *http.Request) netip.Addr {
+	a, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if !ok {
+		return netip.Addr{}
+	}
+	ap, err := netip.ParseAddrPort(a.String())
+	if err != nil {
+		return netip.Addr{}
+	}
+	return ap.Addr()
+}
+
 // guard refuses a request whose Host is outside the allowlist before next runs.
 func (h hostAllowlist) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !h.allows(r.Host) {
-			http.Error(w, fmt.Sprintf("tkv: host %q not allowed", r.Host), http.StatusMisdirectedRequest)
+		if !h.allows(r.Host, localAddr(r)) {
+			msg := fmt.Sprintf("tkv: host %q not allowed", r.Host)
+			if name := hostName(r.Host); name != "" {
+				msg += fmt.Sprintf("; add %s with tkv hosts on the tkv machine, then restart tkv", name)
+			}
+			http.Error(w, msg, http.StatusMisdirectedRequest)
 			return
 		}
 		next.ServeHTTP(w, r)

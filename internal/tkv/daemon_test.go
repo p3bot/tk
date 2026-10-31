@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -146,7 +147,7 @@ func runLockHelper() {
 		fmt.Fprintf(os.Stderr, "helper lock: acquired=%v err=%v\n", acquired, err)
 		os.Exit(1)
 	}
-	if err := lk.WriteHead(formatMeta(os.Getpid(), port)); err != nil {
+	if err := lk.WriteHead(formatMeta(os.Getpid(), defaultBind(port))); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -254,19 +255,19 @@ func TestMetaNamesTheHolder(t *testing.T) {
 		t.Fatalf("acquired=%v err=%v", acquired, err)
 	}
 	defer func() { _ = lk.Release() }()
-	if err := lk.WriteHead(formatMeta(os.Getpid(), 8736)); err != nil {
+	if err := lk.WriteHead(formatMeta(os.Getpid(), defaultBind(8736))); err != nil {
 		t.Fatal(err)
 	}
 	holds, err := pidHoldsLock(os.Getpid(), path)
 	if err != nil || !holds {
 		t.Fatalf("holds=%v err=%v", holds, err)
 	}
-	pid, port, err := awaitHolder(path, time.Second)
+	h, err := awaitHolder(path, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pid != os.Getpid() || port != 8736 {
-		t.Fatalf("holder = %d %d", pid, port)
+	if h.pid != os.Getpid() || h.bind != defaultBind(8736) {
+		t.Fatalf("holder = %+v", h)
 	}
 	gone, err := pidHoldsLock(1<<30, path)
 	if err != nil {
@@ -274,6 +275,30 @@ func TestMetaNamesTheHolder(t *testing.T) {
 	}
 	if gone {
 		t.Fatal("an unused pid must not look like the holder")
+	}
+}
+
+func TestAttachRefusesUnreadableCertificate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, lockFileName)
+	lk, acquired, err := flock.TryAcquire(path)
+	if err != nil || !acquired {
+		t.Fatalf("acquired=%v err=%v", acquired, err)
+	}
+	defer func() { _ = lk.Release() }()
+	h := holder{pid: os.Getpid(), bind: bind{netip.MustParseAddrPort("0.0.0.0:8736")}}
+	if err := lk.WriteHead(formatMeta(h.pid, h.bind)); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- waitUntilServing(dir, path, h, 100*time.Millisecond) }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "certificate is unreadable") {
+			t.Fatalf("err = %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("attach waited forever on a missing certificate")
 	}
 }
 
@@ -300,7 +325,7 @@ func TestStartAttachesAndStopReleases(t *testing.T) {
 
 	out.Reset()
 	err := app.Execute([]string{"start", "--no-open", "--port", "9000"})
-	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("port %d", port)) {
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("127.0.0.1:%d", port)) {
 		t.Fatalf("mismatch err = %v", err)
 	}
 
@@ -308,7 +333,7 @@ func TestStartAttachesAndStopReleases(t *testing.T) {
 	if err := app.Status(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), fmt.Sprintf("pid %d", cmd.Process.Pid)) || !strings.Contains(out.String(), fmt.Sprintf("port %d", port)) {
+	if !strings.Contains(out.String(), fmt.Sprintf("pid %d", cmd.Process.Pid)) || !strings.Contains(out.String(), fmt.Sprintf("address 127.0.0.1:%d", port)) {
 		t.Fatalf("status = %q", out.String())
 	}
 
@@ -498,7 +523,7 @@ func TestAttachWaitsUntilServing(t *testing.T) {
 	go func() { mismatch <- other.Execute([]string{"start", "--no-open", "--port", strconv.Itoa(otherPort)}) }()
 	select {
 	case err := <-mismatch:
-		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("port %d", port)) {
+		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("127.0.0.1:%d", port)) {
 			t.Fatalf("mismatch err = %v", err)
 		}
 	case <-time.After(2 * time.Second):
@@ -675,7 +700,7 @@ func TestBackgroundStartStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	pid := statusPid(t, status)
-	if !strings.Contains(status, fmt.Sprintf("port %d", port)) {
+	if !strings.Contains(status, fmt.Sprintf("address 127.0.0.1:%d", port)) {
 		t.Fatalf("status = %q", status)
 	}
 	if runtime.GOOS == "linux" {
@@ -935,4 +960,57 @@ func runTKV(bin, state, config string, args ...string) (string, error) {
 		return stdout.String(), fmt.Errorf("%w\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	return stdout.String(), nil
+}
+
+func TestBackgroundListenFlag(t *testing.T) {
+	bin := builtTKV(t)
+	state := t.TempDir()
+	config := t.TempDir()
+	t.Cleanup(func() {
+		_, _ = runTKV(bin, state, config, "stop")
+	})
+	logPath := filepath.Join(state, "tk", logFileName)
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("from an older tkv\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	port := freePort(t)
+	out, err := runTKV(bin, state, config, "--listen", "127.0.0.1:"+strconv.Itoa(port), "--no-open")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out) != fmt.Sprintf("http://127.0.0.1:%d/", port) {
+		t.Fatalf("bare --listen url = %q", out)
+	}
+	status, err := runTKV(bin, state, config, "status")
+	if err != nil || !strings.Contains(status, "mode loopback") || !strings.Contains(status, fmt.Sprintf("address 127.0.0.1:%d", port)) {
+		t.Fatalf("status = %q %v", status, err)
+	}
+	if runtime.GOOS == "linux" {
+		cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", statusPid(t, status)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.ReplaceAll(string(cmdline), "\x00", " "); !strings.Contains(got, fmt.Sprintf("foreground --listen 127.0.0.1:%d --no-open", port)) {
+			t.Fatalf("child argv = %q", got)
+		}
+	}
+	fi, err := os.Stat(logPath)
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("tkv.log mode = %v %v", fi.Mode(), err)
+	}
+}
+
+func TestForegroundArgsCarryOnlyAddressAndScope(t *testing.T) {
+	got := foregroundArgs(mustBind("[::]:9000"), "wc")
+	want := []string{"foreground", "--listen", "[::]:9000", "--no-open", "--scope", "wc"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("args = %q", got)
+	}
+	if got := foregroundArgs(mustBind("0.0.0.0:8736"), ""); strings.Join(got, " ") != "foreground --listen 0.0.0.0:8736 --no-open" {
+		t.Fatalf("args = %q", got)
+	}
 }

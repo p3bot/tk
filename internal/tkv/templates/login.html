@@ -1,0 +1,44 @@
+{{define "login"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body class="signin">
+<main>
+<form class="signin-form" method="post" action="/login">
+  <img src="/static/tk-logo.svg" alt="" width="40" height="40">
+  <h1>Sign in to tkv</h1>
+  {{if .Error}}<p class="banner" role="alert">{{.Error}}</p>{{end}}
+  <input type="hidden" name="next" value="{{.Next}}">
+  <label>Username
+    <input type="text" name="username" value="{{.User}}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+  </label>
+  <label>Password
+    <input type="password" name="password" autocomplete="current-password" required>
+  </label>
+  <button type="submit" class="toolbar-btn primary">Sign in</button>
+</form>
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "plain"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body class="signin">
+<main>
+<div class="signin-form">
+  <img src="/static/tk-logo.svg" alt="" width="40" height="40">
+  <h1>{{.Status}} {{.Title}}</h1>
+  <p>{{.Message}}</p>
+  <p><a href="/login">Sign in</a></p>
+</div>
+</main>
+</body>
+</html>
+{{end}}

@@ -210,22 +210,31 @@ func (s *Store) WriteNote(note map[string]string) error {
 	return s.writeOwned(noteFile, map[string]any{"note": note})
 }
 
-// writeOwned encodes model to CUE, formats as a top-level file, and installs via atomic rename.
-// Map keys serialize sorted for deterministic output.
+// writeOwned regenerates one owned file and installs it via atomic rename.
 func (s *Store) writeOwned(name string, model any) error {
-	v := s.ctx.Encode(model)
+	data, err := FormatOwned(s.ctx, model)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return atomicfile.Write(filepath.Join(s.dir, name), data, 0o600)
+}
+
+// FormatOwned encodes model as a formatted top-level CUE file, the form every
+// tool-owned machine-local file takes. Map keys serialize sorted, so output
+// is deterministic.
+func FormatOwned(ctx *cue.Context, model any) ([]byte, error) {
+	v := ctx.Encode(model)
 	if err := v.Err(); err != nil {
-		return fmt.Errorf("encode %s: %w", name, err)
+		return nil, fmt.Errorf("encode: %w", err)
 	}
 	node := v.Syntax(cue.Concrete(true), cue.Final())
 	st, ok := node.(*ast.StructLit)
 	if !ok {
-		return fmt.Errorf("encode %s: unexpected CUE syntax %T", name, node)
+		return nil, fmt.Errorf("encode: unexpected CUE syntax %T", node)
 	}
-	file := &ast.File{Decls: st.Elts}
-	data, err := format.Node(file)
+	data, err := format.Node(&ast.File{Decls: st.Elts})
 	if err != nil {
-		return fmt.Errorf("format %s: %w", name, err)
+		return nil, fmt.Errorf("format: %w", err)
 	}
-	return atomicfile.Write(filepath.Join(s.dir, name), data, 0o600)
+	return data, nil
 }

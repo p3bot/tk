@@ -49,8 +49,13 @@ func checkWriteOrigin(r *http.Request) error {
 	if origin == "" {
 		return nil
 	}
+	// The scheme comes from the connection, so the check needs no mode flag.
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
 	u, err := url.Parse(origin)
-	if err != nil || u.Scheme != "http" {
+	if err != nil || u.Scheme != scheme {
 		return errForbidden("foreign origin refused")
 	}
 	if !strings.EqualFold(u.Host, r.Host) {

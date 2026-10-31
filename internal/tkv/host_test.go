@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestHostAllowlistAllows(t *testing.T) {
-	hosts := newHostAllowlist(bindAddr)
+	hosts := newHostAllowlist(stableNames(defaultBind(DefaultPort), "", nil))
 	tests := []struct {
 		host string
 		want bool
@@ -45,7 +46,7 @@ func TestHostAllowlistAllows(t *testing.T) {
 		{"[127.0.0.1]:8736", false},
 	}
 	for _, tt := range tests {
-		if got := hosts.allows(tt.host); got != tt.want {
+		if got := hosts.allows(tt.host, netip.Addr{}); got != tt.want {
 			t.Errorf("allows(%q) = %v, want %v", tt.host, got, tt.want)
 		}
 	}
@@ -53,7 +54,7 @@ func TestHostAllowlistAllows(t *testing.T) {
 
 func TestHostGuardRunsNoHandlerForForeignHost(t *testing.T) {
 	ran := false
-	h := newHostAllowlist(bindAddr).guard(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	h := newHostAllowlist(stableNames(defaultBind(DefaultPort), "", nil)).guard(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		ran = true
 	}))
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {

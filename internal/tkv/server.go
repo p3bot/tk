@@ -48,6 +48,10 @@ type Server struct {
 	cur   *indexHandle
 	tpl   *template.Template
 	hosts hostAllowlist
+	// auth is network mode's login state; nil is loopback mode.
+	auth *auth
+	// onRoute runs once the guard and gate have passed a request (tests).
+	onRoute func(*http.Request)
 	// afterIndexUnlock runs after a write handler drops Server.mu and before
 	// the engine call. Tests use it to prove claim's git work is not inside wrap.
 	afterIndexUnlock func()
@@ -55,8 +59,13 @@ type Server struct {
 	flash            map[string]syncFlash
 }
 
-// NewServer opens the same XDG index tk uses.
+// NewServer opens the same XDG index tk uses, as a loopback-mode server on
+// the default address.
 func (a *App) NewServer() (*Server, error) {
+	return a.newServer(newHostAllowlist(stableNames(defaultBind(DefaultPort), "", nil)), nil)
+}
+
+func (a *App) newServer(hosts hostAllowlist, au *auth) (*Server, error) {
 	ctx := a.cue()
 	stateDir, err := a.stateDir()
 	if err != nil {
@@ -73,7 +82,8 @@ func (a *App) NewServer() (*Server, error) {
 		rec:              rec,
 		cur:              &indexHandle{db: db, rec: rec, n: 1},
 		tpl:              pages,
-		hosts:            newHostAllowlist(bindAddr),
+		hosts:            hosts,
+		auth:             au,
 		afterIndexUnlock: a.afterIndexUnlock,
 	}, nil
 }
@@ -157,57 +167,96 @@ func (s *Server) installLocked(db *index.DB, rec *reconcile.Reconciler) error {
 	return nil
 }
 
-// Handler is the multi-page mux. Static files are ordinary /static/... URLs.
-func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
+// route is one registered mux pattern. engine marks a handler built by
+// wrapEngine, so a test can hold the rule that no GET pattern writes.
+type route struct {
+	pattern string
+	handler http.Handler
+	engine  bool
+}
+
+// routes is every pattern the mux serves. The login routes exist in network
+// mode only.
+func (s *Server) routes() []route {
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
 		panic(err)
 	}
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
-	mux.HandleFunc("GET /{$}", s.wrap(s.overview))
-	mux.HandleFunc("GET /search", s.wrap(s.search))
-	mux.HandleFunc("GET /brief", s.wrap(s.brief))
-	mux.HandleFunc("GET /brief/depends", s.wrap(s.dependsGraph))
-	mux.HandleFunc("GET /graphs", redirectQuery("/brief"))
-	mux.HandleFunc("GET /graphs/depends", redirectQuery("/brief/depends"))
-	mux.HandleFunc("GET /doctor", s.wrap(s.doctor))
-	mux.HandleFunc("GET /notes", s.wrap(s.notesPick))
-	mux.HandleFunc("GET /designs", s.wrap(s.designsPick))
-	mux.HandleFunc("GET /scope/{name}", s.wrap(s.kanban))
-	mux.HandleFunc("GET /scope/{name}/designs", s.wrap(s.designsList))
-	mux.HandleFunc("GET /scope/{name}/designs/{id}", s.wrap(s.designInspect))
-	mux.HandleFunc("GET /scope/{name}/designs/{id}/edit", s.wrap(s.designEdit))
-	mux.HandleFunc("GET /scope/{name}/notes", s.wrap(s.notesList))
-	mux.HandleFunc("GET /scope/{name}/notes/{slug}", s.wrap(s.noteInspect))
-	mux.HandleFunc("GET /scope/{name}/notes/{slug}/edit", s.wrap(s.noteEdit))
-	// /edit/{id}, not /{id}/edit: ServeMux treats /{id}/edit and /notes/{slug}
-	// as overlapping on /scope/{name}/notes/edit.
-	mux.HandleFunc("GET /scope/{name}/edit/{id}", s.wrap(s.inspectEdit))
-	mux.HandleFunc("GET /scope/{name}/{id}", s.wrap(s.inspect))
-	mux.HandleFunc("POST /scope/{name}/designs/mark", s.wrapEngine(s.postDesignMark))
-	mux.HandleFunc("POST /scope/{name}/designs/produces", s.wrapEngine(s.postDesignProduces))
-	mux.HandleFunc("POST /scope/{name}/designs/body", s.wrapEngine(s.postDesignBody))
-	mux.HandleFunc("POST /scope/{name}/notes", s.wrapEngine(s.postNoteCreate))
-	mux.HandleFunc("POST /scope/{name}/notes/use", s.wrapEngine(s.postNoteUse))
-	mux.HandleFunc("POST /scope/{name}/notes/{slug}", s.wrapEngine(s.postNoteSet))
-	mux.HandleFunc("POST /scope/{name}/notes/{slug}/delete", s.wrapEngine(s.postNoteDelete))
-	mux.HandleFunc("POST /scope/{name}/mark", s.wrapEngine(s.postMark))
-	mux.HandleFunc("POST /scope/{name}/claim", s.wrapEngine(s.postClaim))
-	mux.HandleFunc("POST /scope/{name}/create", s.wrapEngine(s.postCreate))
-	mux.HandleFunc("POST /scope/{name}/meta", s.wrapEngine(s.postMeta))
-	mux.HandleFunc("POST /scope/{name}/order", s.wrapEngine(s.postOrder))
-	mux.HandleFunc("POST /scope/{name}/body", s.wrapEngine(s.postBody))
-	mux.HandleFunc("POST /scope/{name}/lens", s.wrapEngine(s.postLensSet))
-	mux.HandleFunc("POST /scope/{name}/lens/clear", s.wrapEngine(s.postLensClear))
-	mux.HandleFunc("POST /scope/{name}/sync", s.wrapEngine(s.postChromeSync))
-	mux.HandleFunc("POST /sync", s.wrapEngine(s.postUnscopedSync))
-	mux.HandleFunc("POST /doctor/sync", s.wrapEngine(s.postDoctorSync))
-	mux.HandleFunc("POST /doctor/reindex", s.wrapEngine(s.postDoctorReindex))
-	return s.hosts.guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	get := func(pattern string, h http.HandlerFunc) route { return route{pattern: "GET " + pattern, handler: h} }
+	post := func(pattern string, fn requestFn) route {
+		return route{pattern: "POST " + pattern, handler: s.wrapEngine(fn), engine: true}
+	}
+	rs := []route{
+		{pattern: "GET /static/", handler: http.StripPrefix("/static/", http.FileServer(http.FS(static)))},
+		get("/{$}", s.wrap(s.overview)),
+		get("/search", s.wrap(s.search)),
+		get("/brief", s.wrap(s.brief)),
+		get("/brief/depends", s.wrap(s.dependsGraph)),
+		get("/graphs", redirectQuery("/brief")),
+		get("/graphs/depends", redirectQuery("/brief/depends")),
+		get("/doctor", s.wrap(s.doctor)),
+		get("/notes", s.wrap(s.notesPick)),
+		get("/designs", s.wrap(s.designsPick)),
+		get("/scope/{name}", s.wrap(s.kanban)),
+		get("/scope/{name}/designs", s.wrap(s.designsList)),
+		get("/scope/{name}/designs/{id}", s.wrap(s.designInspect)),
+		get("/scope/{name}/designs/{id}/edit", s.wrap(s.designEdit)),
+		get("/scope/{name}/notes", s.wrap(s.notesList)),
+		get("/scope/{name}/notes/{slug}", s.wrap(s.noteInspect)),
+		get("/scope/{name}/notes/{slug}/edit", s.wrap(s.noteEdit)),
+		// /edit/{id}, not /{id}/edit: ServeMux treats /{id}/edit and /notes/{slug}
+		// as overlapping on /scope/{name}/notes/edit.
+		get("/scope/{name}/edit/{id}", s.wrap(s.inspectEdit)),
+		get("/scope/{name}/{id}", s.wrap(s.inspect)),
+		post("/scope/{name}/designs/mark", s.postDesignMark),
+		post("/scope/{name}/designs/produces", s.postDesignProduces),
+		post("/scope/{name}/designs/body", s.postDesignBody),
+		post("/scope/{name}/notes", s.postNoteCreate),
+		post("/scope/{name}/notes/use", s.postNoteUse),
+		post("/scope/{name}/notes/{slug}", s.postNoteSet),
+		post("/scope/{name}/notes/{slug}/delete", s.postNoteDelete),
+		post("/scope/{name}/mark", s.postMark),
+		post("/scope/{name}/claim", s.postClaim),
+		post("/scope/{name}/create", s.postCreate),
+		post("/scope/{name}/meta", s.postMeta),
+		post("/scope/{name}/order", s.postOrder),
+		post("/scope/{name}/body", s.postBody),
+		post("/scope/{name}/lens", s.postLensSet),
+		post("/scope/{name}/lens/clear", s.postLensClear),
+		post("/scope/{name}/sync", s.postChromeSync),
+		post("/sync", s.postUnscopedSync),
+		post("/doctor/sync", s.postDoctorSync),
+		post("/doctor/reindex", s.postDoctorReindex),
+	}
+	if s.auth != nil {
+		rs = append(rs,
+			get("/login", s.getLogin),
+			route{pattern: "POST /login", handler: s.wrapSessionPost(s.postLogin)},
+			route{pattern: "POST /logout", handler: s.wrapSessionPost(s.postLogout)},
+		)
+	}
+	return rs
+}
+
+// Handler is the multi-page mux behind the Host guard and, in network mode,
+// the auth gate. The guard stays outermost so a refused Host gets 421 on
+// every path, the login page included.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	for _, r := range s.routes() {
+		mux.Handle(r.pattern, r.handler)
+	}
+	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Frame-Options", "DENY")
+		if s.onRoute != nil {
+			s.onRoute(r)
+		}
 		mux.ServeHTTP(w, r)
-	}))
+	})
+	if s.auth != nil {
+		h = s.gate(h)
+	}
+	return s.hosts.guard(h)
 }
 
 type requestFn func(http.ResponseWriter, *http.Request) error
@@ -290,6 +339,8 @@ type chrome struct {
 	Integrity string
 	Query     string
 	Hold      bool
+	// Network shows the logout button.
+	Network bool
 }
 
 func (c chrome) LensOn(tag string) bool {
@@ -465,6 +516,7 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 		Selected:  selected,
 		Integrity: "ok",
 		Query:     query,
+		Network:   s.auth != nil,
 	}
 	if selected == "" {
 		ok := true
@@ -599,6 +651,7 @@ func (s *Server) errorPage(w http.ResponseWriter, r *http.Request, code int, mes
 		ch.Selected = name
 	}
 	ch.Section = sectionFromPath(r.URL.Path)
+	ch.Network = s.auth != nil
 	ch.bind(r)
 	_ = s.tpl.ExecuteTemplate(w, "error", errorPage{
 		Title:   fmt.Sprintf("%d", code),

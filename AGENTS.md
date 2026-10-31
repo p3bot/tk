@@ -26,7 +26,7 @@ orchestration split into acquiring wrappers over locks-held cores); and P7's
 Commands, Ticket files, Identifiers, Workflows; structure and hot-path guidance
 tests; no design-doc dependency) plus agentdex-backed `skill install`/`list`/
 `uninstall` (paths from the agent catalog; no hardcoded product skills dirs);
-and `tkv` — a human-facing localhost dashboard (`cmd/tkv`) for overview, kanban,
+and `tkv` — a human-facing dashboard (`cmd/tkv`; loopback by default, opt-in HTTPS network mode with login) for overview, kanban,
 inspect, notes, search, depends graph, and doctor (diagnose plus reindex), with mark, claim, create, meta, order, and inspect H1+body writes
 through the same engine as `tk`, notes list/set/delete/use through the notes package, chrome set/clear of the machine-local tag
 lens, and chrome/doctor `tk sync` (agents keep using `tk`).
@@ -103,7 +103,10 @@ scope dir root; terminal status moves a file into `archive/` via `tk mark`
   - `writeengine` — cobra-free ticket-file write session, create, meta, order, mark, claim, and rehome orchestration
   - `notes` — cobra-free scope note list/read/set/add/delete and the machine-local use pointer (`tk note edit` stays in CLI)
   - `skill` — embedded agent skill contract (`skill.md`; sole source, no design-doc dependency) (P7)
-  - `tkv` — localhost HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, doctor diagnose/reindex, mark/claim/create/meta/order, chrome lens, sync). `tkv` detaches; `tkv stop` is SIGTERM plus the serve drain; `tkv foreground` stays in the terminal
+  - `tkvconf` — `~/.config/tk/tkv.cue` model (listen address, extra hosts, users), schema validation, flock + atomic `0600` regenerate
+  - `passhash` — PBKDF2-SHA256 password hash and constant-time verify in the self-describing stored form
+  - `tkvcert` — network-mode key material in the state dir: self-signed P-256 leaf (persist, regenerate, in-place renewal), fingerprint, cookie signing key
+  - `tkv` — HTTP dashboard (templates, static CSS, goldmark inspect, depends graph, doctor diagnose/reindex, mark/claim/create/meta/order, chrome lens, sync). Loopback mode by default (plain HTTP on `127.0.0.1`, no login); any non-loopback `--listen`/`tkv listen` host is network mode (TLS, login gate, `tkv user`/`tkv hosts`). `tkv` detaches; `tkv stop` is SIGTERM plus the serve drain; `tkv foreground` stays in the terminal
   - `cli` — Cobra command tree, exit codes, signals, colour/TTY, path hand-off
 
 ## Build, test, lint, format

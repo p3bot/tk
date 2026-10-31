@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -36,7 +35,6 @@ func newTestApp(t *testing.T) *App {
 		ConfigDir: t.TempDir(),
 		StateDir:  t.TempDir(),
 		Cwd:       t.TempDir(),
-		Port:      DefaultPort,
 		NoOpen:    true,
 		Stdout:    io.Discard,
 		Stderr:    io.Discard,
@@ -105,7 +103,7 @@ func mustServer(t *testing.T, app *App) *Server {
 
 // testHost is the Host every helper request sends: the dashboard's own
 // address, so tests exercise routes rather than the Host guard.
-var testHost = net.JoinHostPort(bindAddr.String(), strconv.Itoa(DefaultPort))
+var testHost = defaultBind(DefaultPort).String()
 
 func newRequest(method, path string, body io.Reader) *http.Request {
 	req := httptest.NewRequest(method, path, body)
@@ -131,7 +129,7 @@ func TestLandingAmbientScope(t *testing.T) {
 	if path != "/scope/wc" {
 		t.Fatalf("landing = %q", path)
 	}
-	url, err := app.LandingURL(8736)
+	url, err := app.LandingURL(defaultBind(8736))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +226,7 @@ func TestListenBindFailureNamesPort(t *testing.T) {
 	}
 	defer func() { _ = held.Close() }()
 	port := held.Addr().(*net.TCPAddr).Port
-	_, err = listen(port)
+	_, err = listen(defaultBind(port))
 	if err == nil {
 		t.Fatal("expected bind failure")
 	}
@@ -436,7 +434,7 @@ func (c *concBuf) String() string {
 }
 
 func TestListenBindsLoopback(t *testing.T) {
-	ln, err := listen(0)
+	ln, err := net.Listen(defaultBind(1).family(), "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -44,21 +44,20 @@ func TestServeFlagsReachApp(t *testing.T) {
 			if _, _, err := executeCapture(t, app, args...); err == nil {
 				t.Fatal("expected the blocked state dir to fail the serve")
 			}
-			if !app.NoOpen || app.Port != 9001 || !app.PortSet || app.ScopeFlag != "wc" {
+			if !app.NoOpen || app.Port != 9001 || app.ScopeFlag != "wc" {
 				t.Fatalf("set: %+v", app)
 			}
 
 			omitted := newTestApp(t)
 			blockStateDir(t, omitted)
 			omitted.Port = 1
-			omitted.PortSet = true
 			omitted.ScopeFlag = "stale"
 			args = append(append([]string{}, verb...), "--no-open")
 			if _, _, err := executeCapture(t, omitted, args...); err == nil {
 				t.Fatal("expected the blocked state dir to fail the serve")
 			}
-			if omitted.PortSet || omitted.Port != DefaultPort || omitted.ScopeFlag != "" {
-				t.Fatalf("omitted: set=%v port=%d scope=%q", omitted.PortSet, omitted.Port, omitted.ScopeFlag)
+			if omitted.Port != 0 || omitted.ScopeFlag != "" {
+				t.Fatalf("omitted: port=%d scope=%q", omitted.Port, omitted.ScopeFlag)
 			}
 		})
 	}
@@ -70,12 +69,15 @@ func TestHelpGoesToStdout(t *testing.T) {
 		want []string
 		deny []string
 	}{
-		{[]string{"--help"}, []string{"tkv is a local web dashboard", "127.0.0.1", "start", "stop", "status", "foreground", "--port N", "--no-open", "--scope NAME", "(default 8736)"}, []string{"completion"}},
-		{[]string{"start", "--help"}, []string{"tkv start [--port N]", "--port N", "--no-open", "--scope NAME"}, nil},
+		{[]string{"--help"}, []string{"tkv is a local web dashboard", "127.0.0.1", "start", "stop", "status", "foreground", "--port N", "--no-open", "--scope NAME", "(default 8736)", "--listen HOST|HOST:PORT", "network mode", "fingerprint", "listen", "hosts", "user"}, []string{"completion", "never"}},
+		{[]string{"start", "--help"}, []string{"tkv start [--listen HOST|HOST:PORT] [--port N]", "--port N", "--no-open", "--scope NAME"}, nil},
 		{[]string{"foreground", "-h"}, []string{"tkv foreground", "--port N"}, []string{"attaches"}},
-		{[]string{"help", "start"}, []string{"tkv start [--port N]", "attaches"}, nil},
+		{[]string{"help", "start"}, []string{"tkv start [--listen HOST|HOST:PORT] [--port N]", "attaches"}, nil},
 		{[]string{"stop", "--help"}, []string{"tkv stop"}, []string{"--port", "--no-open", "--scope"}},
 		{[]string{"status", "--help"}, []string{"tkv status"}, []string{"--port", "--no-open", "--scope"}},
+		{[]string{"user", "--help"}, []string{"list", "set", "delete"}, []string{"--port", "--listen"}},
+		{[]string{"user", "set", "--help"}, []string{"tkv user set NAME", "never taken from argv"}, nil},
+		{[]string{"listen", "--help"}, []string{"tkv listen [HOST|HOST:PORT] [--clear]", "--clear"}, []string{"--no-open"}},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -106,13 +108,13 @@ func TestUsageErrors(t *testing.T) {
 		msg   string
 		usage string
 	}{
-		{[]string{"--port", "0"}, `invalid argument "0" for "--port" flag`, "usage: tkv [command] [--port N]"},
-		{[]string{"start", "--port", "65536"}, "1–65535", "usage: tkv start [--port N]"},
-		{[]string{"foreground", "--port", "x"}, "1–65535", "usage: tkv foreground [--port N]"},
+		{[]string{"--port", "0"}, `invalid argument "0" for "--port" flag`, "usage: tkv [command] [--listen HOST|HOST:PORT] [--port N]"},
+		{[]string{"start", "--port", "65536"}, "1–65535", "usage: tkv start [--listen HOST|HOST:PORT] [--port N]"},
+		{[]string{"foreground", "--port", "x"}, "1–65535", "usage: tkv foreground [--listen HOST|HOST:PORT] [--port N]"},
 		{[]string{"nope"}, `unknown command "nope" for "tkv"`, "usage: tkv [command]"},
 		{[]string{"completion"}, `unknown command "completion"`, "usage: tkv [command]"},
 		{[]string{"--version"}, "unknown flag: --version", "usage: tkv [command]"},
-		{[]string{"start", "extra"}, "too many arguments", "usage: tkv start [--port N]"},
+		{[]string{"start", "extra"}, "too many arguments", "usage: tkv start [--listen HOST|HOST:PORT] [--port N]"},
 		{[]string{"stop", "extra"}, "too many arguments", "usage: tkv stop"},
 		{[]string{"-port", "9001"}, "unknown shorthand flag", "usage: tkv [command]"},
 		{[]string{"-no-open"}, "unknown shorthand flag", "usage: tkv [command]"},

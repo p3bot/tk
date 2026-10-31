@@ -4,18 +4,27 @@
 // the machine-local tag lens from chrome, sync tk-driven git-roots, and run
 // doctor diagnose plus reindex. Metadata comes from the machine-wide index;
 // bodies from ticket files; notes from the notes package. Agents do not use it.
+//
+// Loopback mode, the default, is plain HTTP with no login. Any other listen
+// host is network mode: TLS with a self-generated certificate and a login
+// gate in front of every route except the login page and static files.
 package tkv
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -26,20 +35,25 @@ import (
 	"github.com/p3bot/tk/internal/pathutil"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/resolve"
+	"github.com/p3bot/tk/internal/tkvcert"
+	"github.com/p3bot/tk/internal/tkvconf"
 	"github.com/p3bot/tk/internal/xdg"
 )
 
 // App is the process-wide viewer configuration. Tests inject dirs, cwd, and I/O.
 type App struct {
-	Ctx         *cue.Context
-	ConfigDir   string
-	StateDir    string
-	ScopeFlag   string
-	EnvScope    string
-	Cwd         string
+	Ctx       *cue.Context
+	ConfigDir string
+	StateDir  string
+	ScopeFlag string
+	EnvScope  string
+	Cwd       string
+	// Listen is --listen; nil when the flag is absent.
+	Listen *listenSpec
+	// Port is --port; 0 when the flag is absent.
 	Port        int
-	PortSet     bool
 	NoOpen      bool
+	Stdin       io.Reader
 	Stdout      io.Writer
 	Stderr      io.Writer
 	OpenBrowser func(string) error
@@ -51,13 +65,21 @@ type App struct {
 	// afterStopSignal runs after SIGTERM and before Stop waits for that
 	// process to drop the lock file (tests).
 	afterStopSignal func()
+	// hostname and ifaceAddrs replace the machine's own (tests).
+	hostname   func() string
+	ifaceAddrs func() []netip.Addr
+	// configureAuth adjusts network mode's login state before serving (tests).
+	configureAuth func(*auth)
+	// listenFn opens the socket for a resolved bind (tests keep a network-mode
+	// bind's socket on loopback).
+	listenFn func(bind) (net.Listener, error)
 }
 
 // NewApp builds a production App (XDG dirs and cwd resolved at Run).
 func NewApp() *App {
 	return &App{
 		Ctx:         cuecontext.New(),
-		Port:        DefaultPort,
+		Stdin:       os.Stdin,
 		Stdout:      os.Stdout,
 		Stderr:      os.Stderr,
 		OpenBrowser: openBrowser,
@@ -70,7 +92,8 @@ func unsupportedOS() error {
 }
 
 // Run is the attached server. It holds the machine lock until it exits.
-// It serves on a.Port; a.NoOpen skips the browser. Tests call Run directly.
+// It serves on the resolved listen address; a.NoOpen skips the browser.
+// Tests call Run directly.
 func (a *App) Run() error {
 	if !supportedOS() {
 		return unsupportedOS()
@@ -85,25 +108,70 @@ func (a *App) Run() error {
 	if err != nil {
 		return err
 	}
-	release, err := serverLock(stateDir, a.Port)
+	configDir, err := a.configDir()
+	if err != nil {
+		return err
+	}
+	conf, rb, err := a.resolveServe()
+	if err != nil {
+		return err
+	}
+	b := rb.bind
+	if b.network() && len(conf.Users) == 0 {
+		return errNoUsers
+	}
+	release, err := serverLock(stateDir, b)
 	if err != nil {
 		return err
 	}
 	defer release()
 
-	srv, err := a.NewServer()
+	log := slog.New(slog.NewTextHandler(a.stderr(), nil))
+	names := stableNames(b, a.shortHostname(), conf.Hosts)
+	var certs *tkvcert.Manager
+	var au *auth
+	if b.network() {
+		var regenerated bool
+		certs, regenerated, err = tkvcert.Open(tkvcert.Dir(stateDir), names, time.Now)
+		if err != nil {
+			return err
+		}
+		if regenerated {
+			log.Info("certificate generated", "fingerprint", tkvcert.Fingerprint(certs.Leaf().Raw), "names", strings.Join(names, ","))
+		}
+		certs.OnRenew = func(fp string, err error) {
+			if err != nil {
+				log.Error("certificate renewal failed; serving the old certificate", "err", err)
+				return
+			}
+			log.Info("certificate renewed", "fingerprint", fp)
+		}
+		key, err := tkvcert.SessionKey(tkvcert.Dir(stateDir))
+		if err != nil {
+			return err
+		}
+		au = newAuth(tkvconf.Path(configDir), key, log)
+		if a.configureAuth != nil {
+			a.configureAuth(au)
+		}
+	}
+
+	srv, err := a.newServer(newHostAllowlist(names), au)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = srv.Close() }()
 
-	ln, err := listen(a.Port)
+	ln, err := a.listen(b)
 	if err != nil {
 		return err
 	}
+	if certs != nil {
+		ln = tls.NewListener(ln, certs.TLSConfig())
+	}
 	defer func() { _ = ln.Close() }()
 
-	url, err := a.LandingURL(a.Port)
+	url, err := a.LandingURL(b)
 	if err != nil {
 		return err
 	}
@@ -111,7 +179,15 @@ func (a *App) Run() error {
 	ctx, stop := a.serveContext()
 	defer stop()
 
-	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	httpSrv := &http.Server{
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		// The drain waits on active requests with no deadline, so a body
+		// trickled forever would stall stop. No WriteTimeout: git work runs long.
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 2 * time.Minute,
+		ErrorLog:    serverErrorLog(log, newEventSummary(log, "TLS handshakes failed", time.AfterFunc)),
+	}
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -123,8 +199,11 @@ func (a *App) Run() error {
 		serveErr <- nil
 	}()
 
-	ready := baseURL(a.Port) + "/static/style.css"
-	if err := waitServing(ctx, ready); err != nil {
+	var leaf *x509.Certificate
+	if certs != nil {
+		leaf = certs.Leaf()
+	}
+	if err := waitServing(ctx, b.probeClient(leaf), b.probeURL()); err != nil {
 		_ = httpSrv.Close()
 		if se := <-serveErr; se != nil {
 			return se
@@ -144,6 +223,9 @@ func (a *App) Run() error {
 	}
 
 	fmt.Fprintln(a.stdout(), url)
+	if certs != nil {
+		a.writeNetworkBanner(b, leaf, conf.Hosts)
+	}
 	if err := a.maybeOpen(url); err != nil {
 		fmt.Fprintln(a.stderr(), err)
 	}
@@ -159,6 +241,74 @@ func (a *App) Run() error {
 	}
 }
 
+// errNoUsers refuses network mode before anything binds: a network listener
+// with no users could never let anyone in, and there is no unauthenticated
+// network mode to fall back to.
+var errNoUsers = errors.New("network mode needs a login user; add one with: tkv user set NAME")
+
+// resolveServe loads tkv.cue and resolves the listen address from the flags
+// on a. A tkv.cue that does not evaluate is a hard error.
+func (a *App) resolveServe() (tkvconf.Config, resolvedBind, error) {
+	conf, err := a.loadConfig()
+	if err != nil {
+		return conf, resolvedBind{}, err
+	}
+	rb, err := resolveBind(listenRequest{listen: a.Listen, port: a.Port}, conf.Listen)
+	return conf, rb, err
+}
+
+// loadConfig reads tkv.cue and warns when group or other can read it.
+func (a *App) loadConfig() (tkvconf.Config, error) {
+	dir, err := a.configDir()
+	if err != nil {
+		return tkvconf.Config{}, err
+	}
+	conf, err := tkvconf.Load(a.cue(), dir)
+	if err != nil {
+		return conf, err
+	}
+	p := tkvconf.Path(dir)
+	if fi, err := os.Stat(p); err == nil && tkvconf.LooseMode(fi.Mode()) {
+		fmt.Fprintf(a.stderr(), "tkv: warning: %s grants group or other access (mode %04o) and holds password hashes; run: chmod 600 %s\n", p, fi.Mode().Perm(), p)
+	}
+	return conf, nil
+}
+
+// writeNetworkBanner tells the person starting network mode what is exposed
+// and how to check the certificate warning their browsers will show.
+func (a *App) writeNetworkBanner(b bind, leaf *x509.Certificate, hosts []string) {
+	w := a.stderr()
+	fmt.Fprintf(w, "tkv: network mode on %s over HTTPS; login required\n", b)
+	if leaf != nil {
+		fmt.Fprintf(w, "tkv: certificate SHA-256 %s\n", tkvcert.Fingerprint(leaf.Raw))
+	}
+	fmt.Fprintln(w, "tkv: the certificate is self-signed; browsers warn until it is accepted, so check the fingerprint")
+	for _, u := range remoteURLs(b, a.shortHostname(), hosts, a.interfaceAddrs()) {
+		fmt.Fprintf(w, "tkv: remote %s\n", u)
+	}
+}
+
+func (a *App) listen(b bind) (net.Listener, error) {
+	if a.listenFn != nil {
+		return a.listenFn(b)
+	}
+	return listen(b)
+}
+
+func (a *App) shortHostname() string {
+	if a.hostname != nil {
+		return a.hostname()
+	}
+	return shortHostname()
+}
+
+func (a *App) interfaceAddrs() []netip.Addr {
+	if a.ifaceAddrs != nil {
+		return a.ifaceAddrs()
+	}
+	return interfaceAddrs()
+}
+
 func (a *App) serveContext() (context.Context, context.CancelFunc) {
 	if a.ServeCtx != nil {
 		return context.WithCancel(a.ServeCtx)
@@ -166,8 +316,7 @@ func (a *App) serveContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
-func waitServing(ctx context.Context, url string) error {
-	client := &http.Client{Timeout: 200 * time.Millisecond}
+func waitServing(ctx context.Context, client *http.Client, url string) error {
 	deadline := time.Now().Add(2 * time.Second)
 	var last error
 	for time.Now().Before(deadline) {
@@ -277,22 +426,13 @@ func (a *App) maybeOpen(url string) error {
 	return open(url)
 }
 
-func listen(port int) (net.Listener, error) {
-	addr := bindHostPort(port)
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("listen %s: %w (use --port)", addr, err)
-	}
-	return ln, nil
-}
-
-// LandingURL is the browser target after listen: ambient scope board, else /.
-func (a *App) LandingURL(port int) (string, error) {
+// LandingURL is the browser target for b: ambient scope board, else /.
+func (a *App) LandingURL(b bind) (string, error) {
 	path, err := a.LandingPath()
 	if err != nil {
 		return "", err
 	}
-	return baseURL(port) + path, nil
+	return b.origin() + path, nil
 }
 
 // LandingPath resolves the ambient scope the same way tk does.
@@ -372,6 +512,13 @@ func (a *App) stdout() io.Writer {
 		return a.Stdout
 	}
 	return os.Stdout
+}
+
+func (a *App) stdin() io.Reader {
+	if a.Stdin != nil {
+		return a.Stdin
+	}
+	return os.Stdin
 }
 
 func (a *App) stderr() io.Writer {

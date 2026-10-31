@@ -900,3 +900,29 @@ a.dep-node:hover rect { stroke-width: 2.5; }
     grid-template-rows: minmax(0, 1fr) minmax(0, 40%);
   }
 }
+
+body.signin main { display: flex; justify-content: center; padding-top: 12vh; }
+.signin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  width: min(22rem, 100%);
+  padding: 1.5rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.signin-form h1 { margin: 0; font-size: 1.25rem; }
+.signin-form p { margin: 0; }
+.signin-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.875rem; font-weight: 650; }
+.signin-form input[type="text"],
+.signin-form input[type="password"] {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-weight: 400;
+}
+.signin-form button { align-self: flex-start; }

@@ -26,7 +26,7 @@ func (a *App) Status() error {
 	return unsupportedOS()
 }
 
-func serverLock(stateDir string, port int) (func(), error) {
-	_, _ = stateDir, port
+func serverLock(stateDir string, b bind) (func(), error) {
+	_, _ = stateDir, b
 	return nil, unsupportedOS()
 }

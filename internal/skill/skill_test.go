@@ -191,10 +191,13 @@ func TestSkillListsScopeAutoCommit(t *testing.T) {
 			break
 		}
 	}
-	if manage == "" {
+	switch {
+	case manage == "":
 		t.Error("skill must have a Manage scopes line")
-	} else if !strings.Contains(manage, "auto-commit") {
+	case !strings.Contains(manage, "auto-commit"):
 		t.Errorf("skill Manage scopes must name auto-commit, got %q", manage)
+	case !strings.Contains(manage, "Do not change auto-commit unless a human asks"):
+		t.Errorf("skill Manage scopes must guard auto-commit behind a human ask, got %q", manage)
 	}
 	if !strings.Contains(text, "scope auto-commit") {
 		t.Error("skill self-commit list must name scope auto-commit")
@@ -244,7 +247,9 @@ func TestSkillSyncScopedSnapshot(t *testing.T) {
 func TestSkillChangedContract(t *testing.T) {
 	text := skill.Text()
 	for _, want := range []string{
-		"the time the current status was entered",
+		"changed → tk mark: the time the current status was entered",
+		"Older tickets have none; leave it absent",
+		"A ticket without changed is not listed",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("skill missing changed contract %q", want)
@@ -324,6 +329,27 @@ func TestSkillDoesNotTeachMe(t *testing.T) {
 	}
 }
 
+func TestSkillPointsToCommandHelp(t *testing.T) {
+	text := skill.Text()
+	for _, want := range []string{
+		"Full per-command detail: `tk <command> --help`",
+		"This skill decides what agents run",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("skill missing help pointer %q", want)
+		}
+	}
+}
+
+func TestSkillDoesNotTeachEditorCommands(t *testing.T) {
+	text := skill.Text()
+	for _, bad := range []string{"$EDITOR", "--edit", "tk edit", "tk design edit", "tk note edit"} {
+		if strings.Contains(text, bad) {
+			t.Errorf("skill must not teach human-only editor command %q; agents edit the printed path", bad)
+		}
+	}
+}
+
 func TestSkillDoesNotTeachDoctorReindex(t *testing.T) {
 	text := skill.Text()
 	if strings.Contains(text, "tk doctor --reindex") || strings.Contains(text, "[--reindex]") {
@@ -353,8 +379,10 @@ func TestSkillListsRepair(t *testing.T) {
 func TestSkillDocumentsDesigns(t *testing.T) {
 	text := skill.Text()
 	for _, n := range []string{
-		"tk design create <title> [--scope S] [--edit]",
-		"tk design edit <id> [--scope S]",
+		"tk design create <title> [--scope S]",
+		"status and `changed` via `tk design mark`",
+		"Older designs have none; leave it absent",
+		"H1 and body: edit in the file at the path `tk design create` or `tk design get` prints",
 		"tk design get <id> [--content] [--scope S]",
 		"tk design mark <status> <id> [--scope S]",
 		"tk design meta add <id> produces <ticket-id> [--scope S]",

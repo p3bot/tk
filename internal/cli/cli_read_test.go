@@ -860,15 +860,6 @@ func listRowIDs(out string) []string {
 	return ids
 }
 
-func containsID(ids []string, want string) bool {
-	for _, id := range ids {
-		if id == want {
-			return true
-		}
-	}
-	return false
-}
-
 func sameStringSet(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

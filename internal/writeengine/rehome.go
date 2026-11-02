@@ -44,7 +44,6 @@ type rehomeSide struct {
 
 type leftoverDest struct {
 	id      string
-	order   string
 	path    string
 	content []byte
 }
@@ -120,11 +119,10 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 		return Result{}, err
 	}
 
-	var destID, destOrder, destPath string
+	var destID, destPath string
 	var destContent []byte
 	if left != nil {
 		destID = left.id
-		destOrder = left.order
 		destPath = left.path
 		destContent = left.content
 	} else {
@@ -140,7 +138,7 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 			}
 		}
 		destID = in.DestScope + "-" + destShort
-		destOrder, err = order.KeyBetween(MaxValidOrder(destRows), "")
+		destOrder, err := order.KeyBetween(MaxValidOrder(destRows), "")
 		if err != nil {
 			return Result{}, fmt.Errorf("compute append order for %s: %w", destID, err)
 		}
@@ -297,7 +295,7 @@ func findLeftoverDest(src *frontmatter.Model, body []byte, oldID, sourceShort, d
 			continue
 		}
 		short := strings.TrimPrefix(full, destScope+"-")
-		if short != sourceShort && !(len(short) > len(sourceShort) && strings.HasPrefix(short, sourceShort)) {
+		if !id.ShortInFamily(short, sourceShort) {
 			continue
 		}
 		raw, err := os.ReadFile(p)
@@ -319,7 +317,7 @@ func findLeftoverDest(src *frontmatter.Model, body []byte, oldID, sourceShort, d
 		if err != nil {
 			return nil, err
 		}
-		return &leftoverDest{id: destM.ID, order: destM.Order, path: p, content: content}, nil
+		return &leftoverDest{id: destM.ID, path: p, content: content}, nil
 	}
 	return nil, nil
 }

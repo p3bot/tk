@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,16 +12,16 @@ import (
 	"github.com/p3bot/tk/internal/token"
 )
 
-func runIn(t *testing.T, app *App, stdin string, args ...string) (string, string, error) {
+func runIn(t *testing.T, app *App, stdin string, args ...string) (string, error) {
 	t.Helper()
 	root := newRootCmd(app)
-	var out, errb bytes.Buffer
+	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetErr(&errb)
+	root.SetErr(io.Discard)
 	root.SetIn(strings.NewReader(stdin))
 	root.SetArgs(args)
 	err := root.Execute()
-	return out.String(), errb.String(), err
+	return out.String(), err
 }
 
 func writeScopeFields(t *testing.T, dir, name string, fieldsBlock string) {
@@ -224,7 +225,7 @@ func TestMetaSetSummaryArgvAndStdin(t *testing.T) {
 		t.Errorf("summary = %q", got)
 	}
 
-	out, _, err = runIn(t, app, "from stdin\n", "meta", "set", "wc-ab2c", "summary", "-")
+	out, err = runIn(t, app, "from stdin\n", "meta", "set", "wc-ab2c", "summary", "-")
 	if err != nil {
 		t.Fatalf("set summary stdin: %v", err)
 	}
@@ -232,7 +233,7 @@ func TestMetaSetSummaryArgvAndStdin(t *testing.T) {
 		t.Errorf("stdin summary = %q", got)
 	}
 
-	out, _, err = runIn(t, app, "crlf value\r\n", "meta", "set", "wc-ab2c", "summary", "-")
+	out, err = runIn(t, app, "crlf value\r\n", "meta", "set", "wc-ab2c", "summary", "-")
 	if err != nil {
 		t.Fatalf("set summary stdin CRLF: %v", err)
 	}
@@ -254,7 +255,7 @@ func TestMetaSetSummaryArgvAndStdin(t *testing.T) {
 	if ExitCodeFromError(err) != exitUsage {
 		t.Errorf("embedded newline should exit 2, got %v", err)
 	}
-	_, _, err = runIn(t, app, "line1\nline2\n", "meta", "set", "wc-ab2c", "summary", "-")
+	_, err = runIn(t, app, "line1\nline2\n", "meta", "set", "wc-ab2c", "summary", "-")
 	if ExitCodeFromError(err) != exitUsage {
 		t.Errorf("stdin embedded newlines should exit 2, got %v", err)
 	}
@@ -552,14 +553,14 @@ func TestMetaRelatedAndTags(t *testing.T) {
 		t.Errorf("set tag (multi) should exit 2, got %v", err)
 	}
 
-	if _, _, err := runIn(t, app, "https://example.com/doc\n", "meta", "add", "wc-ab2c", "links", "-"); err != nil {
+	if _, err := runIn(t, app, "https://example.com/doc\n", "meta", "add", "wc-ab2c", "links", "-"); err != nil {
 		t.Fatalf("add links stdin: %v", err)
 	}
 	out, _, err = run(t, app, "meta", "get", "wc-ab2c", "links")
 	if err != nil || out != "https://example.com/doc\n" {
 		t.Errorf("links get = %q err=%v", out, err)
 	}
-	if _, _, err := runIn(t, app, "https://example.com/doc", "meta", "rm", "wc-ab2c", "links", "-"); err != nil {
+	if _, err := runIn(t, app, "https://example.com/doc", "meta", "rm", "wc-ab2c", "links", "-"); err != nil {
 		t.Fatalf("rm links stdin: %v", err)
 	}
 	out, _, _ = run(t, app, "meta", "get", "wc-ab2c", "links")

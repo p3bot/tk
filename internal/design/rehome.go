@@ -205,7 +205,7 @@ func findDesignLeftover(files []File, sourceShort, slug, created string) (File, 
 			continue
 		}
 		short := strings.TrimPrefix(f.ID, id.ScopeOfFullID(f.ID)+"-")
-		if !shortIsSourceOrExtension(short, sourceShort) {
+		if !id.ShortInFamily(short, sourceShort) {
 			continue
 		}
 		if !found || len(short) < len(bestShort) || (len(short) == len(bestShort) && f.Path < best.Path) {
@@ -215,13 +215,6 @@ func findDesignLeftover(files []File, sourceShort, slug, created string) (File, 
 		}
 	}
 	return best, found
-}
-
-func shortIsSourceOrExtension(short, source string) bool {
-	if short == source {
-		return true
-	}
-	return len(short) > len(source) && strings.HasPrefix(short, source)
 }
 
 func designSlug(base string) string {

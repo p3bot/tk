@@ -159,7 +159,7 @@ func TestSyncDeleteEditPausesThenResumes(t *testing.T) {
 	if !strings.Contains(errOut, "delete/edit") || !strings.Contains(errOut, "review") {
 		t.Errorf("delete/edit should report the surviving status, got %q", errOut)
 	}
-	assertDeleteEditHandoff(t, errOut, "wc/wc-ab2c-alpha.md", "review", "the fetched upstream")
+	assertDeleteEditHandoff(t, errOut, "the fetched upstream")
 
 	pB, _ := findTicket(t, b.scopeDir(), "wc-ab2c-alpha.md")
 	if pB != "" {
@@ -192,14 +192,14 @@ func TestSyncDeleteEditUnactionedRerunPauses(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
 	}
-	assertDeleteEditHandoff(t, firstOut, "wc/wc-ab2c-alpha.md", "review", "the fetched upstream")
+	assertDeleteEditHandoff(t, firstOut, "the fetched upstream")
 
 	// Nothing touched — the next tk sync must re-pause, not silently resurrect the file.
 	_, secondOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("unactioned re-run must stay paused, got %v (stderr %q)", err, secondOut)
 	}
-	assertDeleteEditHandoff(t, secondOut, "wc/wc-ab2c-alpha.md", "review", "the fetched upstream")
+	assertDeleteEditHandoff(t, secondOut, "the fetched upstream")
 	assertSameDeleteEditLine(t, firstOut, secondOut)
 	if remoteHas(t, remote, "wc/wc-ab2c-alpha.md") {
 		t.Errorf("unactioned re-run must not push the resurrected survivor; remote still carries the deletion")
@@ -285,13 +285,13 @@ func TestSyncDeleteEditMirroredUnactionedRerunPauses(t *testing.T) {
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("mirrored delete/edit must pause non-zero, got %v (stderr %q)", err, firstOut)
 	}
-	assertDeleteEditHandoff(t, firstOut, "wc/wc-ab2c-alpha.md", "review", "this checkout")
+	assertDeleteEditHandoff(t, firstOut, "this checkout")
 
 	_, secondOut, err := b.sync(t, "--scope", "wc")
 	if ExitCodeFromError(err) != exitFailure {
 		t.Fatalf("unactioned mirrored re-run must stay paused, got %v (stderr %q)", err, secondOut)
 	}
-	assertDeleteEditHandoff(t, secondOut, "wc/wc-ab2c-alpha.md", "review", "this checkout")
+	assertDeleteEditHandoff(t, secondOut, "this checkout")
 	assertSameDeleteEditLine(t, firstOut, secondOut)
 	// Remote still has A's edit (the survivor was never pushed from B's resurrection path).
 	if !remoteHas(t, remote, "wc/wc-ab2c-alpha.md") {
@@ -361,8 +361,12 @@ func assertDeletingSide(t *testing.T, errOut, side string) {
 	}
 }
 
-func assertDeleteEditHandoff(t *testing.T, errOut, path, survivingStatus, deletedOn string) {
+func assertDeleteEditHandoff(t *testing.T, errOut, deletedOn string) {
 	t.Helper()
+	const (
+		path            = "wc/wc-ab2c-alpha.md"
+		survivingStatus = "review"
+	)
 	if !strings.Contains(errOut, "delete/edit") {
 		t.Errorf("expected delete/edit handoff, got %q", errOut)
 	}

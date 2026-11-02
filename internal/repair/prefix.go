@@ -347,7 +347,7 @@ func resumeCandidates(scope string, a *adoptee) ([]resumeHit, error) {
 			continue
 		}
 		short := strings.TrimPrefix(full, scope+"-")
-		if !shortInFamily(short, a.short) || Basename(a.base, full) != e.Name() {
+		if !id.ShortInFamily(short, a.short) || Basename(a.base, full) != e.Name() {
 			continue
 		}
 		path := filepath.Join(root, e.Name())
@@ -373,13 +373,6 @@ func resumeCandidates(scope string, a *adoptee) ([]resumeHit, error) {
 		return hits[i].path < hits[j].path
 	})
 	return hits, nil
-}
-
-func shortInFamily(short, base string) bool {
-	if !id.IsShortID(short) || !id.IsShortID(base) {
-		return false
-	}
-	return short == base || (len(short) > len(base) && strings.HasPrefix(short, base))
 }
 
 func sameBody(a *adoptee, raw []byte) bool {

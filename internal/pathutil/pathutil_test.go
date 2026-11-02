@@ -75,22 +75,22 @@ func TestOverlap(t *testing.T) {
 }
 
 func TestUnderOrEqualCollapsesSymlinkSpellings(t *testing.T) {
-	real := t.TempDir()
+	target := t.TempDir()
 	linkParent := t.TempDir()
 	link := filepath.Join(linkParent, "repo")
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
-	// child via link, ancestor via real (or the reverse): same tree.
+	// child via link, ancestor via target (or the reverse): same tree.
 	child := filepath.Join(link, "scope")
-	if !UnderOrEqual(child, real) {
-		t.Errorf("UnderOrEqual(%q, %q) = false, want true after canonicalisation", child, real)
+	if !UnderOrEqual(child, target) {
+		t.Errorf("UnderOrEqual(%q, %q) = false, want true after canonicalisation", child, target)
 	}
-	if !UnderOrEqual(filepath.Join(real, "scope"), link) {
-		t.Errorf("UnderOrEqual via real child and link ancestor should hold")
+	if !UnderOrEqual(filepath.Join(target, "scope"), link) {
+		t.Errorf("UnderOrEqual via target child and link ancestor should hold")
 	}
-	if !Overlap(link, real) {
-		t.Errorf("Overlap(%q, %q) = false, want true", link, real)
+	if !Overlap(link, target) {
+		t.Errorf("Overlap(%q, %q) = false, want true", link, target)
 	}
 	// Distinct trees still reject.
 	other := t.TempDir()

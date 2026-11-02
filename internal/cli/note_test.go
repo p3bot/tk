@@ -294,7 +294,7 @@ func TestNoteSetReplaceAndStdin(t *testing.T) {
 		t.Errorf("set replace = %q", got)
 	}
 
-	out, _, err = runIn(t, app, "from stdin", "note", "set", "-", "--scope", "wc")
+	out, err = runIn(t, app, "from stdin", "note", "set", "-", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("set stdin: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestNoteSetReplaceAndStdin(t *testing.T) {
 		t.Errorf("set stdin = %q", got)
 	}
 
-	out, _, err = runIn(t, app, "", "note", "set", "-", "--scope", "wc")
+	out, err = runIn(t, app, "", "note", "set", "-", "--scope", "wc")
 	assertUsageEmpty(t, out, err)
 }
 

@@ -640,7 +640,7 @@ func TestScopeAutoCommitCommitFailRestores(t *testing.T) {
 	if err := os.Remove(filepath.Join(hooks, "pre-commit")); err != nil {
 		t.Fatal(err)
 	}
-	out, errOut, err := run(t, app, "scope", "auto-commit", "true", "--scope", "wc")
+	_, errOut, err := run(t, app, "scope", "auto-commit", "true", "--scope", "wc")
 	if err != nil {
 		t.Fatalf("retry after restore: %v (%s)", err, errOut)
 	}

@@ -128,7 +128,7 @@ func DuplicateID(scope string, rows []Row, occupied map[string]string) ([]rewrit
 func resumeExtension(loser member, scope string, occupied map[string]string, content func(newID string) ([]byte, error)) (rewrite.Op, Rename, bool, error) {
 	var candidates []string
 	for short := range occupied {
-		if len(short) > len(loser.shortID) && strings.HasPrefix(short, loser.shortID) {
+		if short != loser.shortID && id.ShortInFamily(short, loser.shortID) {
 			candidates = append(candidates, short)
 		}
 	}

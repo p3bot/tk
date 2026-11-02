@@ -135,7 +135,7 @@ func TestOrderMetaRehomeLeaveChanged(t *testing.T) {
 		t.Fatalf("refused meta set wrote the file:\n%s", after)
 	}
 
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "changed: 2026-02-02T03:04:05Z\n", "# Moved\n")
 	writeRehomeTicket(t, d.srcDir, "foo-cd3e", "todo", "a1", "", "# Bare\n")
 	keptRes, err := rehomeFoo(d, "foo-ab2c")
@@ -168,7 +168,7 @@ func assertChangedStamp(t *testing.T, path, created, changed string) {
 	statusAt := strings.Index(text, "\nstatus:")
 	changedAt := strings.Index(text, "\nchanged:")
 	orderAt := strings.Index(text, "\norder:")
-	if statusAt < 0 || changedAt < 0 || orderAt < 0 || !(statusAt < changedAt && changedAt < orderAt) {
+	if statusAt < 0 || changedAt < 0 || orderAt < 0 || statusAt >= changedAt || changedAt >= orderAt {
 		t.Fatalf("changed must follow status:\n%s", text)
 	}
 }

@@ -216,6 +216,32 @@ func TestExtendDeterministic(t *testing.T) {
 	}
 }
 
+func TestShortInFamily(t *testing.T) {
+	extended, err := Extend("ab2c", occupiedSet())
+	if err != nil {
+		t.Fatalf("Extend: %v", err)
+	}
+	tests := []struct {
+		name, short, base string
+		want              bool
+	}{
+		{"same", "ab2c", "ab2c", true},
+		{"extended by Extend", extended, "ab2c", true},
+		{"shorter than base", "ab2c", "ab2cd", false},
+		{"unrelated", "xy99", "ab2c", false},
+		{"illegal short", "ab2cI", "ab2c", false},
+		{"illegal base", "ab2", "ab2", false},
+		{"empty base", "ab2c", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ShortInFamily(tt.short, tt.base); got != tt.want {
+				t.Errorf("ShortInFamily(%q, %q) = %v, want %v", tt.short, tt.base, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExtendGrowsLengthWhenBlocked(t *testing.T) {
 	occ := occupiedSet()
 	for i := 0; i < len(ShortIDAlphabet); i++ {

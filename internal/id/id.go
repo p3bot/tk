@@ -185,6 +185,12 @@ func Extend(prefix string, occupied map[string]struct{}) (string, error) {
 	return "", fmt.Errorf("extend short-id: no free id for prefix %q within length %d", prefix, ShortIDMax)
 }
 
+// ShortInFamily reports whether short is base or a form of base that Extend could
+// produce. Both must be legal short-ids.
+func ShortInFamily(short, base string) bool {
+	return IsShortID(short) && IsShortID(base) && strings.HasPrefix(short, base)
+}
+
 func incOdometer(digits []int) bool {
 	base := len(ShortIDAlphabet)
 	for i := len(digits) - 1; i >= 0; i-- {

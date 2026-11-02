@@ -25,29 +25,28 @@ type dualEnv struct {
 	destDir string
 }
 
-func newDualPlain(t *testing.T, srcName, destName, srcCue, destCue string) *dualEnv {
+func newDualPlain(t *testing.T) *dualEnv {
+	t.Helper()
+	return newDualWithSourceCue(t, "name: \"foo\"\nautoCommit: false\n")
+}
+
+func newDualWithSourceCue(t *testing.T, srcCue string) *dualEnv {
 	t.Helper()
 	base := t.TempDir()
-	srcDir := filepath.Join(base, srcName)
-	destDir := filepath.Join(base, destName)
+	srcDir := filepath.Join(base, "foo")
+	destDir := filepath.Join(base, "bar")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if srcCue == "" {
-		srcCue = "name: \"" + srcName + "\"\nautoCommit: false\n"
-	}
-	if destCue == "" {
-		destCue = "name: \"" + destName + "\"\nautoCommit: false\n"
-	}
 	writeFile(t, filepath.Join(srcDir, "tk.cue"), srcCue)
-	writeFile(t, filepath.Join(destDir, "tk.cue"), destCue)
-	return openDual(t, srcName, srcDir, destName, destDir)
+	writeFile(t, filepath.Join(destDir, "tk.cue"), "name: \"bar\"\nautoCommit: false\n")
+	return openDual(t, srcDir, destDir)
 }
 
-func openDual(t *testing.T, srcName, srcDir, destName, destDir string) *dualEnv {
+func openDual(t *testing.T, srcDir, destDir string) *dualEnv {
 	t.Helper()
 	cue := cuecontext.New()
 	db, err := index.Open(t.TempDir())
@@ -63,8 +62,8 @@ func openDual(t *testing.T, srcName, srcDir, destName, destDir string) *dualEnv 
 			ConfigDir: t.TempDir(),
 			Reg: &registry.Registry{
 				Scopes: map[string]registry.Entry{
-					srcName:  {Dir: srcDir, Root: srcDir},
-					destName: {Dir: destDir, Root: destDir},
+					"foo": {Dir: srcDir, Root: srcDir},
+					"bar": {Dir: destDir, Root: destDir},
 				},
 				Lens: map[string][]string{},
 				Note: map[string]string{},
@@ -98,7 +97,7 @@ func rehomeFoo(d *dualEnv, id string) (Result, error) {
 }
 
 func TestRehomeKeepsShortIDAndRewritesNeighbourhood(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeRehomeTicket(t, d.srcDir, "foo-kv6x", "todo", "a0", "", "# Dep target\n")
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a1", "depends: [foo-kv6x]\ncustom_jira: X-1\n", "# Moved\n")
 	writeRehomeTicket(t, d.srcDir, "foo-de34", "todo", "a2", "depends: [foo-ab2c]\n", "# Referrer\n")
@@ -156,7 +155,7 @@ func TestRehomeKeepsShortIDAndRewritesNeighbourhood(t *testing.T) {
 }
 
 func TestRehomeRefusesForeignFrontmatterID(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
 	raw, err := os.ReadFile(src)
 	if err != nil {
@@ -180,7 +179,7 @@ func TestRehomeRefusesForeignFrontmatterID(t *testing.T) {
 }
 
 func TestRehomeSameScopeAndUnknownDest(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
 
 	_, err := Rehome(d.deps, RehomeInput{
@@ -205,9 +204,7 @@ func TestRehomeSameScopeAndUnknownDest(t *testing.T) {
 }
 
 func TestRehomeUnknownDestStatus(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar",
-		"name: \"foo\"\nautoCommit: false\nstatuses: { shipped: {category: \"done\"} }\n",
-		"")
+	d := newDualWithSourceCue(t, "name: \"foo\"\nautoCommit: false\nstatuses: { shipped: {category: \"done\"} }\n")
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "shipped", "a0", "", "")
 	_, err := rehomeFoo(d, "foo-ab2c")
 	var unk *UnknownStatusError
@@ -223,7 +220,7 @@ func TestRehomeUnknownDestStatus(t *testing.T) {
 }
 
 func TestRehomeUnparseableInboundRefuses(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
 	writeFile(t, filepath.Join(d.srcDir, "foo-de34-broke.md"), "---\nid: foo-de34\nstatus: [x\ndepends: [foo-ab2c]\n---\n# broke\n")
 
@@ -246,7 +243,7 @@ func TestRehomeUnparseableInboundRefuses(t *testing.T) {
 }
 
 func TestRehomeUnparseableDestInboundRefuses(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
 	writeFile(t, filepath.Join(d.destDir, "bar-de34-broke.md"), "---\nid: bar-de34\nstatus: [x\ndepends: [foo-ab2c]\n---\n# broke\n")
 
@@ -263,7 +260,7 @@ func TestRehomeUnparseableDestInboundRefuses(t *testing.T) {
 }
 
 func TestRehomeUnparseableUnrelatedSiblingAllowed(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
 	writeFile(t, filepath.Join(d.srcDir, "foo-de34-broke.md"), "---\nid: foo-de34\nstatus: [x\n---\n# broke\n")
 
@@ -277,7 +274,7 @@ func TestRehomeUnparseableUnrelatedSiblingAllowed(t *testing.T) {
 }
 
 func TestRehomeDestFilenameIDMismatchExtends(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "# Moved\n")
 	writeFile(t, filepath.Join(d.destDir, "bar-ab2c-work.md"),
 		"---\nid: bar-xyzw\nstatus: todo\norder: \"a0\"\ncreated: 2026-02-01T00:00:00Z\n---\n# Occupant\n")
@@ -305,7 +302,7 @@ func TestRehomeDestFilenameIDMismatchExtends(t *testing.T) {
 }
 
 func TestRehomeSkipsUntrackedDesignShort(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "# Moved\n")
 	writeFile(t, filepath.Join(d.destDir, "design", "bar-ab2c-shape.md"),
 		"---\nid: bar-ab2c\nstatus: draft\ncreated: 2026-02-01T00:00:00Z\n---\n# Shape\n")
@@ -323,7 +320,7 @@ func TestRehomeSkipsUntrackedDesignShort(t *testing.T) {
 }
 
 func TestRehomeExtendsCollidingShort(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
 	writeFile(t, filepath.Join(d.destDir, "bar-ab2c-work.md"),
 		"---\nid: bar-ab2c\nstatus: todo\norder: \"a0\"\ncreated: 2026-02-01T00:00:00Z\n---\n# Occupant\n")
@@ -344,7 +341,7 @@ func TestRehomeExtendsCollidingShort(t *testing.T) {
 }
 
 func TestRehomeLeftoverReusesDestIDAndOrder(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeRehomeTicket(t, d.srcDir, "foo-kv6x", "todo", "a0", "", "")
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a1", "depends: [foo-kv6x]\n", "# Moved\n")
 	writeRehomeTicket(t, d.destDir, "bar-mm22", "todo", "a0", "", "# Anchor\n")
@@ -411,7 +408,7 @@ func TestRehomeLeftoverReusesDestIDAndOrder(t *testing.T) {
 }
 
 func TestRehomeLeftoverAfterSourceEditReusesDest(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "# Moved\n")
 	backup, err := os.ReadFile(src)
 	if err != nil {
@@ -464,7 +461,7 @@ func namesOf(entries []os.DirEntry) []string {
 }
 
 func TestRehomeLeftoverExtendedNoSecondExtend(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	src := writeRehomeTicket(t, d.srcDir, "foo-ab2c", "todo", "a0", "", "")
 	writeFile(t, filepath.Join(d.destDir, "bar-ab2c-work.md"),
 		"---\nid: bar-ab2c\nstatus: todo\norder: \"a0\"\ncreated: 2026-02-01T00:00:00Z\n---\n# Occupant\n")
@@ -493,7 +490,7 @@ func TestRehomeLeftoverExtendedNoSecondExtend(t *testing.T) {
 }
 
 func TestRehomeTerminalGoesToDestArchive(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeRehomeTicket(t, d.srcDir, "foo-ab2c", "done", "a0", "", "")
 	res, err := rehomeFoo(d, "foo-ab2c")
 	if err != nil {
@@ -505,7 +502,7 @@ func TestRehomeTerminalGoesToDestArchive(t *testing.T) {
 }
 
 func TestRehomeParseErrorSourceRefuses(t *testing.T) {
-	d := newDualPlain(t, "foo", "bar", "", "")
+	d := newDualPlain(t)
 	writeFile(t, filepath.Join(d.srcDir, "foo-ab2c-broke.md"), "---\nid: foo-ab2c\nstatus: [x\n---\n# broke\n")
 	_, err := rehomeFoo(d, "foo-ab2c")
 	var q *ParseQuarantineError
@@ -578,7 +575,7 @@ func TestRehomeSyncDisabledNoGitRoot(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(srcDir, "tk.cue"), "name: \"foo\"\nautoCommit: true\n")
 	writeFile(t, filepath.Join(destDir, "tk.cue"), "name: \"bar\"\nautoCommit: true\n")
-	d := openDual(t, "foo", srcDir, "bar", destDir)
+	d := openDual(t, srcDir, destDir)
 	writeRehomeTicket(t, srcDir, "foo-ab2c", "todo", "a0", "", "")
 
 	res, err := rehomeFoo(d, "foo-ab2c")
@@ -601,7 +598,7 @@ func TestRehomeTwoRootsSyncNeeded(t *testing.T) {
 	requireGit(t)
 	src, srcRepo := initAutoCommitRepo(t, "foo")
 	dest, destRepo := initAutoCommitRepo(t, "bar")
-	d := openDual(t, "foo", src.dir, "bar", dest.dir)
+	d := openDual(t, src.dir, dest.dir)
 	writeRehomeTicket(t, src.dir, "foo-ab2c", "todo", "a0", "", "")
 	seedAndPush(t, srcRepo)
 	seedAndPush(t, destRepo)
@@ -648,7 +645,7 @@ func TestRehomeSharedRootAutoCommitMismatchRefuses(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(srcDir, "tk.cue"), "name: \"foo\"\nautoCommit: false\n")
 	writeFile(t, filepath.Join(destDir, "tk.cue"), "name: \"bar\"\nautoCommit: true\n")
-	d := openDual(t, "foo", srcDir, "bar", destDir)
+	d := openDual(t, srcDir, destDir)
 	src := writeRehomeTicket(t, srcDir, "foo-ab2c", "todo", "a0", "", "")
 
 	_, err := Rehome(d.deps, RehomeInput{
@@ -686,7 +683,7 @@ func TestRehomeSharedRootOneCommit(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(srcDir, "tk.cue"), "name: \"foo\"\nautoCommit: true\n")
 	writeFile(t, filepath.Join(destDir, "tk.cue"), "name: \"bar\"\nautoCommit: true\n")
-	d := openDual(t, "foo", srcDir, "bar", destDir)
+	d := openDual(t, srcDir, destDir)
 	writeRehomeTicket(t, srcDir, "foo-ab2c", "todo", "a0", "", "")
 	seedAndPush(t, repo)
 

@@ -77,7 +77,7 @@ func TestDesignRehomeWarnsEachHeldScope(t *testing.T) {
 
 	app = newApp(t)
 	foo = initScope(t, app, "foo")
-	bar = initScope(t, app, "bar")
+	initScope(t, app, "bar")
 	if err := os.WriteFile(filepath.Join(foo, "tk.cue"), []byte("name: \"foo\"\nautoCommit: false\nhold: true\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

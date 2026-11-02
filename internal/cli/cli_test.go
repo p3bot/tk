@@ -212,7 +212,7 @@ func TestRootHelpGroups(t *testing.T) {
 			if workIdx < 0 || boardIdx < 0 || adminIdx < 0 {
 				t.Fatalf("missing group title(s) in help:\n%s", out)
 			}
-			if !(workIdx < boardIdx && boardIdx < adminIdx) {
+			if workIdx >= boardIdx || boardIdx >= adminIdx {
 				t.Fatalf("group titles out of order: work=%d board=%d admin=%d\n%s",
 					workIdx, boardIdx, adminIdx, out)
 			}

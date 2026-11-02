@@ -234,7 +234,9 @@ func startNetworkRun(t *testing.T, app *App, listenHost string) *runningNet {
 	}
 	t.Cleanup(func() {
 		cancel()
-		<-r.done
+		if err := <-r.done; err != nil {
+			t.Errorf("Run after cancel: %v", err)
+		}
 	})
 	return r
 }

@@ -323,12 +323,12 @@ func TestRepairLeavesLiveForeignID(t *testing.T) {
 	if strings.Contains(string(ref), "at-") {
 		t.Fatalf("filename ids must follow the stray files: %s", ref)
 	}
-	real, err := os.ReadFile(filepath.Join(api, "api-mm22-real.md"))
+	live, err := os.ReadFile(filepath.Join(api, "api-mm22-real.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(real), "id: api-mm22") {
-		t.Fatalf("live ticket = %s", real)
+	if !strings.Contains(string(live), "id: api-mm22") {
+		t.Fatalf("live ticket = %s", live)
 	}
 	note, err := os.ReadFile(filepath.Join(api, "design", "api-xy99-note.md"))
 	if err != nil {

@@ -168,9 +168,10 @@ func runLockHelper() {
 		w.WriteHeader(http.StatusOK)
 	})
 	go func() { _ = http.Serve(ln, mux) }()
-	fmt.Println("ready")
+	// Before "ready": the parent may signal as soon as it reads that line.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM)
+	fmt.Println("ready")
 	<-sig
 	_ = ln.Close()
 	_ = lk.Release()
@@ -352,7 +353,10 @@ func TestStartAttachesAndStopReleases(t *testing.T) {
 	waitErr := make(chan error, 1)
 	go func() { waitErr <- cmd.Wait() }()
 	select {
-	case <-waitErr:
+	case err := <-waitErr:
+		if err != nil {
+			t.Fatalf("helper exit after SIGTERM: %v", err)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("helper still running after stop")
 	}
@@ -407,7 +411,10 @@ func TestStopReturnsWhileSuccessorHoldsLock(t *testing.T) {
 	waitErr := make(chan error, 1)
 	go func() { waitErr <- first.Wait() }()
 	select {
-	case <-waitErr:
+	case err := <-waitErr:
+		if err != nil {
+			t.Fatalf("helper exit after SIGTERM: %v", err)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("signalled holder still running")
 	}

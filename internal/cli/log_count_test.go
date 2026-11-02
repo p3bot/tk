@@ -12,8 +12,8 @@ func TestLogCount(t *testing.T) {
 	app := newApp(t)
 	wc := initScope(t, app, "wc")
 	ot := initScope(t, app, "ot")
-	today := localStamp(localDay(0), 12, 0, 0)
-	yesterday := localStamp(localDay(-1), 12, 0, 0)
+	today := localStamp(localDay(0), 12)
+	yesterday := localStamp(localDay(-1), 12)
 	badPath := filepath.Join(wc, "archive", "wc-jk9m-bad.md")
 
 	addTicket(t, wc, "wc-ab2c", "done-today", "done", "a0", "# Done today\n", true, "changed: "+today+"\n")

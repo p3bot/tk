@@ -30,14 +30,14 @@ func TestKeyStableAndHex(t *testing.T) {
 }
 
 func TestKeyResolvesSymlinkSpellings(t *testing.T) {
-	real := t.TempDir()
+	target := t.TempDir()
 	linkParent := t.TempDir()
 	link := filepath.Join(linkParent, "repo-link")
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
-	if Key(link) != Key(real) {
-		t.Errorf("Key must collapse symlink spellings: link=%q real=%q", Key(link), Key(real))
+	if Key(link) != Key(target) {
+		t.Errorf("Key must collapse symlink spellings: link=%q target=%q", Key(link), Key(target))
 	}
 }
 

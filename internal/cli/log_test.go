@@ -16,9 +16,9 @@ func localDay(offset int) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, now.Location()).AddDate(0, 0, offset)
 }
 
-func localStamp(day time.Time, hour, min, sec int) string {
+func localStamp(day time.Time, hour int) string {
 	y, m, d := day.Date()
-	return time.Date(y, m, d, hour, min, sec, 0, day.Location()).Format(time.RFC3339)
+	return time.Date(y, m, d, hour, 0, 0, 0, day.Location()).Format(time.RFC3339)
 }
 
 func logIDs(out string) []string {
@@ -38,8 +38,8 @@ func TestLogDefaultIsDoneTodayAcrossScopes(t *testing.T) {
 	app := newApp(t)
 	wc := initScope(t, app, "wc")
 	ot := initScope(t, app, "ot")
-	today := localStamp(localDay(0), 12, 0, 0)
-	yesterday := localStamp(localDay(-1), 12, 0, 0)
+	today := localStamp(localDay(0), 12)
+	yesterday := localStamp(localDay(-1), 12)
 
 	addTicket(t, wc, "wc-ab2c", "done-today", "done", "a0", "# Done today\n", true, "changed: "+today+"\n")
 	addTicket(t, wc, "wc-de34", "done-yday", "done", "a1", "# Done yesterday\n", true, "changed: "+yesterday+"\n")
@@ -95,11 +95,11 @@ func TestLogDateStatusScopeAndOrder(t *testing.T) {
 	wc := initScope(t, app, "wc")
 	ot := initScope(t, app, "ot")
 	day := time.Date(2026, 9, 1, 0, 0, 0, 0, time.Local)
-	onDay := localStamp(day, 12, 0, 0)
-	later := localStamp(day, 18, 0, 0)
-	same := localStamp(day, 18, 0, 0)
-	next := localStamp(day.AddDate(0, 0, 1), 12, 0, 0)
-	before := localStamp(day, 0, 0, 0)
+	onDay := localStamp(day, 12)
+	later := localStamp(day, 18)
+	same := localStamp(day, 18)
+	next := localStamp(day.AddDate(0, 0, 1), 12)
+	before := localStamp(day, 0)
 	justBefore := day.Add(-time.Minute).Format(time.RFC3339)
 
 	addTicket(t, wc, "wc-zz99", "late", "cancelled", "a0", "# Late\n", true, "changed: "+later+"\n")
@@ -134,8 +134,8 @@ func TestLogDateStatusScopeAndOrder(t *testing.T) {
 func TestLogAllAndPositionalReplacesAll(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
-	today := localStamp(localDay(0), 12, 0, 0)
-	yesterday := localStamp(localDay(-1), 12, 0, 0)
+	today := localStamp(localDay(0), 12)
+	yesterday := localStamp(localDay(-1), 12)
 	addTicket(t, dir, "wc-ab2c", "todo", "todo", "a0", "# Todo today\n", false, "changed: "+today+"\n")
 	addTicket(t, dir, "wc-de34", "old", "done", "a1", "# Done yesterday\n", true, "changed: "+yesterday+"\n")
 	addTicket(t, dir, "wc-jk9m", "new", "done", "a2", "# Done today\n", true, "changed: "+today+"\n")
@@ -171,7 +171,7 @@ func TestLogAllAndPositionalReplacesAll(t *testing.T) {
 func TestLogMissingAndBadChanged(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
-	today := localStamp(localDay(0), 12, 0, 0)
+	today := localStamp(localDay(0), 12)
 	addTicket(t, dir, "wc-ab2c", "good", "done", "a0", "# Good\n", true, "changed: "+today+"\n")
 	addTicket(t, dir, "wc-de34", "missing", "done", "a1", "# Missing\n", true, "")
 	badPath := filepath.Join(dir, "archive", "wc-jk9m-bad.md")
@@ -205,8 +205,8 @@ func TestLogMissingAndBadChanged(t *testing.T) {
 func TestLogUsageExits(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
-	day := localStamp(time.Date(2026, 10, 1, 0, 0, 0, 0, time.Local), 12, 0, 0)
-	other := localStamp(time.Date(2026, 10, 2, 0, 0, 0, 0, time.Local), 12, 0, 0)
+	day := localStamp(time.Date(2026, 10, 1, 0, 0, 0, 0, time.Local), 12)
+	other := localStamp(time.Date(2026, 10, 2, 0, 0, 0, 0, time.Local), 12)
 	addTicket(t, dir, "wc-ab2c", "one", "done", "a0", "# One\n", true, "changed: "+day+"\n")
 	addTicket(t, dir, "wc-de34", "two", "done", "a1", "# Two\n", true, "changed: "+other+"\n")
 
@@ -255,14 +255,14 @@ func TestLogSinceUntilAndFutureSince(t *testing.T) {
 	yday := localDay(-1)
 	today := localDay(0)
 
-	addTicket(t, dir, "wc-ab2c", "old", "done", "a0", "# Old\n", true, "changed: "+localStamp(oldDay, 12, 0, 0)+"\n")
-	addTicket(t, dir, "wc-de34", "today", "done", "a1", "# Today\n", true, "changed: "+localStamp(today, 12, 0, 0)+"\n")
-	addTicket(t, dir, "wc-z234", "today-start", "done", "a2", "# Today start\n", true, "changed: "+localStamp(today, 0, 0, 0)+"\n")
+	addTicket(t, dir, "wc-ab2c", "old", "done", "a0", "# Old\n", true, "changed: "+localStamp(oldDay, 12)+"\n")
+	addTicket(t, dir, "wc-de34", "today", "done", "a1", "# Today\n", true, "changed: "+localStamp(today, 12)+"\n")
+	addTicket(t, dir, "wc-z234", "today-start", "done", "a2", "# Today start\n", true, "changed: "+localStamp(today, 0)+"\n")
 	addTicket(t, dir, "wc-xy23", "yday-end", "done", "a3", "# Yesterday end\n", true, "changed: "+today.Add(-time.Minute).Format(time.RFC3339)+"\n")
-	addTicket(t, dir, "wc-jk9m", "yday", "done", "a4", "# Yesterday\n", true, "changed: "+localStamp(yday, 12, 0, 0)+"\n")
-	addTicket(t, dir, "wc-vw89", "yday-start", "done", "a5", "# Yesterday start\n", true, "changed: "+localStamp(yday, 0, 0, 0)+"\n")
+	addTicket(t, dir, "wc-jk9m", "yday", "done", "a4", "# Yesterday\n", true, "changed: "+localStamp(yday, 12)+"\n")
+	addTicket(t, dir, "wc-vw89", "yday-start", "done", "a5", "# Yesterday start\n", true, "changed: "+localStamp(yday, 0)+"\n")
 	addTicket(t, dir, "wc-np23", "before-yday", "done", "a6", "# Before yesterday\n", true, "changed: "+yday.Add(-time.Minute).Format(time.RFC3339)+"\n")
-	addTicket(t, dir, "wc-qr45", "since-start", "done", "a7", "# Since start\n", true, "changed: "+localStamp(sinceDay, 0, 0, 0)+"\n")
+	addTicket(t, dir, "wc-qr45", "since-start", "done", "a7", "# Since start\n", true, "changed: "+localStamp(sinceDay, 0)+"\n")
 	addTicket(t, dir, "wc-st67", "before-since", "done", "a8", "# Before since\n", true, "changed: "+sinceDay.Add(-time.Minute).Format(time.RFC3339)+"\n")
 
 	out, _, err := run(t, app, "log", "--since", sinceDay.Format("2006-01-02"))
@@ -302,7 +302,7 @@ func TestLogSinceUntilAndFutureSince(t *testing.T) {
 func TestLogTagsIgnoreLens(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
-	today := localStamp(localDay(0), 12, 0, 0)
+	today := localStamp(localDay(0), 12)
 	addTicket(t, dir, "wc-ab2c", "api", "done", "a0", "# Api\n", true, "changed: "+today+"\ntags: [api]\n")
 	addTicket(t, dir, "wc-de34", "bare", "done", "a1", "# Bare\n", true, "changed: "+today+"\n")
 	if _, _, err := run(t, app, "lens", "ui", "--scope", "wc"); err != nil {
@@ -346,7 +346,7 @@ func TestLogTagsIgnoreLens(t *testing.T) {
 func TestLogScopeAllIsAName(t *testing.T) {
 	app := newApp(t)
 	wc := initScope(t, app, "wc")
-	today := localStamp(localDay(0), 12, 0, 0)
+	today := localStamp(localDay(0), 12)
 	addTicket(t, wc, "wc-ab2c", "done", "done", "a0", "# Wc\n", true, "changed: "+today+"\n")
 
 	out, _, err := run(t, app, "log", "--scope", "all")
@@ -376,7 +376,7 @@ func TestLogCustomStatusAcrossScopes(t *testing.T) {
 	wc := initScope(t, app, "wc")
 	ot := initScope(t, app, "ot")
 	writeCue(t, wc, "name: \"wc\"\nautoCommit: false\nstatuses: {\n  parked: {category: \"active\"}\n}\n")
-	today := localStamp(localDay(0), 12, 0, 0)
+	today := localStamp(localDay(0), 12)
 	addTicket(t, wc, "wc-ab2c", "parked", "parked", "a0", "# Parked here\n", false, "changed: "+today+"\n")
 	addTicket(t, ot, "ot-ab2c", "parked", "parked", "a0", "# Parked there\n", false, "changed: "+today+"\n")
 
@@ -400,7 +400,7 @@ func TestLogCustomStatusAcrossScopes(t *testing.T) {
 func TestLogHelpAndTSV(t *testing.T) {
 	app := newApp(t)
 	dir := initScope(t, app, "wc")
-	today := localStamp(localDay(0), 12, 0, 0)
+	today := localStamp(localDay(0), 12)
 	addTicket(t, dir, "wc-ab2c", "note", "done", "a0", "# col1\tcol2\n", true, "changed: "+today+"\n")
 
 	out, _, err := run(t, app, "log")

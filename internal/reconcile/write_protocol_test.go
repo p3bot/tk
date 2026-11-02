@@ -9,10 +9,10 @@ import (
 	"github.com/p3bot/tk/internal/index"
 )
 
-func runScopePass(t *testing.T, db *index.DB, now int64, listed map[string]statEntry, existing map[string]index.RowStat, upserts map[string]pending, stat func(string) error) {
+func runScopePass(t *testing.T, db *index.DB, listed map[string]statEntry, existing map[string]index.RowStat, upserts map[string]pending, stat func(string) error) {
 	t.Helper()
 	if err := db.RunScopeWrite(func(w *index.WriteTx) error {
-		return applyScopeWrite(w, "wc", now, listed, existing, upserts, stat)
+		return applyScopeWrite(w, "wc", 300, listed, existing, upserts, stat)
 	}); err != nil {
 		t.Fatalf("applyScopeWrite: %v", err)
 	}
@@ -36,9 +36,9 @@ func permStat(paths map[string]bool) func(string) error {
 	}
 }
 
-func seedTicket(t *testing.T, db *index.DB, p *index.Ticket, edges []index.Edge) {
+func seedTicket(t *testing.T, db *index.DB, p *index.Ticket) {
 	t.Helper()
-	if err := db.UpsertTicketWithEdges(p, edges); err != nil {
+	if err := db.UpsertTicketWithEdges(p, nil); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 }
@@ -55,7 +55,7 @@ func TestApplyScopeWriteClobberGuardSeesWriteThrough(t *testing.T) {
 	_, db := newReconciler(t)
 	fp := "/tmp/wc/wc-ab2c-x.md"
 	newer := ticketAt(fp, "ab2c", "done", 200, false)
-	seedTicket(t, db, newer, nil)
+	seedTicket(t, db, newer)
 
 	stale := ticketAt(fp, "ab2c", "todo", 100, false)
 	listed := map[string]statEntry{fp: {}}
@@ -64,7 +64,7 @@ func TestApplyScopeWriteClobberGuardSeesWriteThrough(t *testing.T) {
 		t.Fatal(err)
 	}
 	upserts := map[string]pending{fp: {ticket: stale}}
-	runScopePass(t, db, 300, listed, existing, upserts, existStat(map[string]bool{fp: true}))
+	runScopePass(t, db, listed, existing, upserts, existStat(map[string]bool{fp: true}))
 
 	rows, _ := db.ScopeTickets("wc")
 	if len(rows) != 1 || rows[0].Status != "done" || rows[0].MtimeNS != 200 {
@@ -76,13 +76,13 @@ func TestApplyScopeWriteUpsertPathGoneDropsLeftover(t *testing.T) {
 	_, db := newReconciler(t)
 	fp := "/tmp/wc/wc-ab2c-x.md"
 	leftover := ticketAt(fp, "ab2c", "todo", 100, false)
-	seedTicket(t, db, leftover, nil)
+	seedTicket(t, db, leftover)
 
 	parsed := ticketAt(fp, "ab2c", "done", 150, false)
 	listed := map[string]statEntry{fp: {}}
 	existing, _ := db.ScopeRows("wc")
 	upserts := map[string]pending{fp: {ticket: parsed}}
-	runScopePass(t, db, 300, listed, existing, upserts, existStat(nil))
+	runScopePass(t, db, listed, existing, upserts, existStat(nil))
 
 	if rows, _ := db.ScopeTickets("wc"); len(rows) != 0 {
 		t.Fatalf("gone path must not re-insert and leftover must drop, got %+v", rows)
@@ -93,8 +93,8 @@ func TestApplyScopeWriteArchiveWriteThroughKeepsNewPath(t *testing.T) {
 	_, db := newReconciler(t)
 	old := "/tmp/wc/wc-ab2c-x.md"
 	arch := "/tmp/wc/archive/wc-ab2c-x.md"
-	seedTicket(t, db, ticketAt(old, "ab2c", "todo", 100, false), nil)
-	seedTicket(t, db, ticketAt(arch, "ab2c", "done", 200, true), nil)
+	seedTicket(t, db, ticketAt(old, "ab2c", "todo", 100, false))
+	seedTicket(t, db, ticketAt(arch, "ab2c", "done", 200, true))
 	if err := db.DeleteByPath(old); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestApplyScopeWriteArchiveWriteThroughKeepsNewPath(t *testing.T) {
 	listed := map[string]statEntry{old: {}}
 	existing, _ := db.ScopeRows("wc")
 	upserts := map[string]pending{old: {ticket: stale}}
-	runScopePass(t, db, 300, listed, existing, upserts, existStat(map[string]bool{arch: true}))
+	runScopePass(t, db, listed, existing, upserts, existStat(map[string]bool{arch: true}))
 
 	rows, _ := db.ScopeTickets("wc")
 	if len(rows) != 1 {
@@ -118,13 +118,13 @@ func TestApplyScopeWriteUpsertStatOtherErrorSkips(t *testing.T) {
 	_, db := newReconciler(t)
 	fp := "/tmp/wc/wc-ab2c-x.md"
 	leftover := ticketAt(fp, "ab2c", "todo", 100, false)
-	seedTicket(t, db, leftover, nil)
+	seedTicket(t, db, leftover)
 
 	parsed := ticketAt(fp, "ab2c", "done", 150, false)
 	listed := map[string]statEntry{fp: {}}
 	existing, _ := db.ScopeRows("wc")
 	upserts := map[string]pending{fp: {ticket: parsed}}
-	runScopePass(t, db, 300, listed, existing, upserts, permStat(map[string]bool{fp: true}))
+	runScopePass(t, db, listed, existing, upserts, permStat(map[string]bool{fp: true}))
 
 	rows, _ := db.ScopeTickets("wc")
 	if len(rows) != 1 || rows[0].Status != "todo" || rows[0].MtimeNS != 100 {
@@ -135,11 +135,11 @@ func TestApplyScopeWriteUpsertStatOtherErrorSkips(t *testing.T) {
 func TestApplyScopeWriteVanishedStatOtherErrorKeepsRow(t *testing.T) {
 	_, db := newReconciler(t)
 	fp := "/tmp/wc/wc-ab2c-x.md"
-	seedTicket(t, db, ticketAt(fp, "ab2c", "todo", 100, false), nil)
+	seedTicket(t, db, ticketAt(fp, "ab2c", "todo", 100, false))
 
 	listed := map[string]statEntry{}
 	existing, _ := db.ScopeRows("wc")
-	runScopePass(t, db, 300, listed, existing, nil, permStat(map[string]bool{fp: true}))
+	runScopePass(t, db, listed, existing, nil, permStat(map[string]bool{fp: true}))
 
 	rows, _ := db.ScopeTickets("wc")
 	if len(rows) != 1 || rows[0].Path != fp || rows[0].Status != "todo" {
@@ -151,12 +151,12 @@ func TestApplyScopeWriteVanishedPathStillOnDiskKeepsRow(t *testing.T) {
 	_, db := newReconciler(t)
 	kept := "/tmp/wc/wc-ab2c-x.md"
 	extra := "/tmp/wc/wc-de34-extra.md"
-	seedTicket(t, db, ticketAt(kept, "ab2c", "todo", 100, false), nil)
-	seedTicket(t, db, ticketAt(extra, "de34", "todo", 100, false), nil)
+	seedTicket(t, db, ticketAt(kept, "ab2c", "todo", 100, false))
+	seedTicket(t, db, ticketAt(extra, "de34", "todo", 100, false))
 
 	listed := map[string]statEntry{kept: {}}
 	existing, _ := db.ScopeRows("wc")
-	runScopePass(t, db, 300, listed, existing, nil, existStat(map[string]bool{kept: true, extra: true}))
+	runScopePass(t, db, listed, existing, nil, existStat(map[string]bool{kept: true, extra: true}))
 
 	rows, _ := db.ScopeTickets("wc")
 	if len(rows) != 2 {

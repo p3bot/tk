@@ -59,10 +59,10 @@ func TestWriteAndReload(t *testing.T) {
 }
 
 func TestLoadCanonicalisesSymlinkSpellings(t *testing.T) {
-	real := t.TempDir()
+	target := t.TempDir()
 	linkParent := t.TempDir()
 	link := filepath.Join(linkParent, "scope-link")
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
 	dir := t.TempDir()
@@ -76,7 +76,7 @@ func TestLoadCanonicalisesSymlinkSpellings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := pathutil.Canonical(real)
+	want := pathutil.Canonical(target)
 	if reg.Scopes["wc"].Dir != want || reg.Scopes["wc"].Root != want {
 		t.Errorf("Load should resolve symlink spellings, got %+v want dir/root %q", reg.Scopes["wc"], want)
 	}

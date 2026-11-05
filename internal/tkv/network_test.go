@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"cuelang.org/go/cue/cuecontext"
+
 	"github.com/p3bot/tk/internal/passhash"
 	"github.com/p3bot/tk/internal/tkvconf"
 )
@@ -40,7 +42,7 @@ func cheapHash(t *testing.T, password string) string {
 
 func setUsers(t *testing.T, app *App, users map[string]string) {
 	t.Helper()
-	if err := tkvconf.Update(app.Ctx, app.ConfigDir, func(c *tkvconf.Config) error {
+	if err := tkvconf.Update(cuecontext.New(), app.ConfigDir, func(c *tkvconf.Config) error {
 		c.Users = users
 		return nil
 	}); err != nil {

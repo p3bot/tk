@@ -622,16 +622,8 @@ func applyDriverOutcome(r Reporter, o rebasedriver.Outcome, rep *syncReport, mod
 
 // newDriver loads schema from on-disk tk.cue at call time, never a pre-fetch snapshot.
 func newDriver(deps Deps, t Target) *rebasedriver.Driver {
-	dirToScope := make(map[string]string, len(t.Participants))
-	for _, p := range t.Participants {
-		dirToScope[p.Dir] = p.Name
-	}
 	load := func(scopeDir string) (*scopeconfig.Schema, error) {
-		name, ok := dirToScope[scopeDir]
-		if !ok {
-			return scopeconfig.Load(deps.Cue, scopeDir)
-		}
-		schema, cfgErr := deps.Rec.SchemaOrError(name, scopeDir)
+		schema, cfgErr := deps.Rec.SchemaOrError(scopeDir)
 		if cfgErr != nil {
 			return nil, cfgErr
 		}

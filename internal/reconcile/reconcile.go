@@ -10,23 +10,20 @@ import (
 	"os"
 	"sort"
 
-	"cuelang.org/go/cue"
-
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/status"
 	"github.com/p3bot/tk/internal/token"
 )
 
-// Reconciler reconciles scopes into an open index using a shared CUE context.
+// Reconciler reconciles scopes into an open index.
 type Reconciler struct {
-	db  *index.DB
-	ctx *cue.Context
+	db *index.DB
 }
 
-// New builds a Reconciler over an open index and the process-wide CUE context.
-func New(db *index.DB, ctx *cue.Context) *Reconciler {
-	return &Reconciler{db: db, ctx: ctx}
+// New builds a Reconciler over an open index.
+func New(db *index.DB) *Reconciler {
+	return &Reconciler{db: db}
 }
 
 // Result carries schemas, config errors, unreachable scopes, and stderr token lines.
@@ -107,7 +104,7 @@ func (r *Reconciler) ReconcileRows(targets map[string]string, registered map[str
 			continue
 		}
 
-		schema, cfgErr := r.schemaFor(name, targets[name])
+		schema, cfgErr := r.SchemaOrError(targets[name])
 		res.Schemas[name] = schema
 		if cfgErr != nil {
 			res.ConfigErrs[name] = cfgErr

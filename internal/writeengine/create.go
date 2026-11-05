@@ -38,7 +38,7 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 		return Result{}, err
 	}
 
-	sess, err := Begin(deps, in.Scope, in.Dir)
+	sess, err := beginStatusWrite(deps, in.Scope, in.Dir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -51,6 +51,9 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 	}
 	if !status.IsKnown(newStatus, custom) {
 		return Result{}, &UnknownStatusError{Status: newStatus, Scope: in.Scope}
+	}
+	if err := sess.refuseStatusHold(newStatus); err != nil {
+		return Result{}, err
 	}
 	if err := sess.CheckMidRebase(); err != nil {
 		return Result{}, err

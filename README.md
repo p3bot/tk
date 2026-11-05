@@ -60,7 +60,7 @@ tk scope forget <name>
 tk scope list          # bare `tk scope` and `tk scopes` also run list
 tk scope rename <old> <new>
 tk scope auto-commit [true|false] [--scope S]  # read or set git-root-wide autoCommit
-tk scope hold [true|false] [--scope S]         # read or set this scope's hold
+tk scope hold [off|soft|hard [reason]] [--scope S]  # read or set this scope's hold
 tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields in tk.cue
 ```
 
@@ -73,14 +73,30 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
 - `rebind` rewrites a registered scope's paths after a move or clone.
 - `forget` unregisters a scope (registry, lens, and note entries only); it never
   touches the scope's files.
-- `list` prints parse-stable TSV, one line per scope: `name\tdir\troot\tmode\thold`,
-  where `mode` is `tk-driven`, `repo-driven`, `plain-files`, or `unknown`, and
-  `hold` is `true`, `false`, or empty when `tk.cue` cannot be evaluated.
+- `list` prints parse-stable TSV, one line per scope:
+  `name\tdir\troot\tmode\thold\treason`, where `mode` is `tk-driven`, `repo-driven`,
+  `plain-files`, or `unknown`, `hold` is `off`, `soft`, `hard`, or empty when `tk.cue`
+  cannot be evaluated, and `reason` is the hold reason, empty when there is none.
 - `rename` renames a scope end-to-end (registry, lens, note default, `tk.cue` name,
   ticket ids).
-- `hold` prints the evaluated `hold` bool, or rewrites it on that one scope.
-  Omitted `hold` is false. A held scope warns on stderr (`scope_hold:`). `tk mark
-  in-progress` and `tk next --claim` exit 1 and do not write. Other commands still run.
+- `hold` prints `off`, `soft`, or `hard`, or rewrites the hold on that one scope. It
+  is stored in `tk.cue` as one field, such as `hold: {type: "hard", reason: "x"}`. A
+  held scope reports it on stderr (`scope_hold:`), with the reason when there is one.
+  - `soft` is for changes larger than a single ticket. No ticket enters `in-progress`:
+    `tk mark in-progress`, `tk next --claim`, `tk create` with that status, and `tk
+    rehome` of an in-progress ticket into the scope exit 1 and do not write. Other
+    ticket work continues.
+  - `hard` is a complete stop. `tk` also refuses other ticket and design writes,
+    including `tk mark done`, `tk order`, `tk meta` changes, `tk rehome` to or from
+    the scope, and `tk edit`. Reads, the `tk scope` verbs, notes, `tk lens`, `tk sync`,
+    `tk repair`, `tk doctor`, and `tk reindex` still run. `tk` cannot block a code change
+    or a direct file edit, so stopping those is up to whoever sees the hold.
+  - A reason is committed and pushed with the scope, so it must not contain anything
+    private. `tk pulse hold` and `tk pulse hold_reason` read the state for scripts.
+  - Upgrade `tk` and `tkv` on every machine that shares the scope before setting a
+    hold. An older binary reads any struct `hold` as `config_unparseable:`, refuses
+    writes and `tk sync` on that git-root, and asks for `tk.cue` to be fixed. Do not
+    remove the hold to satisfy it. `tk scope hold off` restores the old format.
 - `auto-commit` prints the evaluated `autoCommit` bool, or rewrites it to
   `true`/`false` for every registered scope that shares the dir's git-root
   (already-that-value is ensure: exit 0, no rewrite). Mode labels stay derived;
@@ -92,6 +108,9 @@ tk scope field list|set|unset [--scope S]   # declare custom frontmatter fields 
 ## Dashboard (tkv)
 
 `tkv` is the human dashboard. Agents keep using `tk`.
+
+Note: restart a detached `tkv` after upgrading, because an older binary reads any
+struct `hold` as `config_unparseable:` (see `hold` above).
 
 ```sh
 tkv [start] [--listen HOST|HOST:PORT] [--port N] [--no-open] [--scope NAME]

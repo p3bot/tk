@@ -16,7 +16,9 @@ import (
 	"github.com/p3bot/tk/internal/reconcile"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/resolve"
+	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/syncengine"
+	"github.com/p3bot/tk/internal/token"
 	"github.com/p3bot/tk/internal/writeengine"
 )
 
@@ -25,13 +27,14 @@ type engine struct {
 	reg *registry.Registry
 	db  *index.DB
 	rec *reconcile.Reconciler
-	// holdNamed prefixes a single scope_hold line with the scope name. Set
-	// before resolution on commands that can enter more than one scope.
-	holdNamed bool
-	// holdBatch collects held scopes so two or more share one line.
+	// holdBatch collects held scopes into one block on a multi-scope command.
 	holdBatch   bool
-	holdPending []string
-	holdSeen    map[string]bool
+	holdPending []token.HoldRow
+	// holdMulti is set once this command resolves more than one scope, so a
+	// refusal names its scope in the block form.
+	holdMulti bool
+	// holdSeen is the hold state this command reported for each scope.
+	holdSeen map[string]scopeconfig.Hold
 }
 
 func (a *App) openEngine(_ *cobra.Command) (*engine, error) {
@@ -43,7 +46,7 @@ func (a *App) openEngine(_ *cobra.Command) (*engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &engine{app: a, reg: reg, db: db, rec: reconcile.New(db, a.Ctx)}, nil
+	return &engine{app: a, reg: reg, db: db, rec: reconcile.New(db)}, nil
 }
 
 func nowNS() int64 { return time.Now().UnixNano() }

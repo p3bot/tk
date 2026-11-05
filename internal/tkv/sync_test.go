@@ -295,7 +295,7 @@ func TestSyncUnlocksIndexMutex(t *testing.T) {
 	}
 }
 
-func TestBeginSyncStripsCancelAndIsolatesCue(t *testing.T) {
+func TestBeginSyncStripsCancelAndIsolatesReconciler(t *testing.T) {
 	app := newTestApp(t)
 	initScope(t, app, "wc")
 	s := mustServer(t, app)
@@ -309,9 +309,6 @@ func TestBeginSyncStripsCancelAndIsolatesCue(t *testing.T) {
 	defer release()
 	if err := deps.Ctx.Err(); err != nil {
 		t.Fatalf("sync context must not carry request cancel: %v", err)
-	}
-	if deps.Cue == s.app.cue() {
-		t.Fatal("sync must not share the process CUE context")
 	}
 	if deps.Rec == s.rec {
 		t.Fatal("sync must not share the process reconciler")

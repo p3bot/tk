@@ -69,7 +69,7 @@ func openDual(t *testing.T, srcDir, destDir string) *dualEnv {
 				Note: map[string]string{},
 			},
 			DB:  db,
-			Rec: reconcile.New(db, cue),
+			Rec: reconcile.New(db),
 		},
 		srcDir:  srcDir,
 		destDir: destDir,

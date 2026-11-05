@@ -66,9 +66,11 @@ var beforeScopeLock func()
 func runNetworkClaim(deps Deps, r Reporter, scope, dir string, underLock networkClaimFn) (Result, error) {
 	r = reporterOrNop(r)
 	ctx := ctxOf(deps)
-	schema, schemaErr := deps.Rec.SchemaOrError(scope, dir)
-	if schemaErr == nil && scopeconfig.Held(schema) {
-		return Result{}, &HoldError{}
+	schema, schemaErr := deps.Rec.SchemaOrError(dir)
+	if schemaErr == nil {
+		if err := scopeconfig.RefuseStart(scope, schema); err != nil {
+			return Result{}, err
+		}
 	}
 	autoCommit := scopeconfig.SchemaAutoCommit(schema)
 	root, hasRoot := scopefile.GitRoot(dir)
@@ -102,9 +104,11 @@ func runNetworkClaim(deps Deps, r Reporter, scope, dir string, underLock network
 			return Result{}, err
 		}
 		defer func() { _ = lock.Release() }()
-		schema, schemaErr = deps.Rec.SchemaOrError(scope, dir)
-		if schemaErr == nil && scopeconfig.Held(schema) {
-			return Result{}, &HoldError{}
+		schema, schemaErr = deps.Rec.SchemaOrError(dir)
+		if schemaErr == nil {
+			if err := scopeconfig.RefuseStart(scope, schema); err != nil {
+				return Result{}, err
+			}
 		}
 		return underLock(autoCommit, root, hasRoot, network)
 	}()

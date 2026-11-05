@@ -71,7 +71,7 @@ func TestDesignRehomeWarnsEachHeldScope(t *testing.T) {
 	if !strings.Contains(out, filepath.Join("bar", "design", "bar-ab2c-shape.md")) {
 		t.Fatalf("stdout = %q", out)
 	}
-	if errOut != token.FormatScopeHold("bar")+"\n" {
+	if errOut != token.FormatScopeHolds([]token.HoldRow{{Scope: "bar", Type: token.HoldSoft}})+"\n" {
 		t.Fatalf("held dest stderr = %q", errOut)
 	}
 
@@ -86,7 +86,7 @@ func TestDesignRehomeWarnsEachHeldScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rehome from held source: %v (%s)", err, errOut)
 	}
-	if errOut != token.FormatScopeHold("foo")+"\n" {
+	if errOut != token.FormatScopeHolds([]token.HoldRow{{Scope: "foo", Type: token.HoldSoft}})+"\n" {
 		t.Fatalf("held source stderr = %q", errOut)
 	}
 
@@ -100,7 +100,7 @@ func TestDesignRehomeWarnsEachHeldScope(t *testing.T) {
 	if ExitCodeFromError(err) != exitUsage {
 		t.Fatalf("same-scope exit = %d (%v)", ExitCodeFromError(err), err)
 	}
-	if errOut != token.FormatScopeHold("")+"\n" {
+	if errOut != token.FormatScopeHold(token.HoldSoft, "")+"\n" {
 		t.Fatalf("same-scope stderr = %q", errOut)
 	}
 }

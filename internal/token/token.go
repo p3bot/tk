@@ -16,7 +16,7 @@ const (
 	// ConfigUnparseable marks a scope whose tk.cue cannot be trusted; writes refuse, reads stay available.
 	ConfigUnparseable = "config_unparseable:"
 
-	// ScopeHold marks a command that resolved a scope whose tk.cue hold is true.
+	// ScopeHold marks a command that resolved a scope with a soft or hard hold in tk.cue.
 	ScopeHold = "scope_hold:"
 
 	// AutoCommitMismatch marks divergent autoCommit values under one derived git-root.
@@ -171,34 +171,63 @@ func FormatRequiredMissing(id string, keys []string) string {
 		id, strings.Join(keys, " ")))
 }
 
-// ScopeHoldSentence is the fixed human sentence after scope_hold: for one scope.
-const ScopeHoldSentence = "This scope is on hold. No work is to be carried out."
+// Hold states. off is never stored; it is what a read reports with no hold.
+const (
+	HoldOff  = "off"
+	HoldSoft = "soft"
+	HoldHard = "hard"
+)
 
-// ScopeHoldScopesSentence is the fixed human sentence when two or more scopes are held.
-const ScopeHoldScopesSentence = "No work is to be carried out in those scopes."
+const (
+	scopeHoldSoftSentence = "Soft hold: do not start new implementation."
+	scopeHoldHardSentence = "Hard hold: all work is stopped."
+	scopeHoldsHeader      = "Holds on the following scopes:"
+	holdNoReason          = "no reason given"
+)
 
-// FormatScopeHold is the fixed scope_hold: line. An empty scope is the
-// single-scope form. A non-empty scope names that one scope on a multi-scope command.
-func FormatScopeHold(scope string) string {
-	if scope == "" {
-		return Line(ScopeHold, ScopeHoldSentence)
+// ScopeHoldSentence is the prefix-free hold sentence, with the reason when there is one.
+func ScopeHoldSentence(holdType, reason string) string {
+	sentence := scopeHoldSoftSentence
+	if holdType == HoldHard {
+		sentence = scopeHoldHardSentence
 	}
-	return Line(ScopeHold, scope+": "+ScopeHoldSentence)
+	if reason == "" {
+		return sentence
+	}
+	return sentence + " Reason: " + reason
 }
 
-// FormatScopeHolds is one scope_hold: line for the held scopes of a multi-scope
-// command. Zero scopes is empty. One scope is FormatScopeHold. Two or more
-// share one line, names ascending.
-func FormatScopeHolds(scopes []string) string {
-	switch len(scopes) {
-	case 0:
+// FormatScopeHold is the scope_hold: line for a command that resolves one scope.
+func FormatScopeHold(holdType, reason string) string {
+	return Line(ScopeHold, ScopeHoldSentence(holdType, reason))
+}
+
+// HoldRow is one held scope in the multi-scope scope_hold: block.
+type HoldRow struct {
+	Scope  string
+	Type   string
+	Reason string
+}
+
+// FormatScopeHolds is the scope_hold: block for a command that resolves more
+// than one scope. Zero rows is empty. Rows sort by scope and are indented
+// because a scope name can also be a catalogue token. The text is one string so
+// it reaches stderr as one write.
+func FormatScopeHolds(rows []HoldRow) string {
+	if len(rows) == 0 {
 		return ""
-	case 1:
-		return FormatScopeHold(scopes[0])
 	}
-	names := append([]string(nil), scopes...)
-	sort.Strings(names)
-	return Line(ScopeHold, strings.Join(names, ", ")+": "+ScopeHoldScopesSentence)
+	sorted := append([]HoldRow(nil), rows...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Scope < sorted[j].Scope })
+	lines := []string{Line(ScopeHold, scopeHoldsHeader)}
+	for _, r := range sorted {
+		reason := r.Reason
+		if reason == "" {
+			reason = holdNoReason
+		}
+		lines = append(lines, fmt.Sprintf("  %s: %s: %s", r.Scope, r.Type, reason))
+	}
+	return strings.Join(lines, "\n")
 }
 
 var all = []string{

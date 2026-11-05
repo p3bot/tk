@@ -243,7 +243,7 @@ func Delete(deps Deps, in Input) (Result, error) {
 	}
 	out := Result{Slug: in.Slug}
 	if removed {
-		out.SyncNeeded = deps.syncNeeded(in.Scope, in.Dir)
+		out.SyncNeeded = deps.syncNeeded(in.Dir)
 	}
 	return out, nil
 }
@@ -265,7 +265,7 @@ func mutate(deps Deps, in Input, fn func(path string) error) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	out.SyncNeeded = deps.syncNeeded(in.Scope, in.Dir)
+	out.SyncNeeded = deps.syncNeeded(in.Dir)
 	return out, nil
 }
 

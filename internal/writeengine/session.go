@@ -15,6 +15,7 @@ import (
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/selfcommit"
+	"github.com/p3bot/tk/internal/status"
 	"github.com/p3bot/tk/internal/token"
 )
 
@@ -35,9 +36,24 @@ type Session struct {
 	HasRoot    bool
 }
 
-// Begin acquires the scope flock, reconciles, and refuses unusable config.
-// Mid-rebase is a separate CheckMidRebase so mark can reject unknown status first.
+// Begin opens a session for a write that a hard hold refuses outright.
+// Mid-rebase is a separate CheckMidRebase.
 func Begin(deps Deps, scope, dir string) (*Session, error) {
+	s, err := beginStatusWrite(deps, scope, dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := scopeconfig.RefuseHard(scope, s.Schema); err != nil {
+		s.Release()
+		return nil, err
+	}
+	return s, nil
+}
+
+// beginStatusWrite acquires the scope flock, reconciles, and refuses unusable
+// config. It leaves the hold to refuseStatusHold, so a verb that takes a status
+// can report an unknown status as usage first.
+func beginStatusWrite(deps Deps, scope, dir string) (*Session, error) {
 	lock, err := scopefile.AcquireLock(dir)
 	if err != nil {
 		return nil, err
@@ -74,6 +90,17 @@ func (s *Session) Warnings() []string {
 		return nil
 	}
 	return s.Res.Warnings
+}
+
+// refuseStatusHold refuses a ticket write into newStatus under this scope's hold.
+func (s *Session) refuseStatusHold(newStatus string) error {
+	if err := scopeconfig.RefuseHard(s.Scope, s.Schema); err != nil {
+		return err
+	}
+	if newStatus == status.InProgress {
+		return scopeconfig.RefuseStart(s.Scope, s.Schema)
+	}
+	return nil
 }
 
 // CheckMidRebase refuses auto-commit writes on a mid-rebase or mid-merge git-root.

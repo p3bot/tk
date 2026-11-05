@@ -33,8 +33,9 @@ func newMarkCmd(app *App) *cobra.Command {
 			"touched path in one commit when a git-root exists. todo → in-progress on a\n" +
 			"tk-driven git-root with an upstream is a claim: one refresh of that root, re-check\n" +
 			"each named todo is still todo, write every member, then one push. A quarantined\n" +
-			"or duplicate-id ticket is refused with no writes. A held scope refuses\n" +
-			"in-progress (exit 1, no write, no refresh, no push) and prints scope_hold:.\n" +
+			"or duplicate-id ticket is refused with no writes. A soft or hard hold refuses\n" +
+			"in-progress, and a hard hold refuses every status (exit 1, no write, no refresh,\n" +
+			"no push; scope_hold: on stderr).\n" +
 			"For a scope pulse (counts, next, integrity), use `tk pulse`.",
 		Args: arity(1, -1, []string{"<status>", "<id>"}),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -98,7 +99,7 @@ func runMark(app *App, c *cobra.Command, newStatus string, idArgs []string, scop
 		Lookups:   lookups,
 		NewStatus: newStatus,
 	})
-	return emitWriteResult(c, res, holdExit(e, scope, err))
+	return emitWriteResult(c, res, holdExit(e, err))
 }
 
 func markOneArgUsage(app *App, c *cobra.Command, newStatus, scopeFlag string) error {
@@ -149,7 +150,7 @@ func markCueStatuses(e *engine, newStatus, firstID string, firstForm id.Form, fi
 	if dir.dir == "" {
 		return cueStatusLookup{}
 	}
-	schema, cfgErr := e.rec.SchemaOrError(dir.scope, dir.dir)
+	schema, cfgErr := e.rec.SchemaOrError(dir.dir)
 	if cfgErr != nil {
 		return cueStatusLookup{unusable: true}
 	}

@@ -164,10 +164,10 @@ func destRehomeDir(deps Deps, in *RehomeInput) (string, error) {
 }
 
 func (d Deps) rehomeSide(scope, dir string) (rehomeSide, error) {
-	if err := d.refuseUnusable(scope, dir); err != nil {
+	if err := d.refuseUnwritable(scope, dir); err != nil {
 		return rehomeSide{}, err
 	}
-	schema, cfgErr := d.Rec.SchemaOrError(scope, dir)
+	schema, cfgErr := d.Rec.SchemaOrError(dir)
 	if cfgErr != nil {
 		return rehomeSide{}, fmt.Errorf("%s", token.Line(token.ConfigUnparseable, fmt.Sprintf("%s (%s): %s — fix tk.cue before writing", scope, cfgErr.Dir, cfgErr.Reason)))
 	}

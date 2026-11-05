@@ -94,7 +94,8 @@ func newMetaSetCmd(app *App) *cobra.Command {
 			"type string, int, or bool. Empty value omits the key (clear). Multi-value keys\n" +
 			"(depends, related, tags/tag, links/link, custom strings) require meta add/remove.\n" +
 			"Value - reads stdin (optional final newline stripped). Embedded newlines are\n" +
-			"usage exit 2. Prints the absolute ticket path on success.",
+			"usage exit 2. Prints the absolute ticket path on success. A hard hold refuses\n" +
+			"this write (exit 1).",
 		Args: exactArgs("<id>", "<key>", "<value>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMetaMutate(app, c, writeengine.MetaSet, args[0], args[1], args[2], scope)
@@ -119,7 +120,8 @@ func newMetaAddCmd(app *App) *cobra.Command {
 			"archive), emits on stderr after a successful write (soft; exit 0):\n" +
 			"  tag_new: \"<t>\" is new to this scope\n" +
 			"Re-add and already-used values stay quiet on that channel.\n" +
-			"Value - reads stdin. Prints the absolute ticket path on success.",
+			"Value - reads stdin. Prints the absolute ticket path on success. A hard hold\n" +
+			"refuses this write (exit 1).",
 		Args: exactArgs("<id>", "<key>", "<value>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMetaMutate(app, c, writeengine.MetaAdd, args[0], args[1], args[2], scope)
@@ -139,7 +141,8 @@ func newMetaRemoveCmd(app *App) *cobra.Command {
 			"absent). Legal keys: depends, related, tags (alias: tag), links (alias: link),\n" +
 			"and custom fields of type strings. Value is required — this removes one list\n" +
 			"entry, not the whole key. depends/related short ids normalise to full ids\n" +
-			"before compare. Value - reads stdin. Prints the absolute ticket path on success.",
+			"before compare. Value - reads stdin. Prints the absolute ticket path on success.\n" +
+			"A hard hold refuses this write (exit 1).",
 		Args: exactArgs("<id>", "<key>", "<value>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runMetaMutate(app, c, writeengine.MetaRemove, args[0], args[1], args[2], scope)
@@ -272,7 +275,7 @@ func runMetaMutate(app *App, c *cobra.Command, op writeengine.MetaOp, idArg, key
 		Key:    key,
 		Value:  value,
 	})
-	return emitWriteResult(c, res, err)
+	return emitWriteResult(c, res, holdExit(e, err))
 }
 
 // loadMetaValue: "-" reads stdin and strips one optional final line ending.

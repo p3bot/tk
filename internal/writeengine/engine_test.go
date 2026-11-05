@@ -1,6 +1,7 @@
 package writeengine
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/gitstate"
+	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/testgit"
 	"github.com/p3bot/tk/internal/token"
 )
@@ -202,7 +204,7 @@ func TestHoldRefusesInProgressAndClaim(t *testing.T) {
 	path := addTicket(t, e.dir, "wc-ab2c", "todo")
 
 	_, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "in-progress"})
-	var hold *HoldError
+	var hold *scopeconfig.HoldError
 	if !errors.As(err, &hold) {
 		t.Fatalf("mark in-progress: %v", err)
 	}
@@ -238,7 +240,7 @@ func TestClaimHoldRefusesBeforeRefresh(t *testing.T) {
 	writeFile(t, filepath.Join(e.dir, "tk.cue"), "name: \"wc\"\nautoCommit: true\nhold: true\n")
 
 	_, err := Claim(e.deps, nil, ClaimInput{Kind: ClaimID, Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c")})
-	var hold *HoldError
+	var hold *scopeconfig.HoldError
 	if !errors.As(err, &hold) {
 		t.Fatalf("want hold refuse before refresh, got %v", err)
 	}
@@ -271,7 +273,7 @@ func TestClaimHoldFlippedBeforeLockRefusesWriteAndPush(t *testing.T) {
 	t.Cleanup(func() { beforeScopeLock = nil })
 
 	_, err := Claim(e.deps, nil, ClaimInput{Kind: ClaimID, Scope: "wc", Dir: e.dir, Lookup: fullLookup("wc-ab2c")})
-	var hold *HoldError
+	var hold *scopeconfig.HoldError
 	if !errors.As(err, &hold) {
 		t.Fatalf("want hold refuse after refresh, got %v", err)
 	}
@@ -470,4 +472,100 @@ func TestResultTickets(t *testing.T) {
 			t.Errorf("members = %#v", got)
 		}
 	})
+}
+
+func TestHardHoldRefusesEveryEngineWrite(t *testing.T) {
+	hard := "name: \"wc\"\nautoCommit: false\nhold: {type: \"hard\", reason: \"R\"}\n"
+	lookup := fullLookup("wc-ab2c")
+	writes := map[string]func(e *env) error{
+		"create": func(e *env) error {
+			_, err := Create(e.deps, CreateInput{Scope: "wc", Dir: e.dir, Title: "New"})
+			return err
+		},
+		"mark": func(e *env) error {
+			_, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{lookup}, NewStatus: "done"})
+			return err
+		},
+		"order": func(e *env) error {
+			_, err := Order(e.deps, OrderInput{Scope: "wc", Dir: e.dir, Lookup: lookup, Dest: Dest{Last: true}})
+			return err
+		},
+		"meta": func(e *env) error {
+			_, err := Meta(e.deps, MetaInput{Scope: "wc", Dir: e.dir, Lookup: lookup, Op: MetaAdd, Key: "tags", Value: "x"})
+			return err
+		},
+		"splice": func(e *env) error {
+			_, err := Splice(e.deps, SpliceInput{Scope: "wc", Dir: e.dir, Lookup: lookup, Title: "T", Base: "stale"})
+			return err
+		},
+		"claim": func(e *env) error {
+			_, err := Claim(e.deps, nil, ClaimInput{Kind: ClaimNext, Scope: "wc", Dir: e.dir})
+			return err
+		},
+	}
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) {
+			e := newPlainEnv(t, "wc", hard)
+			path := addTicket(t, e.dir, "wc-ab2c", "todo")
+			before, _ := os.ReadFile(path)
+			err := write(e)
+			var hold *scopeconfig.HoldError
+			if !errors.As(err, &hold) || hold.Scope != "wc" || hold.Hold.Type != token.HoldHard || hold.Hold.Reason != "R" {
+				t.Fatalf("err = %v", err)
+			}
+			after, _ := os.ReadFile(path)
+			if !bytes.Equal(before, after) {
+				t.Fatalf("file changed: %s", after)
+			}
+			entries, _ := os.ReadDir(e.dir)
+			for _, entry := range entries {
+				if strings.HasSuffix(entry.Name(), ".md") && entry.Name() != filepath.Base(path) {
+					t.Fatalf("created %s", entry.Name())
+				}
+			}
+		})
+	}
+}
+
+func TestSoftHoldStatusChecks(t *testing.T) {
+	soft := "name: \"wc\"\nautoCommit: false\nhold: {type: \"soft\"}\n"
+	e := newPlainEnv(t, "wc", soft)
+	addTicket(t, e.dir, "wc-ab2c", "blocked")
+
+	var hold *scopeconfig.HoldError
+	if _, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "in-progress"}); !errors.As(err, &hold) {
+		t.Fatalf("mark from blocked: %v", err)
+	}
+	if _, err := Create(e.deps, CreateInput{Scope: "wc", Dir: e.dir, Title: "New", Status: "in-progress"}); !errors.As(err, &hold) {
+		t.Fatalf("create in-progress: %v", err)
+	}
+	var unknown *UnknownStatusError
+	if _, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "bogus"}); !errors.As(err, &unknown) {
+		t.Fatalf("unknown status must stay usage: %v", err)
+	}
+	if _, err := Create(e.deps, CreateInput{Scope: "wc", Dir: e.dir, Title: "New", Status: "todo"}); err != nil {
+		t.Fatalf("create todo: %v", err)
+	}
+	if _, err := Mark(e.deps, nil, MarkInput{Scope: "wc", Dir: e.dir, Lookups: []Lookup{fullLookup("wc-ab2c")}, NewStatus: "done"}); err != nil {
+		t.Fatalf("mark done: %v", err)
+	}
+}
+
+func TestHoldLandingBeforeTheLockIsHonoured(t *testing.T) {
+	e := newPlainEnv(t, "wc", "name: \"wc\"\nautoCommit: false\n")
+	path := addTicket(t, e.dir, "wc-ab2c", "todo")
+	beforeScopeLock = func() {
+		writeFile(t, filepath.Join(e.dir, "tk.cue"), "name: \"wc\"\nautoCommit: false\nhold: {type: \"soft\", reason: \"late\"}\n")
+	}
+	t.Cleanup(func() { beforeScopeLock = nil })
+
+	_, err := Claim(e.deps, nil, ClaimInput{Kind: ClaimNext, Scope: "wc", Dir: e.dir})
+	var hold *scopeconfig.HoldError
+	if !errors.As(err, &hold) || hold.Hold.Reason != "late" {
+		t.Fatalf("err = %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "status: todo") {
+		t.Fatalf("claim wrote: %s", data)
+	}
 }

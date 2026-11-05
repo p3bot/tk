@@ -14,6 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"cuelang.org/go/cue/cuecontext"
+
+	"github.com/p3bot/tk/internal/bodyedit"
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/git"
 	"github.com/p3bot/tk/internal/order"
@@ -138,7 +141,7 @@ func cardSection(col, id string) string {
 
 func setLens(t *testing.T, app *App, scope string, tags []string) {
 	t.Helper()
-	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	store := registry.NewStore(cuecontext.New(), app.ConfigDir)
 	if err := store.SetLens(scope, tags); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +161,7 @@ func lensFile(t *testing.T, app *App) string {
 
 func loadLens(t *testing.T, app *App) map[string][]string {
 	t.Helper()
-	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	store := registry.NewStore(cuecontext.New(), app.ConfigDir)
 	reg, err := store.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -870,7 +873,8 @@ func TestHeldScopeBannerAndClaimRefuse(t *testing.T) {
 	if board.Code != http.StatusOK {
 		t.Fatalf("board %d", board.Code)
 	}
-	if !strings.Contains(board.Body.String(), "This scope is on hold. No work is to be carried out.") {
+	sentence := token.ScopeHoldSentence(token.HoldSoft, "")
+	if !strings.Contains(board.Body.String(), `<p class="banner">`+sentence+`</p>`) {
 		t.Fatalf("board missing hold banner: %s", board.Body.String())
 	}
 
@@ -881,7 +885,7 @@ func TestHeldScopeBannerAndClaimRefuse(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("mark in-progress status %d body %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), token.ScopeHoldSentence) {
+	if !strings.Contains(w.Body.String(), token.FormatScopeHold(token.HoldSoft, "")) {
 		t.Fatalf("conflict body: %s", w.Body.String())
 	}
 	if !strings.Contains(ticketBody(t, dir, "wc-ab2c"), "status: todo") {
@@ -2153,16 +2157,13 @@ func TestBeginWriteStripsCancel(t *testing.T) {
 	}
 }
 
-func TestWriteDepsIsolatesCue(t *testing.T) {
+func TestWriteDepsIsolatesReconciler(t *testing.T) {
 	app := newTestApp(t)
 	s := mustServer(t, app)
 	reg := &registry.Registry{Scopes: map[string]registry.Entry{}}
 	deps, err := s.writeDeps(context.Background(), reg, s.cur)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if deps.Cue == s.app.cue() {
-		t.Fatal("write must not share the process CUE context")
 	}
 	if deps.Rec == s.rec {
 		t.Fatal("write must not share the process reconciler")
@@ -3200,4 +3201,87 @@ func TestInspectMetaWrites(t *testing.T) {
 			t.Fatalf("banner should name jira: %s", page.Body.String())
 		}
 	})
+}
+
+func TestHardHoldConflictsOnEveryWrite(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	addTicket(t, dir, "wc-ab2c", "work", "todo", "a0", "# Work\nhello\n", false, "")
+	addTicket(t, dir, "wc-cd3e", "other", "todo", "a1", "# Other\n", false, "")
+	addDesign(t, dir, "wc-ef4g", "shape", "draft", "# Shape\n", "")
+	s := mustServer(t, app)
+	ticketBase := inspectBase(t, do(s, "/scope/wc/edit/ab2c").Body.String())
+	_, designBase, err := bodyedit.Snapshot(filepath.Join(dir, "design", "wc-ef4g-shape.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"wc\"\nautoCommit: false\nhold: {type: \"hard\", reason: \"R\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := ticketBody(t, dir, "wc-ab2c")
+
+	cases := []struct {
+		name, path string
+		form       url.Values
+	}{
+		{"mark", "/scope/wc/mark", url.Values{"id": {"wc-ab2c"}, "status": {status.Done}}},
+		{"claim", "/scope/wc/claim", url.Values{}},
+		{"create", "/scope/wc/create", url.Values{"title": {"New"}}},
+		{"meta", "/scope/wc/meta", url.Values{"id": {"wc-ab2c"}, "op": {"add"}, "key": {"tags"}, "value": {"x"}}},
+		{"order", "/scope/wc/order", url.Values{"id": {"wc-ab2c"}, "after": {"wc-cd3e"}}},
+		{"body", "/scope/wc/body", url.Values{"id": {"wc-ab2c"}, "title": {"Work"}, "body": {"x"}, "base": {ticketBase}}},
+		{"design mark", "/scope/wc/designs/mark", url.Values{"id": {"wc-ef4g"}, "status": {"accepted"}}},
+		{"design produces", "/scope/wc/designs/produces", url.Values{"id": {"wc-ef4g"}, "op": {"add"}, "target": {"wc-ab2c"}}},
+		{"design body", "/scope/wc/designs/body", url.Values{"id": {"wc-ef4g"}, "title": {"Shape"}, "body": {"x"}, "base": {designBase}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			w := doPost(s, c.path, c.form)
+			if w.Code != http.StatusConflict {
+				t.Fatalf("status %d body %s", w.Code, w.Body.String())
+			}
+			if !strings.Contains(w.Body.String(), token.FormatScopeHold(token.HoldHard, "R")) {
+				t.Fatalf("conflict body: %s", w.Body.String())
+			}
+			if got := ticketBody(t, dir, "wc-ab2c"); got != before {
+				t.Fatalf("ticket changed: %s", got)
+			}
+		})
+	}
+}
+
+func TestSoftHoldCreateInProgressConflicts(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"wc\"\nautoCommit: false\nhold: {type: \"soft\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := mustServer(t, app)
+	w := doPost(s, "/scope/wc/create", url.Values{"title": {"New"}, "status": {status.InProgress}})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	w = doPost(s, "/scope/wc/create", url.Values{"title": {"New"}, "status": {status.Todo}})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create todo status %d body %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHoldBannerEscapesTheReasonAndDropsThePrefix(t *testing.T) {
+	app := newTestApp(t)
+	dir := initScope(t, app, "wc")
+	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte("name: \"wc\"\nautoCommit: false\nhold: {type: \"hard\", reason: \"<b>bold</b>\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := mustServer(t, app)
+	page := do(s, "/scope/wc").Body.String()
+	if strings.Contains(page, "<b>bold</b>") {
+		t.Fatalf("reason was not escaped: %s", page)
+	}
+	if !strings.Contains(page, `<p class="banner">Hard hold: all work is stopped. Reason: &lt;b&gt;bold&lt;/b&gt;</p>`) {
+		t.Fatalf("banner: %s", page)
+	}
+	if strings.Contains(page, token.ScopeHold) {
+		t.Fatalf("banner kept the token prefix: %s", page)
+	}
 }

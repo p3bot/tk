@@ -134,7 +134,7 @@ func syncPreflight(deps Deps, r Reporter, root string) bool {
 			refuse = true
 			continue
 		}
-		schema, cfgErr := deps.Rec.SchemaOrError(name, dir)
+		schema, cfgErr := deps.Rec.SchemaOrError(dir)
 		if cfgErr != nil {
 			r.Err(token.Line(token.ConfigUnparseable, fmt.Sprintf(
 				"%s (%s): %s — fix tk.cue before sync can merge this git-root", name, cfgErr.Dir, cfgErr.Reason)))

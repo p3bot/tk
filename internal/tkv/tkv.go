@@ -29,7 +29,6 @@ import (
 	"syscall"
 	"time"
 
-	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 
 	"github.com/p3bot/tk/internal/pathutil"
@@ -42,7 +41,6 @@ import (
 
 // App is the process-wide viewer configuration. Tests inject dirs, cwd, and I/O.
 type App struct {
-	Ctx       *cue.Context
 	ConfigDir string
 	StateDir  string
 	ScopeFlag string
@@ -78,7 +76,6 @@ type App struct {
 // NewApp builds a production App (XDG dirs and cwd resolved at Run).
 func NewApp() *App {
 	return &App{
-		Ctx:         cuecontext.New(),
 		Stdin:       os.Stdin,
 		Stdout:      os.Stdout,
 		Stderr:      os.Stderr,
@@ -263,7 +260,7 @@ func (a *App) loadConfig() (tkvconf.Config, error) {
 	if err != nil {
 		return tkvconf.Config{}, err
 	}
-	conf, err := tkvconf.Load(a.cue(), dir)
+	conf, err := tkvconf.Load(cuecontext.New(), dir)
 	if err != nil {
 		return conf, err
 	}
@@ -438,7 +435,7 @@ func (a *App) LandingURL(b bind) (string, error) {
 // LandingPath resolves the ambient scope the same way tk does.
 // Name-drift is fail-closed. No ambient scope yields "/".
 func (a *App) LandingPath() (string, error) {
-	ctx := a.cue()
+	ctx := cuecontext.New()
 	configDir, err := a.configDir()
 	if err != nil {
 		return "", err
@@ -463,13 +460,6 @@ func (a *App) LandingPath() (string, error) {
 		return "", err
 	}
 	return "/scope/" + resolved.Name, nil
-}
-
-func (a *App) cue() *cue.Context {
-	if a.Ctx == nil {
-		a.Ctx = cuecontext.New()
-	}
-	return a.Ctx
 }
 
 func (a *App) configDir() (string, error) {

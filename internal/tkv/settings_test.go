@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"cuelang.org/go/cue/cuecontext"
+
 	"github.com/p3bot/tk/internal/passhash"
 	"github.com/p3bot/tk/internal/tkvcert"
 	"github.com/p3bot/tk/internal/tkvconf"
@@ -23,7 +25,7 @@ import (
 
 func loadConf(t *testing.T, app *App) tkvconf.Config {
 	t.Helper()
-	c, err := tkvconf.Load(app.Ctx, app.ConfigDir)
+	c, err := tkvconf.Load(cuecontext.New(), app.ConfigDir)
 	if err != nil {
 		t.Fatal(err)
 	}

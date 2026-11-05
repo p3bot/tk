@@ -21,7 +21,9 @@ func newRehomeCmd(app *App) *cobra.Command {
 			"path only. Dest order is a new append key unless a leftover dest file from an\n" +
 			"interrupted rehome is reused. Auto-commit git-roots that contain a touched path\n" +
 			"self-commit; rehome does not push. Same-scope dest is a usage error; an unknown\n" +
-			"dest scope is a generic failure. Dest must know the ticket's status.",
+			"dest scope is a generic failure. Dest must know the ticket's status. A hard hold\n" +
+			"on the source or dest refuses, and so does a soft hold on the dest for an\n" +
+			"in-progress ticket (exit 1, no write).",
 		Args: exactArgs("<id>", "<dest-scope>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runRehome(app, c, args[0], args[1], scope)
@@ -74,5 +76,5 @@ func runRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) e
 	}
 
 	res, err := writeengine.Rehome(e.writeDeps(c.Context()), in)
-	return emitWriteResult(c, res, err)
+	return emitWriteResult(c, res, holdExit(e, err))
 }

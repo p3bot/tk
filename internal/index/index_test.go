@@ -774,18 +774,3 @@ func TestDeleteTicketCascadesOutgoingEdges(t *testing.T) {
 		t.Fatalf("DeleteScope edges = %+v, want only wc keeper", all)
 	}
 }
-
-func TestConfigCache(t *testing.T) {
-	db := openTemp(t)
-	if _, ok, _ := db.ConfigCacheGet("wc"); ok {
-		t.Fatal("empty cache should miss")
-	}
-	e := ConfigCacheEntry{ClosureJSON: "k1", SchemaJSON: `{"name":"wc"}`}
-	if err := db.ConfigCacheSet("wc", e); err != nil {
-		t.Fatal(err)
-	}
-	got, ok, err := db.ConfigCacheGet("wc")
-	if err != nil || !ok || got.ClosureJSON != "k1" || got.SchemaJSON != `{"name":"wc"}` {
-		t.Fatalf("cache get = %+v ok=%v err=%v", got, ok, err)
-	}
-}

@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"cuelang.org/go/cue/cuecontext"
-
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/registry"
 )
@@ -19,7 +17,7 @@ func newReconciler(t *testing.T) (*Reconciler, *index.DB) {
 		t.Fatalf("open index: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return New(db, cuecontext.New()), db
+	return New(db), db
 }
 
 func mkScope(t *testing.T, name string) string {
@@ -245,44 +243,21 @@ func TestForgottenScopePruned(t *testing.T) {
 	}
 }
 
-func TestConfigCacheHitAndInvalidation(t *testing.T) {
-	r, db := newReconciler(t)
-	// Packaged scope with a sibling schema.cue — multi-file import closure.
+func TestSchemaEvaluatesSiblingPackageFiles(t *testing.T) {
+	r, _ := newReconciler(t)
 	dir := filepath.Join(t.TempDir(), "wc")
 	writeFile(t, filepath.Join(dir, "tk.cue"), "package wccfg\nname: \"wc\"\nautoCommit: false\nfields: { area: { type: \"string\", values: tags } }\n")
 	writeFile(t, filepath.Join(dir, "schema.cue"), "package wccfg\ntags: [\"frontend\"]\n")
 
-	schema, cfgErr := r.schemaFor("wc", dir)
-	if cfgErr != nil || schema == nil {
-		t.Fatalf("cold eval = %+v err=%v", schema, cfgErr)
-	}
-	if f, ok := schema.Field("area"); !ok || len(f.Values) != 1 || f.Values[0] != "frontend" {
-		t.Fatalf("cold eval area = %+v", schema.Fields)
-	}
-
-	// Sentinel schema with untouched closure stats proves cache hit without re-eval.
-	entry, _, _ := db.ConfigCacheGet("wc")
-	entry.SchemaJSON = `{"Name":"wc","Fields":{"area":{"Type":"string","Values":["CACHED"]}}}`
-	if err := db.ConfigCacheSet("wc", entry); err != nil {
-		t.Fatal(err)
-	}
-	cached, _ := r.schemaFor("wc", dir)
-	if cached == nil {
-		t.Fatal("expected cache hit")
-	}
-	if f, ok := cached.Field("area"); !ok || len(f.Values) != 1 || f.Values[0] != "CACHED" {
-		t.Fatalf("expected cache hit to serve the sentinel, got %+v", cached.Fields)
-	}
-
-	writeFile(t, filepath.Join(dir, "schema.cue"), "package wccfg\ntags: [\"backend\"]\n")
-	future := time.Now().Add(time.Hour)
-	_ = os.Chtimes(filepath.Join(dir, "schema.cue"), future, future)
-	fresh, _ := r.schemaFor("wc", dir)
-	if fresh == nil {
-		t.Fatal("expected re-eval after closure change")
-	}
-	if f, ok := fresh.Field("area"); !ok || len(f.Values) != 1 || f.Values[0] != "backend" {
-		t.Fatalf("closure change should re-evaluate, got %+v", fresh.Fields)
+	for _, want := range []string{"frontend", "backend"} {
+		writeFile(t, filepath.Join(dir, "schema.cue"), "package wccfg\ntags: [\""+want+"\"]\n")
+		schema, cfgErr := r.SchemaOrError(dir)
+		if cfgErr != nil {
+			t.Fatalf("evaluate: %v", cfgErr)
+		}
+		if f, ok := schema.Field("area"); !ok || len(f.Values) != 1 || f.Values[0] != want {
+			t.Fatalf("area = %+v, want %s", schema.Fields, want)
+		}
 	}
 }
 

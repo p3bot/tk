@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"cuelang.org/go/cue/cuecontext"
+
 	"github.com/p3bot/tk/internal/bodyedit"
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/frontmatter"
@@ -115,7 +117,7 @@ func (s *Server) overviewRow(reg *registry.Registry, res *reconcile.Result, name
 		driftName := ""
 		if cfgErr == nil && schema != nil {
 			driftName = schema.Name
-		} else if cueName, nameErr := scopeconfig.ReadName(s.app.Ctx, entry.Dir); nameErr == nil {
+		} else if cueName, nameErr := scopeconfig.ReadName(cuecontext.New(), entry.Dir); nameErr == nil {
 			driftName = cueName
 		}
 		if driftName != "" && driftName != name {
@@ -694,7 +696,7 @@ func (s *Server) inspectPage(reg *registry.Registry, p *index.Ticket) (inspectPa
 	}
 	var schema *scopeconfig.Schema
 	if entry, ok := reg.Scopes[p.Scope]; ok {
-		schema = s.rec.SchemaCached(p.Scope, entry.Dir)
+		schema = s.rec.SchemaOrNil(entry.Dir)
 	}
 	writable := rowWritable(schema, p.ParseError)
 	out := inspectPage{

@@ -502,6 +502,10 @@ func mapDesignError(err error) error {
 	if errors.As(err, &he) {
 		return he
 	}
+	var held *scopeconfig.HoldError
+	if errors.As(err, &held) {
+		return errConflict(held.Error())
+	}
 	var unk *design.UnknownStatusError
 	if errors.As(err, &unk) {
 		return errBadRequest(unk.Error())

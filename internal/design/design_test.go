@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"cuelang.org/go/cue/cuecontext"
-
 	"github.com/p3bot/tk/internal/frontmatter"
 	"github.com/p3bot/tk/internal/index"
 	"github.com/p3bot/tk/internal/reconcile"
@@ -168,7 +166,7 @@ func plainDeps(t *testing.T) (Deps, string) {
 	if err := os.WriteFile(filepath.Join(dir, "tk.cue"), []byte(cue), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return Deps{DB: db, Rec: reconcile.New(db, cuecontext.New())}, dir
+	return Deps{DB: db, Rec: reconcile.New(db)}, dir
 }
 
 func fenceChanged(t *testing.T, path string) (changed, created string) {

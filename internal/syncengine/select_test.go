@@ -29,7 +29,7 @@ func testDeps(t *testing.T, reg *registry.Registry) Deps {
 		StateDir: t.TempDir(),
 		Reg:      reg,
 		DB:       db,
-		Rec:      reconcile.New(db, ctx),
+		Rec:      reconcile.New(db),
 	}
 }
 

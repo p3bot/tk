@@ -387,19 +387,15 @@ func (d *DB) DeleteScope(scope string) error {
 		if _, err := tx.Exec(`DELETE FROM scope_meta WHERE scope = ?`, scope); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`DELETE FROM config_cache WHERE scope = ?`, scope); err != nil {
-			return err
-		}
 		return nil
 	})
 }
 
-// IndexedScopes returns scopes that currently have index rows, meta, or cache entries.
+// IndexedScopes returns scopes that currently have index rows or meta.
 func (d *DB) IndexedScopes() (map[string]bool, error) {
 	rows, err := d.sql.Query(`SELECT DISTINCT scope FROM tickets
                               UNION SELECT scope FROM designs
-                              UNION SELECT scope FROM scope_meta
-                              UNION SELECT scope FROM config_cache`)
+                              UNION SELECT scope FROM scope_meta`)
 	if err != nil {
 		return nil, err
 	}
@@ -437,36 +433,6 @@ type execer interface {
 func setLastIndexExec(e execer, scope string, ns int64) error {
 	_, err := e.Exec(`INSERT INTO scope_meta(scope, last_index) VALUES (?, ?)
                           ON CONFLICT(scope) DO UPDATE SET last_index = excluded.last_index`, scope, ns)
-	return err
-}
-
-// ConfigCacheEntry is a cached tk.cue evaluation (negative results cached too).
-type ConfigCacheEntry struct {
-	ClosureJSON string
-	SchemaJSON  string
-	ConfigError string
-}
-
-// ConfigCacheGet returns the cached config evaluation for a scope, if any.
-func (d *DB) ConfigCacheGet(scope string) (ConfigCacheEntry, bool, error) {
-	var e ConfigCacheEntry
-	err := d.sql.QueryRow(`SELECT closure_json, schema_json, config_error FROM config_cache WHERE scope = ?`, scope).
-		Scan(&e.ClosureJSON, &e.SchemaJSON, &e.ConfigError)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ConfigCacheEntry{}, false, nil
-	}
-	if err != nil {
-		return ConfigCacheEntry{}, false, err
-	}
-	return e, true, nil
-}
-
-// ConfigCacheSet stores a scope's config evaluation keyed by its closure.
-func (d *DB) ConfigCacheSet(scope string, e ConfigCacheEntry) error {
-	_, err := d.sql.Exec(`INSERT INTO config_cache(scope, closure_json, schema_json, config_error) VALUES (?, ?, ?, ?)
-                          ON CONFLICT(scope) DO UPDATE SET closure_json=excluded.closure_json,
-                              schema_json=excluded.schema_json, config_error=excluded.config_error`,
-		scope, e.ClosureJSON, e.SchemaJSON, e.ConfigError)
 	return err
 }
 

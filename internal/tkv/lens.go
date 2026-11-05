@@ -76,7 +76,7 @@ func (s *Server) finishLens(w http.ResponseWriter, r *http.Request, name string,
 
 	var inUse map[string]struct{}
 	if !clearing {
-		rec := reconcile.New(h.db, cueCtx)
+		rec := reconcile.New(h.db)
 		if _, err := rec.Reconcile(map[string]string{name: dir}, registeredSet(reg), nowNS()); err != nil {
 			return err
 		}

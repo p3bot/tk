@@ -45,7 +45,7 @@ func newOrderCmd(app *App) *cobra.Command {
 			"place against the scope-wide minimum/maximum valid order (every status, dir root\n" +
 			"and archive/); --before/--after name an in-scope neighbour that must exist and\n" +
 			"carry a valid order. Exactly one destination is required. An auto-commit scope\n" +
-			"self-commits the change when a git-root exists.",
+			"self-commits the change when a git-root exists. A hard hold refuses this write (exit 1).",
 		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runOrder(app, c, args[0], dest, scope)
@@ -108,5 +108,5 @@ func runOrder(app *App, c *cobra.Command, idArg string, dest orderDest, scopeFla
 		Lookup: lu,
 		Dest:   wd,
 	})
-	return emitWriteResult(c, res, err)
+	return emitWriteResult(c, res, holdExit(e, err))
 }

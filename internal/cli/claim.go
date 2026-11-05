@@ -29,5 +29,5 @@ func runClaim(app *App, c *cobra.Command, scopeFlag string, noLens bool) error {
 		Dir:    resolved.Entry.Dir,
 		NoLens: noLens,
 	})
-	return emitWriteResult(c, res, holdExit(e, resolved.Name, err))
+	return emitWriteResult(c, res, holdExit(e, err))
 }

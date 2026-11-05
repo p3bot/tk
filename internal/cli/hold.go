@@ -7,88 +7,104 @@ import (
 
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/token"
-	"github.com/p3bot/tk/internal/writeengine"
 )
 
-// warnHold prints one scope_hold line when <dir>'s evaluated tk.cue has hold
-// true. A second call for the same scope in this command is quiet. Load failure
+// warnHold prints the scope_hold line when <dir>'s evaluated tk.cue has a hold.
+// A second call for the same scope in this command is quiet. Load failure
 // prints nothing: config_unparseable owns that scope. Inside a hold batch the
-// line is held until finishHoldBatch.
+// row waits for warnHoldSet to print the block.
 func (e *engine) warnHold(c *cobra.Command, scope, dir string) {
 	if c == nil || e == nil || scope == "" || dir == "" {
 		return
 	}
-	if e.holdSeen[scope] {
+	if _, seen := e.holdSeen[scope]; seen {
 		return
 	}
-	schema, _, err := scopeconfig.LoadWithClosure(e.app.Ctx, dir)
-	if err != nil || !scopeconfig.Held(schema) {
+	schema, err := scopeconfig.Load(e.app.Ctx, dir)
+	if err != nil {
+		return
+	}
+	h := scopeconfig.HoldOf(schema)
+	if h == nil {
 		return
 	}
 	if e.holdSeen == nil {
-		e.holdSeen = map[string]bool{}
+		e.holdSeen = map[string]scopeconfig.Hold{}
 	}
-	e.holdSeen[scope] = true
+	e.holdSeen[scope] = *h
 	if e.holdBatch {
-		e.holdPending = append(e.holdPending, scope)
+		e.holdPending = append(e.holdPending, token.HoldRow{Scope: scope, Type: h.Type, Reason: h.Reason})
 		return
 	}
-	name := ""
-	if e.holdNamed {
-		name = scope
-	}
-	stderrln(c, token.FormatScopeHold(name))
+	stderrln(c, token.FormatScopeHold(h.Type, h.Reason))
 }
 
-// warnHoldTargets warns for each scope in targets. More than one scope names
-// each held scope. Two or more held scopes share one line.
+// warnHoldTargets warns for each scope in targets. See warnHoldSet.
 func (e *engine) warnHoldTargets(c *cobra.Command, targets map[string]string) {
 	e.warnHoldSet(c, scopeNames(targets), targets)
 }
 
-// warnHoldSet warns for names in walk order. One scope in the set stays
-// unnamed. More than one scope names each held scope, and two or more held
-// scopes share one line.
+// warnHoldSet warns for names. One scope prints the single line. More than one
+// prints the block when at least one is held.
 func (e *engine) warnHoldSet(c *cobra.Command, names []string, dirs map[string]string) {
-	if len(names) > 1 {
-		e.holdNamed = true
-		e.holdBatch = true
-	}
+	e.holdBatch = len(names) > 1
+	e.holdMulti = e.holdMulti || e.holdBatch
 	for _, name := range names {
 		e.warnHold(c, name, dirs[name])
-	}
-	e.finishHoldBatch(c)
-}
-
-// finishHoldBatch emits the collected scope_hold line. One held scope keeps
-// the named sentence. Two or more share one line.
-func (e *engine) finishHoldBatch(c *cobra.Command) {
-	if e == nil {
-		return
 	}
 	e.holdBatch = false
 	if len(e.holdPending) == 0 {
 		return
 	}
-	names := e.holdPending
+	stderrln(c, token.FormatScopeHolds(e.holdPending))
 	e.holdPending = nil
-	stderrln(c, token.FormatScopeHolds(names))
 }
 
 // holdExit maps a hold refusal to exit 1. The line is printed here only when
-// this command has not already printed scope_hold. A hold that was already on
-// at resolve time was warned then; a hold that landed during refresh was not.
-func holdExit(e *engine, scope string, err error) error {
-	var hold *writeengine.HoldError
+// this command has not already reported that state of that scope. A hold that
+// landed or changed after resolve has not been reported, and it is why this failed.
+// A multi-scope command prints it as the block, so the held scope is named.
+func holdExit(e *engine, err error) error {
+	var hold *scopeconfig.HoldError
 	if !errors.As(err, &hold) {
 		return err
 	}
-	warned := e != nil && e.holdSeen[scope]
-	return &ExitError{Code: exitFailure, Plain: true, AlreadyPrinted: warned, Err: hold}
+	warned := false
+	var out error = hold
+	if e != nil {
+		seen, ok := e.holdSeen[hold.Scope]
+		warned = ok && seen == hold.Hold
+		if e.holdMulti {
+			out = &holdBlockError{hold: hold}
+		}
+	}
+	return &ExitError{Code: exitFailure, Plain: true, AlreadyPrinted: warned, Err: out}
+}
+
+// holdBlockError renders a hold refusal as the one-row scope_hold: block.
+type holdBlockError struct {
+	hold *scopeconfig.HoldError
+}
+
+func (e *holdBlockError) Error() string {
+	return token.FormatScopeHolds([]token.HoldRow{{Scope: e.hold.Scope, Type: e.hold.Hold.Type, Reason: e.hold.Hold.Reason}})
+}
+
+func (e *holdBlockError) Unwrap() error { return e.hold }
+
+// refuseEditorHold stops tk edit and tk design edit on a hard scope. They hold
+// no lock while the editor runs, so this check cannot live in an engine write.
+// An unusable tk.cue does not refuse: the editor may be how it gets repaired.
+func (e *engine) refuseEditorHold(scope, dir string) error {
+	schema, cfgErr := e.rec.SchemaOrError(dir)
+	if cfgErr != nil {
+		return nil
+	}
+	return holdExit(e, scopeconfig.RefuseHard(scope, schema))
 }
 
 // warnRebindHold warns once when the scope's current directory or the directory
-// being bound is on hold. One scope, so the line is unnamed. An unknown name
+// being bound is on hold. One scope, so this is the single line. An unknown name
 // still warns from dir when that directory is held.
 func warnRebindHold(app *App, c *cobra.Command, name, dir string) error {
 	e, err := app.openEngine(c)

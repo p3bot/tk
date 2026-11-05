@@ -27,7 +27,8 @@ func newDesignCmd(app *App) *cobra.Command {
 			"get, edit, mark, meta, and rehome, with no path printed.\n" +
 			"create and edit do not self-commit. mark, meta add|remove, and rehome self-commit\n" +
 			"on a tk-driven scope and do not push. Body text under the H1 is a direct file edit.\n" +
-			"edit and create --edit open $EDITOR; they do not rewrite the fence.",
+			"edit and create --edit open $EDITOR; they do not rewrite the fence.\n" +
+			"A hard hold refuses create, edit, mark, meta add|remove, and rehome (exit 1).",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -63,7 +64,7 @@ func newDesignCreateCmd(app *App) *cobra.Command {
 			"$EDITOR convenience: after a successful write it opens that path with the\n" +
 			"same editor contract as tk design edit. An unset $EDITOR or a non-zero editor\n" +
 			"exit is non-zero and leaves the scaffold. A create that fails before the file\n" +
-			"exists does not launch the editor.",
+			"exists does not launch the editor. A hard hold refuses this write (exit 1).",
 		Args: exactArgs("<title>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDesignCreate(app, c, args[0], scope, edit)
@@ -84,7 +85,8 @@ func newDesignEditCmd(app *App) *cobra.Command {
 			"self-commit. An unparseable fence is opened so it can be repaired in place.\n" +
 			"A short id held by two design files refuses, prints no path, and does not\n" +
 			"launch the editor. $EDITOR may include flags. An unset $EDITOR or a non-zero\n" +
-			"editor exit is a non-zero command.",
+			"editor exit is a non-zero command. A hard hold refuses before the editor opens\n" +
+			"(exit 1).",
 		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDesignEdit(app, c, args[0], scope)
@@ -167,7 +169,7 @@ func newDesignMarkCmd(app *App) *cobra.Command {
 			"rewritten only when the status changes. A same-status mark leaves the key\n" +
 			"alone and does not add it. A ticket status is a usage error. On a tk-driven\n" +
 			"scope, mark self-commits and does not push. A short id shared by two design\n" +
-			"files refuses and does not write.",
+			"files refuses and does not write. A hard hold refuses this write (exit 1).",
 		Args: exactArgs("<status>", "<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDesignMark(app, c, args[0], args[1], scope)
@@ -187,7 +189,7 @@ func newDesignMetaCmd(app *App) *cobra.Command {
 			"removes the key. A duplicate add, and a remove of an absent value, are\n" +
 			"idempotent. There is no other design meta key.\n" +
 			"These writes self-commit on a tk-driven scope. A short id shared by two\n" +
-			"design files refuses and does not write.",
+			"design files refuses and does not write. A hard hold refuses these writes (exit 1).",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -216,7 +218,8 @@ func newDesignRehomeCmd(app *App) *cobra.Command {
 			"writing. A short id held by two source designs refuses, prints no path, and does\n" +
 			"not write. A root that contained a path this command wrote or removed self-commits\n" +
 			"when that root is tk-driven. Rehome does not push. Scopes that share a git root\n" +
-			"and disagree on autoCommit refuse with auto_commit_mismatch and do not write.",
+			"and disagree on autoCommit refuse with auto_commit_mismatch and do not write.\n" +
+			"A hard hold on the source or dest refuses (exit 1).",
 		Args: exactArgs("<id>", "<dest-scope>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runDesignRehome(app, c, args[0], args[1], scope)
@@ -270,7 +273,7 @@ func runDesignCreate(app *App, c *cobra.Command, title, scopeFlag string, edit b
 		Dir:   resolved.Entry.Dir,
 		Title: title,
 	})
-	if emitErr := emitDesign(c, res, err); emitErr != nil {
+	if emitErr := emitDesign(c, res, holdExit(e, err)); emitErr != nil {
 		return emitErr
 	}
 	if !edit {
@@ -298,6 +301,9 @@ func runDesignEdit(app *App, c *cobra.Command, idArg, scopeFlag string) error {
 	writeDesignParseCount(c, res.Unparseable)
 	if res.Parse != nil {
 		stderrln(c, res.Parse.ReadLine())
+	}
+	if err := e.refuseEditorHold(in.Scope, in.Dir); err != nil {
+		return err
 	}
 	fields, err := editorArgv("tk design edit")
 	if err != nil {
@@ -388,13 +394,12 @@ func runDesignMark(app *App, c *cobra.Command, status, idArg, scopeFlag string) 
 	}
 	defer e.close()
 	res, err := design.Mark(e.designDeps(c), design.MarkInput{IDInput: in, Status: status})
-	return emitDesign(c, res, err)
+	return emitDesign(c, res, holdExit(e, err))
 }
 
 func runDesignRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag string) error {
-	// Resolve without warning. The source and destination are both known
-	// before any scope_hold line, so a second scope is named and one scope is not.
-	// Two held scopes share one line.
+	// Resolve without warning: the source and destination are both known before
+	// any scope_hold output, so two scopes print the block and one prints the line.
 	e, in, err := eDesignID(app, nil, idArg, scopeFlag)
 	if err != nil {
 		return err
@@ -412,7 +417,7 @@ func runDesignRehome(app *App, c *cobra.Command, idArg, destScope, scopeFlag str
 	}
 	e.warnHoldSet(c, names, dirs)
 	res, err := design.Rehome(e.designDeps(c), rehome)
-	return emitDesign(c, res, err)
+	return emitDesign(c, res, holdExit(e, err))
 }
 
 func runDesignMeta(app *App, c *cobra.Command, idArg, target, scopeFlag string, add bool) error {
@@ -422,7 +427,7 @@ func runDesignMeta(app *App, c *cobra.Command, idArg, target, scopeFlag string, 
 	}
 	defer e.close()
 	res, err := design.MetaAddRemove(e.designDeps(c), design.MetaInput{IDInput: in, Add: add, Target: target})
-	return emitDesign(c, res, err)
+	return emitDesign(c, res, holdExit(e, err))
 }
 
 func eDesignID(app *App, c *cobra.Command, idArg, scopeFlag string) (*engine, design.IDInput, error) {

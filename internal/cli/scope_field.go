@@ -344,11 +344,9 @@ func refuseStripReservedKey(name string) error {
 	return nil
 }
 
-// loadScopeSchema evaluates the scope the same way reconcile does (package
-// import closure), not single-file CompileBytes. Multi-file package configs
-// with cross-file refs (e.g. values: tags in a sibling .cue) must work here.
+// loadScopeSchema evaluates the scope and wraps a config error as config_unparseable.
 func loadScopeSchema(app *App, scope, dir string) (*scopeconfig.Schema, error) {
-	schema, _, err := scopeconfig.LoadWithClosure(app.Ctx, dir)
+	schema, err := scopeconfig.Load(app.Ctx, dir)
 	if err != nil {
 		if ce, ok := scopeconfig.AsConfigError(err); ok {
 			return nil, fmt.Errorf("%s", token.Line(token.ConfigUnparseable,

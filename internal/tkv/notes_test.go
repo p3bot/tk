@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"cuelang.org/go/cue/cuecontext"
+
 	"github.com/p3bot/tk/internal/notes"
 	"github.com/p3bot/tk/internal/registry"
 	"github.com/p3bot/tk/internal/scopefile"
@@ -937,7 +939,7 @@ func TestPOSTNoteUseAndCreateWithoutIndex(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("use with closed index: %d %s", w.Code, w.Body.String())
 	}
-	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	store := registry.NewStore(cuecontext.New(), app.ConfigDir)
 	reg, err := store.Load()
 	if err != nil {
 		t.Fatal(err)

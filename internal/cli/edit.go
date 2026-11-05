@@ -17,7 +17,7 @@ func newEditCmd(app *App) *cobra.Command {
 		Long: "Resolve an id to its path and open it in $EDITOR for human editing. It prints\n" +
 			"nothing on success (not a path-hand-off verb), never rewrites frontmatter, and\n" +
 			"never self-commits — an editor save is an ordinary direct edit. It may open a\n" +
-			"parse_error path for repair.",
+			"parse_error path for repair. A hard hold refuses before the editor opens (exit 1).",
 		Args: exactArgs("<id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			return runEdit(app, c, args[0], scope)
@@ -43,6 +43,9 @@ func runEdit(app *App, c *cobra.Command, idArg, scope string) error {
 	}
 	p := r.rows[0]
 	if err := ensureFileExists(p); err != nil {
+		return err
+	}
+	if err := e.refuseEditorHold(r.scope, e.reg.Scopes[r.scope].Dir); err != nil {
 		return err
 	}
 

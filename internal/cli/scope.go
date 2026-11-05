@@ -12,7 +12,7 @@ func newScopeCmd(app *App) *cobra.Command {
 			"administration registers scopes on this machine, rebinds their paths, lists\n" +
 			"them, edits custom field declarations (field list|set|unset), reads or\n" +
 			"sets the stored autoCommit bool (auto-commit), and reads or sets the\n" +
-			"per-scope hold bool (hold). Bare `tk scope` runs `list`.",
+			"per-scope hold type and reason (hold). Bare `tk scope` runs `list`.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) > 0 {

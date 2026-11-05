@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"cuelang.org/go/cue/cuecontext"
+
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -25,7 +27,7 @@ func (a *App) updateConfig(fn func(*tkvconf.Config) error) error {
 	if err != nil {
 		return err
 	}
-	return tkvconf.Update(a.cue(), dir, fn)
+	return tkvconf.Update(cuecontext.New(), dir, fn)
 }
 
 func (a *App) listenCmd() *cobra.Command {

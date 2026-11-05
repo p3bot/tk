@@ -81,6 +81,12 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 
 	src := sideFrom(in.SourceScope, srcDir, res.Schema(in.SourceScope))
 	dest := sideFrom(in.DestScope, destDir, res.Schema(in.DestScope))
+	if err := scopeconfig.RefuseHard(src.name, src.schema); err != nil {
+		return Result{}, err
+	}
+	if err := scopeconfig.RefuseHard(dest.name, dest.schema); err != nil {
+		return Result{}, err
+	}
 	if err := gitstate.CheckMidRebase(ctxOf(deps), src.name, src.autoCommit, src.root, src.hasRoot); err != nil {
 		return Result{}, err
 	}
@@ -98,6 +104,11 @@ func Rehome(deps Deps, in RehomeInput) (Result, error) {
 	srcModel, srcBody, err := ReadTicketFile(row.Path)
 	if err != nil {
 		return Result{}, err
+	}
+	if srcModel.Status == status.InProgress {
+		if err := scopeconfig.RefuseStart(dest.name, dest.schema); err != nil {
+			return Result{}, err
+		}
 	}
 	oldID := srcModel.ID
 	if !id.IsFullTicketID(oldID) || id.ScopeOfFullID(oldID) != in.SourceScope {

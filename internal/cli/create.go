@@ -31,7 +31,9 @@ func newCreateCmd(app *App) *cobra.Command {
 			"tk edit (process stdio; unset $EDITOR or a non-zero editor exit is non-zero and\n" +
 			"does not roll back the scaffold). create reserves the id and never self-commits\n" +
 			"in any mode; an editor save is an ordinary direct file edit. Git durability is\n" +
-			"the next tk sync (auto-commit) or host commit.",
+			"the next tk sync (auto-commit) or host commit. A soft hold refuses status\n" +
+			"in-progress, and a hard hold refuses every create, including --edit (exit 1, no\n" +
+			"write, no editor).",
 		Args: rangeArgs(1, 2, "<title>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			st := ""
@@ -74,7 +76,7 @@ func runCreate(app *App, c *cobra.Command, titleArg, statusArg, scopeFlag string
 		Status: statusArg,
 		Tags:   tags,
 	})
-	if emitErr := emitWriteResult(c, res, err); emitErr != nil {
+	if emitErr := emitWriteResult(c, res, holdExit(e, err)); emitErr != nil {
 		return emitErr
 	}
 	if !edit {

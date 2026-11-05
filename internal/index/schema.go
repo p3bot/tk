@@ -1,7 +1,7 @@
 package index
 
 // SchemaVersion is the on-disk schema version. A mismatch triggers full rebuild (no migrations).
-const SchemaVersion = 8
+const SchemaVersion = 10
 
 // schemaSQL is the complete DDL for a fresh index. Path is the physical key so
 // duplicate ids are two rows and archive moves are delete+insert. Each FTS
@@ -104,17 +104,10 @@ CREATE TABLE scope_meta (
     scope      TEXT PRIMARY KEY,
     last_index INTEGER NOT NULL DEFAULT 0
 );
-
-CREATE TABLE config_cache (
-    scope        TEXT PRIMARY KEY,
-    closure_json TEXT NOT NULL DEFAULT '',
-    schema_json  TEXT NOT NULL DEFAULT '',
-    config_error TEXT NOT NULL DEFAULT ''
-);
 `
 
 // SchemaText is the human-facing description for tk query --schema (not a stable API).
-const SchemaText = `tk index schema (version 8)
+const SchemaText = `tk index schema (version 10)
 
 NOT A STABLE API: the index is a derived cache, rebuilt on any schema_version
 bump, and may reshape between releases with no migration. Do not script against
@@ -162,8 +155,4 @@ design_fts(title, body)
 
 scope_meta(scope, last_index)
     Per-scope last reconcile timestamp (unix nanoseconds).
-
-config_cache(scope, closure_json, schema_json, config_error)
-    Cached tk.cue evaluation. closure_json records the (path, mtime, size) of every
-    file in the config import closure; a change to any invalidates the cached schema.
 `

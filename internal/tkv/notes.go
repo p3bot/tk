@@ -474,7 +474,7 @@ func (s *Server) notesDeps(ctx context.Context, reg *registry.Registry, h *index
 		StateDir:  stateDir,
 		ConfigDir: configDir,
 		Reg:       reg,
-		Rec:       reconcile.New(h.db, cueCtx),
+		Rec:       reconcile.New(h.db),
 	}, nil
 }
 

@@ -35,7 +35,7 @@ type preparedMark struct {
 // in-progress (any named member currently todo) is the claim workflow once
 // for the argv, not once per id.
 func Mark(deps Deps, r Reporter, in MarkInput) (Result, error) {
-	sess, err := Begin(deps, in.Scope, in.Dir)
+	sess, err := beginStatusWrite(deps, in.Scope, in.Dir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -45,8 +45,8 @@ func Mark(deps Deps, r Reporter, in MarkInput) (Result, error) {
 	if !status.IsKnown(in.NewStatus, custom) {
 		return Result{}, &UnknownStatusError{Status: in.NewStatus, Scope: in.Scope}
 	}
-	if in.NewStatus == status.InProgress && scopeconfig.Held(sess.Schema) {
-		return Result{}, &HoldError{}
+	if err := sess.refuseStatusHold(in.NewStatus); err != nil {
+		return Result{}, err
 	}
 	if err := sess.CheckMidRebase(); err != nil {
 		return Result{}, err

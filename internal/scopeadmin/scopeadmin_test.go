@@ -562,3 +562,33 @@ func mustAutoCommit(t *testing.T, ctx *cue.Context, dir string) bool {
 	}
 	return s.AutoCommit
 }
+
+func writePackageScope(t *testing.T, dir, name, sibling string) {
+	t.Helper()
+	cfg := "package cfg\nname: \"" + name + "\"\nautoCommit: false\nfields: {area: {type: \"string\", values: tags}}\n"
+	for file, body := range map[string]string{"tk.cue": cfg, "extra.cue": "package cfg\ntags: [\"x\"]\n" + sibling} {
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestImportAndListReadTheWholePackage(t *testing.T) {
+	h := newHarness(t)
+	dir := t.TempDir()
+	writePackageScope(t, dir, "pk", "hold: {type: \"hard\", reason: \"R\"}\n")
+	if _, err := h.admin.Import(ImportParams{Dir: dir}); err != nil {
+		t.Fatalf("Import of a cross-file package: %v", err)
+	}
+
+	listing, err := h.admin.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listing.Diagnostics) != 0 {
+		t.Errorf("diagnostics = %v", listing.Diagnostics)
+	}
+	if len(listing.Rows) != 1 || listing.Rows[0].Hold != token.HoldHard || listing.Rows[0].Reason != "R" {
+		t.Fatalf("rows = %+v", listing.Rows)
+	}
+}

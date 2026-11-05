@@ -113,7 +113,7 @@ func allSelection(deps Deps) Selection {
 				fmt.Sprintf("%s: dir %s is not reachable — skipped", scope, dir)))
 			continue
 		}
-		schema, cfgErr := deps.Rec.SchemaOrError(scope, dir)
+		schema, cfgErr := deps.Rec.SchemaOrError(dir)
 		if cfgErr != nil {
 			root, hasRoot := scopefile.GitRoot(dir)
 			badConfigs = append(badConfigs, badConfig{scope: scope, dir: cfgErr.Dir, reason: cfgErr.Reason, root: root, hasRoot: hasRoot})
@@ -161,7 +161,7 @@ func autoCommitParticipants(deps Deps, root string) []Participant {
 		if !ok || sgr != root {
 			continue
 		}
-		schema, cfgErr := deps.Rec.SchemaOrError(scope, dir)
+		schema, cfgErr := deps.Rec.SchemaOrError(dir)
 		if cfgErr != nil || schema == nil || !schema.AutoCommit {
 			continue
 		}

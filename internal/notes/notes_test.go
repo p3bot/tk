@@ -58,7 +58,7 @@ func openEnv(t *testing.T, name, dir, root string) *env {
 			StateDir:  t.TempDir(),
 			ConfigDir: configDir,
 			Reg:       reg,
-			Rec:       reconcile.New(db, cue),
+			Rec:       reconcile.New(db),
 		},
 		name: name,
 		dir:  dir,

@@ -47,8 +47,9 @@ type Field struct {
 type Schema struct {
 	Name       string
 	AutoCommit bool
-	// Hold is the optional per-scope pause. Omitted in tk.cue is false.
-	Hold bool
+	// Hold is the optional per-scope pause. Nil means off, so a reason on a scope
+	// that is not held cannot be represented.
+	Hold *Hold
 	// Statuses maps declared custom status names to categories (built-ins live in package status).
 	Statuses map[string]status.Category
 	// Fields maps declared custom field names to type, optional required, and optional enum.
@@ -67,11 +68,6 @@ func (s *Schema) CustomStatuses() map[string]status.Category {
 // A nil schema is false.
 func SchemaAutoCommit(s *Schema) bool {
 	return s != nil && s.AutoCommit
-}
-
-// Held reports whether the scope is on hold. A nil schema is not held.
-func Held(s *Schema) bool {
-	return s != nil && s.Hold
 }
 
 // ConfigError marks a tk.cue that cannot be trusted (absent, uncompilable, or schema-invalid).
@@ -96,7 +92,6 @@ func AsConfigError(err error) (*ConfigError, bool) {
 type rawConfig struct {
 	Name       string               `json:"name"`
 	AutoCommit *bool                `json:"autoCommit"`
-	Hold       *bool                `json:"hold"` // nil = omitted = false
 	Statuses   map[string]rawStatus `json:"statuses"`
 	Fields     map[string]rawField  `json:"fields"`
 }
@@ -109,30 +104,6 @@ type rawField struct {
 	Type     string   `json:"type"`
 	Required *bool    `json:"required"` // nil = optional (false)
 	Values   []string `json:"values"`
-}
-
-// Load reads and validates <dir>/tk.cue. Every unusable state returns *ConfigError.
-func Load(ctx *cue.Context, dir string) (*Schema, error) {
-	p := filepath.Join(dir, "tk.cue")
-	data, err := os.ReadFile(p)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, &ConfigError{Dir: dir, Reason: "tk.cue is absent"}
-		}
-		return nil, &ConfigError{Dir: dir, Reason: fmt.Sprintf("cannot read tk.cue: %v", err)}
-	}
-
-	v := ctx.CompileBytes(data, cue.Filename(p))
-	if err := v.Err(); err != nil {
-		return nil, &ConfigError{Dir: dir, Reason: cueReason(err)}
-	}
-
-	var raw rawConfig
-	if err := v.Decode(&raw); err != nil {
-		return nil, &ConfigError{Dir: dir, Reason: cueReason(err)}
-	}
-
-	return validate(dir, v, &raw)
 }
 
 // ReadName extracts only the authoritative name, succeeding even when the fuller
@@ -160,7 +131,7 @@ func ReadName(ctx *cue.Context, dir string) (string, error) {
 	return name, nil
 }
 
-// Evaluate validates an already-built tk.cue value into a Schema (shared tail of Load and LoadWithClosure).
+// Evaluate validates an already-built tk.cue value into a Schema (the shared tail of Load).
 func Evaluate(dir string, v cue.Value) (*Schema, error) {
 	if err := v.Err(); err != nil {
 		return nil, &ConfigError{Dir: dir, Reason: cueReason(err)}
@@ -188,10 +159,9 @@ func validate(dir string, v cue.Value, raw *rawConfig) (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	hold := false
-	if raw.Hold != nil {
-		hold = *raw.Hold
+	hold, err := decodeHold(dir, v)
+	if err != nil {
+		return nil, err
 	}
 	return &Schema{
 		Name:       raw.Name,

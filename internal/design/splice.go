@@ -43,7 +43,7 @@ func Splice(deps Deps, in SpliceInput) (Result, error) {
 		return Result{}, err
 	}
 	defer release()
-	if err := deps.refuseUnusable(in.Scope, in.Dir); err != nil {
+	if err := deps.refuseUnwritable(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
 	if err := deps.refuseMidRebase(in.Scope, in.Dir); err != nil {
@@ -79,5 +79,5 @@ func Splice(deps Deps, in SpliceInput) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{ID: f.ID, Path: abs, SyncNeeded: deps.syncNeeded(in.Scope, in.Dir)}, nil
+	return Result{ID: f.ID, Path: abs, SyncNeeded: deps.syncNeeded(in.Dir)}, nil
 }

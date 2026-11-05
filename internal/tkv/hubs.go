@@ -50,7 +50,7 @@ func (s *Server) doctor(w http.ResponseWriter, r *http.Request) error {
 	}
 	lines, err := integrity.Diagnose(integrity.Deps{
 		Ctx:      r.Context(),
-		Cue:      s.app.cue(),
+		Cue:      cuecontext.New(),
 		StateDir: stateDir,
 		Reg:      reg,
 		DB:       s.db,
@@ -132,7 +132,7 @@ func (s *Server) postDoctorReindex(w http.ResponseWriter, r *http.Request) error
 		_ = db.Close()
 		return err
 	}
-	rec := reconcile.New(db, cueCtx)
+	rec := reconcile.New(db)
 	if _, err := rec.Reconcile(allTargets(reg), registeredSet(reg), nowNS()); err != nil {
 		_ = db.Close()
 		return err

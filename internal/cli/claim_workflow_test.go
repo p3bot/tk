@@ -587,7 +587,7 @@ func TestPushRootIfAheadDoesNotRePreflight(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 	deps := syncengine.Deps{
 		Ctx: t.Context(), Cue: m.app.Ctx, StateDir: m.app.StateDir,
-		Reg: reg, DB: db, Rec: reconcile.New(db, m.app.Ctx),
+		Reg: reg, DB: db, Rec: reconcile.New(db),
 	}
 	var errb strings.Builder
 	if err := syncengine.PushRootIfAhead(deps, pushTestRep{err: &errb}, syncengine.RootTarget(deps, m.clone)); err != nil {

@@ -101,7 +101,7 @@ func (s *Server) writeDeps(ctx context.Context, reg *registry.Registry, h *index
 		ConfigDir: configDir,
 		Reg:       reg,
 		DB:        h.db,
-		Rec:       reconcile.New(h.db, cueCtx),
+		Rec:       reconcile.New(h.db),
 	}, nil
 }
 
@@ -578,7 +578,7 @@ func mapWriteError(res writeengine.Result, err error) error {
 	if errors.As(err, &he) {
 		return he
 	}
-	var held *writeengine.HoldError
+	var held *scopeconfig.HoldError
 	if errors.As(err, &held) {
 		return errConflict(held.Error())
 	}

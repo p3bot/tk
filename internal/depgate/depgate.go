@@ -174,7 +174,7 @@ func (g *Gate) schema(scope string) *scopeconfig.Schema {
 	var s *scopeconfig.Schema
 	if g.reg != nil && g.rec != nil {
 		if entry, ok := g.reg.Scopes[scope]; ok {
-			s = g.rec.SchemaCached(scope, entry.Dir)
+			s = g.rec.SchemaOrNil(entry.Dir)
 		}
 	}
 	g.schemas[scope] = s

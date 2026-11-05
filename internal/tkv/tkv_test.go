@@ -31,7 +31,6 @@ import (
 func newTestApp(t *testing.T) *App {
 	t.Helper()
 	return &App{
-		Ctx:       cuecontext.New(),
 		ConfigDir: t.TempDir(),
 		StateDir:  t.TempDir(),
 		Cwd:       t.TempDir(),
@@ -48,7 +47,7 @@ func newTestApp(t *testing.T) *App {
 
 func registerScope(t *testing.T, app *App, name, dir, root string) {
 	t.Helper()
-	store := registry.NewStore(app.Ctx, app.ConfigDir)
+	store := registry.NewStore(cuecontext.New(), app.ConfigDir)
 	reg, err := store.Load()
 	if err != nil {
 		t.Fatal(err)

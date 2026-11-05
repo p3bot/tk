@@ -27,6 +27,7 @@ var pulseKeys = []string{
 	"resolved",
 	"mode",
 	"hold",
+	"hold_reason",
 	"lens",
 	"note",
 	"total",
@@ -85,16 +86,17 @@ func newPulseCmd(app *App) *cobra.Command {
 			"are usage exit 2. The attribute path builds the same pulse map as the full\n" +
 			"dashboard (same reconcile, next selection, counts, integrity, stderr tokens).\n" +
 			"\n" +
-			"Locked keys (order fixed): scope, dir, resolved, mode, hold, lens, note, total,\n" +
-			"todo, in-progress, review, blocked, draft, triaged, backlog, done, cancelled, next,\n" +
+			"Locked keys (order fixed): scope, dir, resolved, mode, hold, hold_reason, lens,\n" +
+			"note, total, todo, in-progress, review, blocked, draft, triaged, backlog, done, cancelled, next,\n" +
 			"claimed, blocked_ids, dangling, integrity, uncommitted, designs,\n" +
 			"design_draft, design_accepted, design_decomposed, design_superseded.\n" +
 			"\n" +
 			"resolved is how the scope was chosen: flag (--scope), env (TK_SCOPE), or cwd\n" +
 			"(longest-prefix code-root).\n" +
 			"\n" +
-			"hold is true when tk.cue sets hold, otherwise false (including an unusable\n" +
-			"schema). `tk pulse hold` prints that bare bool.\n" +
+			"hold is off, soft, or hard, and off on an unusable schema. hold_reason is the\n" +
+			"hold reason, empty when there is none or the schema is unusable. `tk pulse hold`\n" +
+			"and `tk pulse hold_reason` print those bare values.\n" +
 			"\n" +
 			"mode is one of tk-driven | repo-driven | plain-files only. With a known schema:\n" +
 			"autoCommit true → tk-driven (with or without a git-root — the planned no-repo\n" +
@@ -200,13 +202,14 @@ func runPulse(app *App, c *cobra.Command, scopeFlag, key string) error {
 	}
 
 	pulse := map[string]string{
-		"scope":    scope,
-		"dir":      absDir,
-		"resolved": resolved.Source,
-		"mode":     mode,
-		"hold":     strconv.FormatBool(scopeconfig.Held(schema)),
-		"lens":     strings.Join(lens, " "),
-		"note":     notePath,
+		"scope":       scope,
+		"dir":         absDir,
+		"resolved":    resolved.Source,
+		"mode":        mode,
+		"hold":        scopeconfig.HoldLabel(schema),
+		"hold_reason": scopeconfig.HoldReason(schema),
+		"lens":        strings.Join(lens, " "),
+		"note":        notePath,
 	}
 
 	sp, err := e.db.ScopePulse(scope, lens)

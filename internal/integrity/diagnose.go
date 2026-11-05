@@ -447,7 +447,7 @@ func (d *diagnoser) targetSchema(scope string) *scopeconfig.Schema {
 	}
 	var s *scopeconfig.Schema
 	if entry, ok := d.deps.Reg.Scopes[scope]; ok {
-		s = d.deps.Rec.SchemaCached(scope, entry.Dir)
+		s = d.deps.Rec.SchemaOrNil(entry.Dir)
 	}
 	d.schemaFor[scope] = s
 	return s
@@ -525,7 +525,7 @@ func (d *diagnoser) repoHealth(scope, dir string, schema *scopeconfig.Schema) er
 func (d *diagnoser) rootPreflight(root string) {
 	seenTrue, seenFalse := false, false
 	for _, name := range d.siblingScopes(root) {
-		schema, cfgErr := d.deps.Rec.SchemaOrError(name, d.deps.Reg.Scopes[name].Dir)
+		schema, cfgErr := d.deps.Rec.SchemaOrError(d.deps.Reg.Scopes[name].Dir)
 		if cfgErr != nil {
 			d.configUnparseable(name, cfgErr)
 			continue

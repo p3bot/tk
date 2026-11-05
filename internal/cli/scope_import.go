@@ -38,8 +38,10 @@ func newScopeImportCmd(app *App) *cobra.Command {
 				p.CodeRootGiven = true
 			}
 
-			if schema, _, loadErr := scopeconfig.LoadWithClosure(app.Ctx, dir); loadErr == nil && scopeconfig.Held(schema) {
-				stderrln(c, token.FormatScopeHold(""))
+			if schema, loadErr := scopeconfig.Load(app.Ctx, dir); loadErr == nil {
+				if h := scopeconfig.HoldOf(schema); h != nil {
+					stderrln(c, token.FormatScopeHold(h.Type, h.Reason))
+				}
 			}
 			registered, err := app.admin().Import(p)
 			if err != nil {

@@ -76,7 +76,7 @@ func startRebase(t *testing.T, repo, onto string) bool {
 func freshLoader() SchemaLoader {
 	cctx := cuecontext.New()
 	return func(dir string) (*scopeconfig.Schema, error) {
-		s, _, err := scopeconfig.LoadWithClosure(cctx, dir)
+		s, err := scopeconfig.Load(cctx, dir)
 		return s, err
 	}
 }

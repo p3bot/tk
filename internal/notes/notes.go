@@ -177,19 +177,19 @@ func rmdirNotesIfEmpty(dir string) {
 // Quiet when tk.cue is unusable (notes stay usable) or the scope is not tk-driven.
 func (d Deps) refuseMidRebase(scope, dir string) error {
 	root, hasRoot := scopefile.GitRoot(dir)
-	schema, cfgErr := d.Rec.SchemaOrError(scope, dir)
+	schema, cfgErr := d.Rec.SchemaOrError(dir)
 	if cfgErr != nil {
 		return nil
 	}
 	return gitstate.CheckMidRebase(d.ctx(), scope, scopeconfig.SchemaAutoCommit(schema), root, hasRoot)
 }
 
-func (d Deps) syncNeeded(scope, dir string) string {
+func (d Deps) syncNeeded(dir string) string {
 	root, hasRoot := scopefile.GitRoot(dir)
 	if !hasRoot {
 		return ""
 	}
-	schema, cfgErr := d.Rec.SchemaOrError(scope, dir)
+	schema, cfgErr := d.Rec.SchemaOrError(dir)
 	if cfgErr != nil || !scopeconfig.SchemaAutoCommit(schema) {
 		return ""
 	}

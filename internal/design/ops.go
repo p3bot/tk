@@ -89,7 +89,7 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 		return Result{}, err
 	}
 	defer release()
-	if err := deps.refuseUnusable(in.Scope, in.Dir); err != nil {
+	if err := deps.refuseUnwritable(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
 	if err := deps.refuseMidRebase(in.Scope, in.Dir); err != nil {
@@ -130,7 +130,7 @@ func Create(deps Deps, in CreateInput) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{ID: fullID, Path: abs, SyncNeeded: deps.syncNeeded(in.Scope, in.Dir)}, nil
+	return Result{ID: fullID, Path: abs, SyncNeeded: deps.syncNeeded(in.Dir)}, nil
 }
 
 // List prints design rows from the index after reconcile. A missing design/
@@ -302,7 +302,7 @@ func Mark(deps Deps, in MarkInput) (Result, error) {
 		return Result{}, err
 	}
 	defer release()
-	if err := deps.refuseUnusable(in.Scope, in.Dir); err != nil {
+	if err := deps.refuseUnwritable(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
 	if err := deps.refuseMidRebase(in.Scope, in.Dir); err != nil {
@@ -349,7 +349,7 @@ func MetaAddRemove(deps Deps, in MetaInput) (Result, error) {
 		return Result{}, err
 	}
 	defer release()
-	if err := deps.refuseUnusable(in.Scope, in.Dir); err != nil {
+	if err := deps.refuseUnwritable(in.Scope, in.Dir); err != nil {
 		return Result{}, err
 	}
 	if err := deps.refuseMidRebase(in.Scope, in.Dir); err != nil {
@@ -600,32 +600,34 @@ func (d Deps) ctx() context.Context {
 	return context.Background()
 }
 
-func (d Deps) refuseUnusable(scope, dir string) error {
+// refuseUnwritable is the shared gate of a design write in this scope: an
+// unreachable dir, an unusable tk.cue, or a hard hold.
+func (d Deps) refuseUnwritable(scope, dir string) error {
 	if err := scopefileRequire(scope, dir); err != nil {
 		return err
 	}
-	_, cfgErr := d.Rec.SchemaOrError(scope, dir)
-	if cfgErr == nil {
-		return nil
+	schema, cfgErr := d.Rec.SchemaOrError(dir)
+	if cfgErr != nil {
+		return fmt.Errorf("%s", token.Line(token.ConfigUnparseable, fmt.Sprintf("%s (%s): %s — fix tk.cue before writing", scope, cfgErr.Dir, cfgErr.Reason)))
 	}
-	return fmt.Errorf("%s", token.Line(token.ConfigUnparseable, fmt.Sprintf("%s (%s): %s — fix tk.cue before writing", scope, cfgErr.Dir, cfgErr.Reason)))
+	return scopeconfig.RefuseHard(scope, schema)
 }
 
 func (d Deps) refuseMidRebase(scope, dir string) error {
 	root, hasRoot := scopefile.GitRoot(dir)
-	schema, cfgErr := d.Rec.SchemaOrError(scope, dir)
+	schema, cfgErr := d.Rec.SchemaOrError(dir)
 	if cfgErr != nil {
 		return nil
 	}
 	return gitstate.CheckMidRebase(d.ctx(), scope, scopeconfig.SchemaAutoCommit(schema), root, hasRoot)
 }
 
-func (d Deps) syncNeeded(scope, dir string) string {
+func (d Deps) syncNeeded(dir string) string {
 	root, hasRoot := scopefile.GitRoot(dir)
 	if !hasRoot {
 		return ""
 	}
-	schema, cfgErr := d.Rec.SchemaOrError(scope, dir)
+	schema, cfgErr := d.Rec.SchemaOrError(dir)
 	if cfgErr != nil || !scopeconfig.SchemaAutoCommit(schema) {
 		return ""
 	}
@@ -647,7 +649,7 @@ func commitWritten(deps Deps, scope, dir, message, path string, before []byte) (
 
 func (d Deps) commit(scope, dir, message string, paths []string) (string, string, error) {
 	root, hasRoot := scopefile.GitRoot(dir)
-	schema, cfgErr := d.Rec.SchemaOrError(scope, dir)
+	schema, cfgErr := d.Rec.SchemaOrError(dir)
 	if cfgErr != nil {
 		return "", "", fmt.Errorf("%s", token.Line(token.ConfigUnparseable, fmt.Sprintf("%s (%s): %s — fix tk.cue before writing", scope, cfgErr.Dir, cfgErr.Reason)))
 	}

@@ -51,31 +51,41 @@ func TestFormatDependsOpen(t *testing.T) {
 }
 
 func TestFormatScopeHold(t *testing.T) {
-	unnamed := FormatScopeHold("")
-	if unnamed != "scope_hold: This scope is on hold. No work is to be carried out." {
-		t.Errorf("unnamed = %q", unnamed)
+	cases := []struct {
+		holdType, reason, want string
+	}{
+		{HoldSoft, "some reason", "scope_hold: Soft hold: do not start new implementation. Reason: some reason"},
+		{HoldSoft, "", "scope_hold: Soft hold: do not start new implementation."},
+		{HoldHard, "some reason", "scope_hold: Hard hold: all work is stopped. Reason: some reason"},
+		{HoldHard, "", "scope_hold: Hard hold: all work is stopped."},
 	}
-	named := FormatScopeHold("tk")
-	if named != "scope_hold: tk: This scope is on hold. No work is to be carried out." {
-		t.Errorf("named = %q", named)
-	}
-	many := FormatScopeHolds([]string{"tk", "foo"})
-	if many != "scope_hold: foo, tk: No work is to be carried out in those scopes." {
-		t.Errorf("many = %q", many)
-	}
-	if FormatScopeHolds([]string{"foo", "tk"}) != many {
-		t.Errorf("many order = %q", FormatScopeHolds([]string{"foo", "tk"}))
-	}
-	if FormatScopeHolds([]string{"tk"}) != named {
-		t.Errorf("one-element = %q", FormatScopeHolds([]string{"tk"}))
-	}
-	if FormatScopeHolds(nil) != "" {
-		t.Errorf("empty = %q", FormatScopeHolds(nil))
-	}
-	for _, line := range []string{unnamed, named, many} {
-		if !HasKnownPrefix(line) {
-			t.Errorf("scope_hold line must be catalogue-prefixed: %q", line)
+	for _, c := range cases {
+		got := FormatScopeHold(c.holdType, c.reason)
+		if got != c.want {
+			t.Errorf("FormatScopeHold(%q, %q) = %q, want %q", c.holdType, c.reason, got, c.want)
 		}
+		if !HasKnownPrefix(got) {
+			t.Errorf("line must be catalogue-prefixed: %q", got)
+		}
+		if "scope_hold: "+ScopeHoldSentence(c.holdType, c.reason) != got {
+			t.Errorf("sentence %q is not the line without its prefix", ScopeHoldSentence(c.holdType, c.reason))
+		}
+	}
+}
+
+func TestFormatScopeHolds(t *testing.T) {
+	if got := FormatScopeHolds(nil); got != "" {
+		t.Errorf("no rows = %q", got)
+	}
+	got := FormatScopeHolds([]HoldRow{{Scope: "bar", Type: HoldSoft}})
+	want := "scope_hold: Holds on the following scopes:\n  bar: soft: no reason given"
+	if got != want {
+		t.Errorf("one row = %q, want %q", got, want)
+	}
+	got = FormatScopeHolds([]HoldRow{{Scope: "baz", Type: HoldHard, Reason: "this is the hold reason"}, {Scope: "bar", Type: HoldSoft}})
+	want = "scope_hold: Holds on the following scopes:\n  bar: soft: no reason given\n  baz: hard: this is the hold reason"
+	if got != want {
+		t.Errorf("rows = %q, want %q", got, want)
 	}
 }
 

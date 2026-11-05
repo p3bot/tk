@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"cuelang.org/go/cue/cuecontext"
+
 	"github.com/p3bot/tk/internal/depgate"
 	"github.com/p3bot/tk/internal/id"
 	"github.com/p3bot/tk/internal/index"
@@ -23,6 +25,7 @@ import (
 	"github.com/p3bot/tk/internal/scopeconfig"
 	"github.com/p3bot/tk/internal/scopefile"
 	"github.com/p3bot/tk/internal/status"
+	"github.com/p3bot/tk/internal/token"
 )
 
 //go:embed templates/*.html static/*
@@ -66,7 +69,6 @@ func (a *App) NewServer() (*Server, error) {
 }
 
 func (a *App) newServer(hosts hostAllowlist, au *auth) (*Server, error) {
-	ctx := a.cue()
 	stateDir, err := a.stateDir()
 	if err != nil {
 		return nil, err
@@ -75,7 +77,7 @@ func (a *App) newServer(hosts hostAllowlist, au *auth) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	rec := reconcile.New(db, ctx)
+	rec := reconcile.New(db)
 	return &Server{
 		app:              a,
 		db:               db,
@@ -151,7 +153,7 @@ func (s *Server) reopen() error {
 	if err != nil {
 		return err
 	}
-	return s.installLocked(db, reconcile.New(db, s.app.cue()))
+	return s.installLocked(db, reconcile.New(db))
 }
 
 func (s *Server) installLocked(db *index.DB, rec *reconcile.Reconciler) error {
@@ -338,7 +340,7 @@ type chrome struct {
 	Alerts    []string
 	Integrity string
 	Query     string
-	Hold      bool
+	Hold      string
 	// Network shows the logout button.
 	Network bool
 }
@@ -470,12 +472,11 @@ func registeredScope(reg *registry.Registry, name string) string {
 }
 
 func (s *Server) loadRegistry() (*registry.Registry, error) {
-	ctx := s.app.cue()
 	configDir, err := s.app.configDir()
 	if err != nil {
 		return nil, err
 	}
-	return registry.NewStore(ctx, configDir).Load()
+	return registry.NewStore(cuecontext.New(), configDir).Load()
 }
 
 func (s *Server) gateDeps(reg *registry.Registry) depgate.Deps {
@@ -522,7 +523,7 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 		ok := true
 		for _, name := range c.Scopes {
 			entry := reg.Scopes[name]
-			st, err := scopeIntegrity(s.db, name, entry.Dir, s.rec.SchemaCached(name, entry.Dir))
+			st, err := scopeIntegrity(s.db, name, entry.Dir, s.rec.SchemaOrNil(entry.Dir))
 			if err != nil {
 				return c, err
 			}
@@ -541,13 +542,15 @@ func (s *Server) chromeFor(reg *registry.Registry, selected, query, section stri
 		c.Integrity = "issues"
 		return c, nil
 	}
-	schema := s.rec.SchemaCached(selected, entry.Dir)
+	schema := s.rec.SchemaOrNil(entry.Dir)
 	_, hasRoot := scopefile.GitRoot(entry.Dir)
 	c.Mode = pulseMode(schema, schema == nil, hasRoot)
-	c.Hold = scopeconfig.Held(schema)
+	if h := scopeconfig.HoldOf(schema); h != nil {
+		c.Hold = token.ScopeHoldSentence(h.Type, h.Reason)
+	}
 	c.Lens = strings.Join(reg.Lens[selected], " ")
 	c.LensTags = append([]string(nil), reg.Lens[selected]...)
-	c.CanLens = resolve.CheckName(s.app.Ctx, selected, entry) == nil
+	c.CanLens = resolve.CheckName(cuecontext.New(), selected, entry) == nil
 	tags, err := s.db.ScopeDistinctTags(selected)
 	if err != nil {
 		return c, err
